@@ -216,9 +216,11 @@ export function nextWork(allLogs: LogEntry[]): NeedsWorkItem[] {
         status = 'Light progress';
         note = `Only ${wm} min this week — good candidate for next session.`;
       }
-      if (/credits|final boss|completed/i.test(lat.action)) {
+      const GAME_END_RE = /saw the credits|rolled credits|finished the game|completed the main.?run|defeated the final boss/i;
+      const isGameDone = rel.some(l => GAME_END_RE.test(l.action));
+      if (isGameDone) {
         status = 'Completed or parked';
-        note = 'A major milestone was recently completed.';
+        note = 'Game completed — credits rolled.';
       }
       return { game, status, note, wm } as NeedsWorkItem;
     })
