@@ -116,16 +116,25 @@ function weekNarrative(section: WeekSection): string {
   return parts.join(' ');
 }
 
+const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|rolled credits/i;
+
+/** True if a game's log history shows it was fully completed — checks both the
+ *  type flag AND raw action text, so old DB entries tagged 'boss' that contain
+ *  "saw the credits" are still treated as complete. */
+function isFullyCompleted(d: { types: Set<string>; actions: string[] }): boolean {
+  return d.types.has('complete') || d.actions.some(a => CREDITS_RE.test(a));
+}
+
 function executiveSummary(logs: LogEntry[], weeks: WeekSection[]): string {
   const stats = byGameStats(logs);
   const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
   const total = logs.reduce((s, l) => s + l.minutes, 0);
   const sessions = logs.length;
-  const completeGames = ranked.filter(([, d]) => d.types.has('complete')).map(([g]) => g);
-  const bossGames = ranked.filter(([, d]) => d.types.has('boss') && !d.types.has('complete')).map(([g]) => g);
+  const completeGames = ranked.filter(([, d]) => isFullyCompleted(d)).map(([g]) => g);
+  const bossGames = ranked.filter(([, d]) => d.types.has('boss') && !isFullyCompleted(d)).map(([g]) => g);
   const rankUpGames = ranked.filter(([, d]) => d.types.has('rank-up')).map(([g]) => g);
   const purchasedGames = ranked.filter(([, d]) => d.types.has('purchase')).map(([g]) => g);
-  const progressOnly = ranked.filter(([, d]) => !d.types.has('complete') && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')).map(([g]) => g);
+  const progressOnly = ranked.filter(([, d]) => !isFullyCompleted(d) && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')).map(([g]) => g);
   const topGame = ranked[0]?.[0];
 
   const parts: string[] = [];
@@ -167,16 +176,13 @@ function overallBullets(logs: LogEntry[]): string[] {
   const bullets: string[] = [];
 
   for (const [game, d] of ranked) {
-    if (d.types.has('complete') || d.types.has('boss')) {
-      const creditAction = d.actions.find(a => /credits|final boss|completed the main|saw the credits/i.test(a));
-      if (creditAction) {
-        bullets.push(`Completion — ${game}: Reached the credits / main-run end (${fmtMinutes(d.min)} total).`);
-      } else if (d.types.has('boss')) {
-        const cnt = d.entries.filter(e => e.type === 'boss').length;
-        bullets.push(`Boss Progress — ${game}: ${cnt} boss encounter${cnt > 1 ? 's' : ''} logged (${fmtMinutes(d.min)} total). Full completion not yet reached.`);
-      } else {
-        bullets.push(`Completion Milestone — ${game}: Major area completions logged (${fmtMinutes(d.min)} total).`);
-      }
+    if (isFullyCompleted(d)) {
+      bullets.push(`Completion — ${game}: Reached the credits / main-run end (${fmtMinutes(d.min)} total).`);
+    } else if (d.types.has('boss')) {
+      const cnt = d.entries.filter(e => e.type === 'boss').length;
+      bullets.push(`Boss Progress — ${game}: ${cnt} boss encounter${cnt > 1 ? 's' : ''} logged (${fmtMinutes(d.min)} total). Full completion not yet reached.`);
+    } else if (d.types.has('complete')) {
+      bullets.push(`Completion Milestone — ${game}: Major area completions logged (${fmtMinutes(d.min)} total).`);
     }
   }
 
@@ -198,7 +204,7 @@ function overallBullets(logs: LogEntry[]): string[] {
   }
 
   const progressOnly = ranked.filter(([, d]) =>
-    !d.types.has('complete') && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')
+    !isFullyCompleted(d) && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')
   );
   for (const [game, d] of progressOnly) {
     bullets.push(`Ongoing — ${game}: ${d.entries.length} session${d.entries.length !== 1 ? 's' : ''}, ${fmtMinutes(d.min)} total. No completion milestone yet.`);
