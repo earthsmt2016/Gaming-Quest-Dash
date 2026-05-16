@@ -366,6 +366,8 @@ const REPORT_STYLES = `
     border-collapse: collapse;
     margin-bottom: 8px;
     table-layout: fixed;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
 
   thead tr { background: #f2f2f2; }
@@ -374,35 +376,42 @@ const REPORT_STYLES = `
     text-align: left;
     font-size: 9pt;
     font-weight: 600;
-    padding: 7px 10px;
+    padding: 6px 8px;
     border-bottom: 1.5px solid #aaa;
     color: #444;
+    overflow: hidden;
   }
 
   td {
-    font-size: 9.5pt;
-    padding: 7px 10px;
+    font-size: 9pt;
+    padding: 6px 8px;
     vertical-align: top;
     border-bottom: 1px solid #e0e0e0;
     word-break: break-word;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    hyphens: auto;
   }
 
   tr:nth-child(even) td { background: #fafafa; }
 
-  .col-ts  { width: 15%; }
-  .col-gm  { width: 18%; }
-  .col-ac  { width: 48%; }
-  .col-ty  { width: 10%; }
-  .col-pt  { width: 9%; white-space: nowrap; text-align: right; }
+  /* Columns total exactly 100% */
+  .col-ts  { width: 14%; }
+  .col-gm  { width: 19%; }
+  .col-ac  { width: 47%; }
+  .col-ty  { width: 11%; }
+  .col-pt  { width: 9%; text-align: right; }
   th.col-pt { text-align: right; }
 
   .type-badge {
-    display: inline-block;
-    font-size: 8pt;
+    display: block;
+    font-size: 7.5pt;
     font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 10px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    text-align: center;
+    white-space: normal;
+    word-break: break-word;
   }
 
   .week-total {
@@ -465,14 +474,20 @@ const REPORT_STYLES = `
   }
 
   @media print {
-    @page { size: A4; margin: 14mm 16mm; }
-    body { padding: 0; font-size: 10pt; }
-    .no-break { page-break-inside: avoid; }
-    .week-heading { page-break-before: auto; }
-    table { page-break-inside: auto; }
-    tr { page-break-inside: avoid; }
+    @page { size: A4 portrait; margin: 12mm 14mm; }
+    body { padding: 0; margin: 0; max-width: none; width: 100%; font-size: 9.5pt; }
+    table { width: 100% !important; table-layout: fixed !important; }
+    th, td { padding: 5px 6px; font-size: 8.5pt; overflow: hidden; }
+    .type-badge { font-size: 7pt; padding: 1px 3px; }
+    .no-break { page-break-inside: avoid; break-inside: avoid; }
+    .week-heading { page-break-before: auto; break-before: auto; }
+    table { page-break-inside: auto; break-inside: auto; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
     thead { display: table-header-group; }
-    .focus-item { break-inside: avoid; }
+    .focus-item { break-inside: avoid; page-break-inside: avoid; }
+    .week-narrative { background: #f8fbf9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    thead tr { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    tr:nth-child(even) td { background: #fafafa !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 `;
 
