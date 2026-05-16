@@ -1,0 +1,397 @@
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import TopBar from './components/TopBar';
+import Sidebar from './components/Sidebar';
+import Hero from './components/Hero';
+import StatsStrip from './components/StatsStrip';
+import QuestTable from './components/QuestTable';
+import PeriodDownload from './components/PeriodDownload';
+import WeeklyReport from './components/WeeklyReport';
+import NeedsWork from './components/NeedsWork';
+import {
+  LogEntry,
+  parseRaw,
+  dedupe,
+  monStart,
+  sunEnd,
+  formatDate,
+  summarise,
+  nextWork,
+  SAMPLE_LOGS,
+} from './lib/logParser';
+import { buildReport, downloadHtml } from './lib/reportBuilder';
+
+function getWeekLogs(logs: LogEntry[]): LogEntry[] {
+  const s = monStart(new Date()), e = sunEnd(new Date());
+  return logs.filter(l => l.date >= s && l.date <= e).sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+function getLogsForPeriod(logs: LogEntry[], from: Date, to: Date): LogEntry[] {
+  return logs.filter(l => l.date >= from && l.date <= to).sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+export default function App() {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [rawLogs, setRawLogs] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [gameFilter, setGameFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+
+  const weeklyRef = useRef<HTMLElement>(null);
+
+  // Filtered logs
+  const filtered = useMemo(() => {
+    const from = fromDate ? new Date(fromDate + 'T00:00:00') : null;
+    const to = toDate ? new Date(toDate + 'T23:59:59') : null;
+    return logs
+      .filter(l => {
+        if (gameFilter !== 'all' && l.game !== gameFilter) return false;
+        if (typeFilter !== 'all' && l.type !== typeFilter) return false;
+        if (from && l.date < from) return false;
+        if (to && l.date > to) return false;
+        return true;
+      })
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [logs, gameFilter, typeFilter, fromDate, toDate]);
+
+  const games = useMemo(() =>
+    [...new Set(logs.map(l => l.game))].sort((a, b) => a.localeCompare(b)),
+    [logs]);
+
+  const types = useMemo(() =>
+    [...new Set(logs.map(l => l.type))].sort((a, b) => a.localeCompare(b)),
+    [logs]);
+
+  const weekLogs = useMemo(() => getWeekLogs(logs), [logs]);
+  const weeklySummary = useMemo(() => summarise(weekLogs), [weekLogs]);
+  const needsWorkItems = useMemo(() => nextWork(logs), [logs]);
+
+  const playtime = useMemo(() => filtered.reduce((s, l) => s + l.minutes, 0), [filtered]);
+  const gamesCount = useMemo(() => new Set(filtered.map(l => l.game)).size, [filtered]);
+  const focusCount = useMemo(() =>
+    needsWorkItems.filter(n => ['Needs attention', 'Light progress'].includes(n.status)).length,
+    [needsWorkItems]);
+
+  const rangeLabel = useMemo(() => {
+    if (!filtered.length) return 'No logs loaded yet.';
+    const sorted = [...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
+    return `Coverage: ${formatDate(sorted[0].date)} – ${formatDate(sorted[sorted.length - 1].date)}`;
+  }, [filtered]);
+
+  const importLogs = useCallback((raw: string) => {
+    const parsed = parseRaw(raw);
+    if (!parsed.length) {
+      alert('No valid rows found. Format: timestamp | game | action | minutes | type');
+      return false;
+    }
+    setLogs(prev => dedupe([...prev, ...parsed]).sort((a, b) => b.date.getTime() - a.date.getTime()));
+    return true;
+  }, []);
+
+  const handleImport = useCallback(() => {
+    const ok = importLogs(rawLogs);
+    if (ok) setSidebarOpen(false);
+  }, [rawLogs, importLogs]);
+
+  const handleSample = useCallback(() => {
+    setRawLogs(SAMPLE_LOGS);
+    setLogs([]);
+    const parsed = parseRaw(SAMPLE_LOGS);
+    setLogs(dedupe(parsed).sort((a, b) => b.date.getTime() - a.date.getTime()));
+    setSidebarOpen(false);
+  }, []);
+
+  const handleClear = useCallback(() => {
+    setLogs([]);
+    setRawLogs('');
+    setGameFilter('all');
+    setTypeFilter('all');
+    setFromDate('');
+    setToDate('');
+  }, []);
+
+  const handleThisWeek = useCallback(() => {
+    const s = monStart(new Date()), e = sunEnd(new Date());
+    setFromDate(s.toISOString().slice(0, 10));
+    setToDate(e.toISOString().slice(0, 10));
+    setSidebarOpen(false);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setGameFilter('all');
+    setTypeFilter('all');
+    setFromDate('');
+    setToDate('');
+  }, []);
+
+  const handleDownloadWeek = useCallback(() => {
+    const start = monStart(new Date()), end = sunEnd(new Date());
+    const wl = getWeekLogs(logs);
+    const summary = summarise(wl);
+    const nw = nextWork(logs);
+    const html = buildReport(start, end, wl, summary, nw, 'Weekly');
+    downloadHtml(html, `gaming-report-${start.toISOString().slice(0, 10)}.html`);
+  }, [logs]);
+
+  const handleDownloadCustom = useCallback((fromStr: string, toStr: string) => {
+    const from = new Date(fromStr + 'T00:00:00');
+    const to = new Date(toStr + 'T23:59:59');
+    const periodLogs = getLogsForPeriod(logs, from, to);
+    const summary = summarise(periodLogs);
+    const nw = nextWork(logs);
+    const label = `${formatDate(from)} – ${formatDate(to)}`;
+    const html = buildReport(from, to, periodLogs, summary, nw, label);
+    downloadHtml(html, `gaming-report-${fromStr}-to-${toStr}.html`);
+  }, [logs]);
+
+  const scrollToReport = useCallback(() => {
+    weeklyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  // Lock body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [sidebarOpen]);
+
+  return (
+    <>
+      <style>{`
+        @media (min-width: 768px) {
+          .stats-grid { grid-template-columns: repeat(4, 1fr) !important; }
+          .report-meta-grid { grid-template-columns: repeat(4, 1fr) !important; }
+        }
+        @media (min-width: 1100px) {
+          .desktop-sidebar {
+            position: static !important;
+            transform: none !important;
+            box-shadow: none !important;
+          }
+          .hamburger-btn { display: none !important; }
+        }
+        select:focus, input:focus, textarea:focus {
+          outline: 2px solid var(--accent);
+          outline-offset: 2px;
+          border-color: transparent;
+        }
+      `}</style>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+        <TopBar
+          onHamburger={() => setSidebarOpen(o => !o)}
+          onWeekReport={scrollToReport}
+          onDownloadWeek={handleDownloadWeek}
+        />
+
+        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          <DesktopSidebar
+            open={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            rawLogs={rawLogs}
+            onRawLogsChange={setRawLogs}
+            onImport={handleImport}
+            onSample={handleSample}
+            onClear={handleClear}
+            games={games}
+            types={types}
+            gameFilter={gameFilter}
+            typeFilter={typeFilter}
+            fromDate={fromDate}
+            toDate={toDate}
+            onGameFilter={setGameFilter}
+            onTypeFilter={setTypeFilter}
+            onFromDate={setFromDate}
+            onToDate={setToDate}
+            onThisWeek={handleThisWeek}
+            onReset={handleReset}
+          />
+
+          <main style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+          }}>
+            <Hero
+              rangeLabel={rangeLabel}
+              onScrollToReport={scrollToReport}
+              onDownloadWeek={handleDownloadWeek}
+            />
+            <StatsStrip
+              entries={filtered.length}
+              playtime={playtime}
+              games={gamesCount}
+              needsWork={focusCount}
+            />
+            <QuestTable entries={filtered} />
+            <PeriodDownload onDownload={handleDownloadCustom} />
+            <WeeklyReport
+              ref={weeklyRef}
+              weekLogs={weekLogs}
+              summary={weeklySummary}
+              onDownload={handleDownloadWeek}
+            />
+            <NeedsWork items={needsWorkItems} />
+          </main>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Separate sidebar that handles both mobile overlay and desktop static positioning
+function DesktopSidebar(props: React.ComponentProps<typeof Sidebar>) {
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    minHeight: '44px',
+    border: '1px solid var(--line)',
+    background: 'var(--paper)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '10px 12px',
+    fontSize: '15px',
+  };
+
+  const labelWrapStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    fontSize: '14px',
+  };
+
+  function labelType(t: string): string {
+    return t.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  return (
+    <>
+      {/* Mobile overlay */}
+      {props.open && (
+        <div
+          onClick={props.onClose}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(28,24,20,.38)',
+            zIndex: 9,
+          }}
+          className="mobile-overlay"
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className="desktop-sidebar"
+        style={{
+          width: '320px',
+          flexShrink: 0,
+          overflowY: 'auto',
+          borderRight: '1px solid var(--line)',
+          background: 'var(--paper-2)',
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          height: '100dvh',
+          zIndex: 10,
+          transform: props.open ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform 0.25s ease',
+          boxShadow: props.open ? '4px 0 24px rgba(0,0,0,0.15)' : 'none',
+        }}
+      >
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="eyebrow">Raw logs</div>
+          <p className="muted" style={{ margin: 0, fontSize: '13px' }}>
+            Format: <code>timestamp | game | action | minutes | type</code>
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <label style={labelWrapStyle}>
+              <span>Paste logs here</span>
+              <textarea
+                value={props.rawLogs}
+                onChange={e => props.onRawLogsChange(e.target.value)}
+                placeholder="2026-05-13 22:26 | Mario Kart Tour | 1st place | 60 | rank-up"
+                style={{
+                  width: '100%',
+                  minHeight: '140px',
+                  border: '1px solid var(--line)',
+                  background: 'var(--paper)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '10px 12px',
+                  fontSize: '14px',
+                  resize: 'vertical',
+                }}
+              />
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <button className="btn primary" onClick={props.onImport}>Import</button>
+              <button className="btn" onClick={props.onSample}>Sample data</button>
+              <button className="btn" onClick={props.onClear}>Clear all</button>
+            </div>
+          </div>
+        </section>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: 0 }} />
+
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="eyebrow">Filters</div>
+
+          <label style={labelWrapStyle}>
+            <span>Game title</span>
+            <select value={props.gameFilter} onChange={e => props.onGameFilter(e.target.value)} style={inputStyle}>
+              <option value="all">All games</option>
+              {props.games.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </label>
+
+          <label style={labelWrapStyle}>
+            <span>Action type</span>
+            <select value={props.typeFilter} onChange={e => props.onTypeFilter(e.target.value)} style={inputStyle}>
+              <option value="all">All types</option>
+              {props.types.map(t => <option key={t} value={t}>{labelType(t)}</option>)}
+            </select>
+          </label>
+
+          <label style={labelWrapStyle}>
+            <span>From date</span>
+            <input type="date" value={props.fromDate} onChange={e => props.onFromDate(e.target.value)} style={inputStyle} />
+          </label>
+
+          <label style={labelWrapStyle}>
+            <span>To date</span>
+            <input type="date" value={props.toDate} onChange={e => props.onToDate(e.target.value)} style={inputStyle} />
+          </label>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <button className="btn soft" onClick={props.onThisWeek}>This week</button>
+            <button className="btn" onClick={props.onReset}>Reset</button>
+          </div>
+        </section>
+      </aside>
+
+      {/* Desktop static placeholder to push content right */}
+      <style>{`
+        @media (min-width: 1100px) {
+          .desktop-sidebar {
+            position: static !important;
+            transform: none !important;
+            box-shadow: none !important;
+            height: auto !important;
+            top: auto !important;
+            left: auto !important;
+          }
+          .mobile-overlay { display: none !important; }
+          .hamburger-btn { display: none !important; }
+        }
+      `}</style>
+    </>
+  );
+}
