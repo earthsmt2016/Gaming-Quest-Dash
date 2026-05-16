@@ -218,7 +218,21 @@ function isCompetitive(d: { types: Set<string> }): boolean {
   return d.types.has('rank-up') && !d.types.has('progress') && !d.types.has('complete') && !d.types.has('boss') && !d.types.has('purchase');
 }
 
-function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; priority: 'high' | 'medium' | 'low' }[] {
+type FocusItem = {
+  title: string;
+  priority: 'high' | 'medium' | 'low';
+  label: string;
+  sessions: { date: string; action: string; minutes: number }[];
+};
+
+function lastSessions(d: { entries: LogEntry[] }, n: number) {
+  return [...d.entries]
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, n)
+    .map(e => ({ date: formatDate(e.date), action: e.action, minutes: e.minutes }));
+}
+
+function nextWeekFocus(logs: LogEntry[]): FocusItem[] {
   if (!logs.length) return [];
   const stats = byGameStats(logs);
   const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
@@ -226,72 +240,67 @@ function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; prior
   const recentCutoff = new Date(Math.max(...logs.map(l => l.date.getTime())) - 14 * 24 * 60 * 60 * 1000);
   const recentGames = new Set(logs.filter(l => l.date >= recentCutoff).map(l => l.game));
 
-  const high: { title: string; reason: string; priority: 'high' }[] = [];
-  const medium: { title: string; reason: string; priority: 'medium' }[] = [];
-  const low: { title: string; reason: string; priority: 'low' }[] = [];
+  const high: FocusItem[] = [];
+  const medium: FocusItem[] = [];
+  const low: FocusItem[] = [];
 
   for (const [game, d] of ranked) {
     // Skip games that are fully completed.
-    // Check both the type flag AND action text — a "Final Boss" entry that says
-    // "saw the credits" is a completion regardless of how it was tagged.
     const creditsAction = d.actions.some(a => /saw the credits|finished the game|completed the main.?run|rolled credits/i.test(a));
     if (d.types.has('complete') || creditsAction) continue;
 
-    // Competitive/multiplayer games → always medium with a caution note
+    // Competitive/multiplayer only → medium
     if (isCompetitive(d)) {
-      const lastRank = [...d.entries].reverse().find(e => e.type === 'rank-up');
       medium.push({
         title: game,
         priority: 'medium',
-        reason: `Keep ranked sessions to 2–3 this week and don't let them eat into single-player time.${lastRank ? ` You were last at: "${lastRank.action}".` : ''}`,
+        label: 'Competitive — cap sessions so single-player time is protected',
+        sessions: lastSessions(d, 2),
       });
       continue;
     }
 
-    // Single-player games with a boss encounter but no completion → high (close to the end)
+    // Boss hit, not finished → high
     if (d.types.has('boss') && !isFullyCompleted(d) && recentGames.has(game)) {
-      const lastBoss = [...d.entries].reverse().find(e => e.type === 'boss');
       high.push({
         title: game,
         priority: 'high',
-        reason: `Beat the boss and finish the game — you're at the end. Last logged: "${lastBoss ? lastBoss.action : 'boss fight logged'}". One focused session should clear it and free the slot for your next title.`,
+        label: 'Boss fight reached — finish the game',
+        sessions: lastSessions(d, 3),
       });
       continue;
     }
 
-    // Active story progress in a single-player game → high
+    // Active single-player story → high
     if ((d.types.has('progress') || d.types.has('purchase')) && recentGames.has(game) && !d.types.has('rank-up')) {
-      const lastEntry = [...d.entries].reverse().find(e => e.type === 'progress' || e.type === 'purchase');
       const isNew = d.types.has('purchase') && !d.types.has('progress');
       high.push({
         title: game,
         priority: 'high',
-        reason: isNew
-          ? `Start putting in regular sessions before other titles take over. You left off at: "${lastEntry ? lastEntry.action : 'first session logged'}".`
-          : `Continue from where you left off: "${lastEntry ? lastEntry.action : 'progress logged'}". Aim for at least two sessions this week to keep the story moving.`,
+        label: isNew ? 'Recently started — build early momentum' : 'Active story run — keep going',
+        sessions: lastSessions(d, 3),
       });
       continue;
     }
 
-    // Multiplayer/competitive game being played single-player too → HIGH
-    // The story is unfinished and deserves focused sessions over ranked grinding
+    // Mixed ranked + story → high, story first
     if (d.types.has('rank-up') && (d.types.has('progress') || d.types.has('boss'))) {
-      const lastStory = [...d.entries].reverse().find(e => e.type === 'progress' || e.type === 'boss');
       high.push({
         title: game,
         priority: 'high',
-        reason: `Prioritise story sessions over ranked play this week — do story first, ranked second. You were at: "${lastStory ? lastStory.action : 'progress logged'}". Aim for at least one story session before any ranked matches.`,
+        label: 'Story unfinished — do story sessions before ranked play',
+        sessions: lastSessions(d, 3),
       });
       continue;
     }
 
-    // Games not touched recently with meaningful time invested → low
+    // Stalled with meaningful investment → low
     if (!recentGames.has(game) && d.min > 30) {
-      const lastAny = [...d.entries].reverse()[0];
       low.push({
         title: game,
         priority: 'low',
-        reason: `Return to this one — you have ${fmtMinutes(d.min)} invested and left off at: "${lastAny ? lastAny.action : 'last session'}". Even a single session will keep the context fresh.`,
+        label: `Not played recently — ${fmtMinutes(d.min)} invested, no completion yet`,
+        sessions: lastSessions(d, 2),
       });
     }
   }
@@ -590,9 +599,17 @@ export function buildPdfReport(from: Date, to: Date, logs: LogEntry[], title?: s
   const focusHtml = focusItems.length
     ? `<div class="focus-grid">${focusItems.map(item => `
         <div class="focus-item" style="background:${PRIORITY_BG[item.priority]};border-color:${PRIORITY_COLOR[item.priority]}">
-          <div class="focus-item-priority" style="color:${PRIORITY_COLOR[item.priority]}">${item.priority} priority</div>
+          <div class="focus-item-priority" style="color:${PRIORITY_COLOR[item.priority]}">${item.priority.toUpperCase()} PRIORITY</div>
           <div class="focus-item-title">${esc(item.title)}</div>
-          <div class="focus-item-reason">${esc(item.reason)}</div>
+          <div class="focus-item-label" style="font-size:9.5pt;color:#444;margin:4px 0 8px">${esc(item.label)}</div>
+          <div style="font-size:9pt;color:#555;border-top:1px solid rgba(0,0,0,0.08);padding-top:7px;margin-top:4px">
+            ${item.sessions.map(s => `
+              <div style="margin-bottom:5px">
+                <span style="font-weight:600;color:#333">${esc(s.date)}</span>
+                <span style="color:#777;margin-left:4px">${s.minutes}m</span>
+                <div style="margin-top:2px">${esc(s.action)}</div>
+              </div>`).join('')}
+          </div>
         </div>`).join('')}</div>`
     : '<p style="font-size:10pt;color:#555">Not enough data yet to generate next-week recommendations.</p>';
 
