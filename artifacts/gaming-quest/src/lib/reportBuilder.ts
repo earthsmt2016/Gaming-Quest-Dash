@@ -218,7 +218,7 @@ function isCompetitive(d: { types: Set<string> }): boolean {
   return d.types.has('rank-up') && !d.types.has('progress') && !d.types.has('complete') && !d.types.has('boss') && !d.types.has('purchase');
 }
 
-type FocusItem = {
+export type FocusItem = {
   title: string;
   priority: 'high' | 'medium' | 'low';
   label: string;
@@ -232,7 +232,7 @@ function lastSessions(d: { entries: LogEntry[] }, n: number) {
     .map(e => ({ date: formatDate(e.date), action: e.action, minutes: e.minutes }));
 }
 
-function nextWeekFocus(logs: LogEntry[]): FocusItem[] {
+export function nextWeekFocus(logs: LogEntry[]): FocusItem[] {
   if (!logs.length) return [];
   const stats = byGameStats(logs);
   const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
@@ -539,7 +539,13 @@ const TYPE_STYLES: Record<string, string> = {
   purchase:  'background:#f3e5f5;color:#6a1b9a',
 };
 
-export function buildPdfReport(from: Date, to: Date, logs: LogEntry[], title?: string): string {
+export function buildPdfReport(
+  from: Date,
+  to: Date,
+  logs: LogEntry[],
+  title?: string,
+  aiInsights?: Record<string, string>
+): string {
   const asc = [...logs].sort((a, b) => a.date.getTime() - b.date.getTime());
   const total = asc.reduce((s, l) => s + l.minutes, 0);
   const gameCount = new Set(asc.map(l => l.game)).size;
@@ -597,20 +603,26 @@ export function buildPdfReport(from: Date, to: Date, logs: LogEntry[], title?: s
     : '<p style="font-size:10pt;color:#555">No breakdown available yet.</p>';
 
   const focusHtml = focusItems.length
-    ? `<div class="focus-grid">${focusItems.map(item => `
+    ? `<div class="focus-grid">${focusItems.map(item => {
+        const insight = aiInsights?.[item.title];
+        return `
         <div class="focus-item" style="background:${PRIORITY_BG[item.priority]};border-color:${PRIORITY_COLOR[item.priority]}">
           <div class="focus-item-priority" style="color:${PRIORITY_COLOR[item.priority]}">${item.priority.toUpperCase()} PRIORITY</div>
           <div class="focus-item-title">${esc(item.title)}</div>
-          <div class="focus-item-label" style="font-size:9.5pt;color:#444;margin:4px 0 8px">${esc(item.label)}</div>
-          <div style="font-size:9pt;color:#555;border-top:1px solid rgba(0,0,0,0.08);padding-top:7px;margin-top:4px">
+          ${insight
+            ? `<div style="font-size:10.5pt;font-weight:500;color:#111;margin:6px 0 10px;line-height:1.4">${esc(insight)}</div>`
+            : `<div class="focus-item-label" style="font-size:9.5pt;color:#444;margin:4px 0 8px">${esc(item.label)}</div>`
+          }
+          <div style="font-size:9pt;color:#666;border-top:1px solid rgba(0,0,0,0.08);padding-top:7px;margin-top:4px">
             ${item.sessions.map(s => `
               <div style="margin-bottom:5px">
-                <span style="font-weight:600;color:#333">${esc(s.date)}</span>
-                <span style="color:#777;margin-left:4px">${s.minutes}m</span>
-                <div style="margin-top:2px">${esc(s.action)}</div>
+                <span style="font-weight:600;color:#444">${esc(s.date)}</span>
+                <span style="color:#888;margin-left:4px">${s.minutes}m</span>
+                <div style="margin-top:2px;color:#666">${esc(s.action)}</div>
               </div>`).join('')}
           </div>
-        </div>`).join('')}</div>`
+        </div>`;
+      }).join('')}</div>`
     : '<p style="font-size:10pt;color:#555">Not enough data yet to generate next-week recommendations.</p>';
 
   const emptyNote = !asc.length

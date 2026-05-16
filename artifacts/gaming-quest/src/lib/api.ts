@@ -52,3 +52,22 @@ export async function clearLogs(): Promise<void> {
   const res = await fetch(`${BASE}/logs`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to clear logs');
 }
+
+export interface FocusGame {
+  title: string;
+  label: string;
+  sessions: { date: string; action: string; minutes: number }[];
+}
+
+export async function fetchFocusInsights(
+  games: FocusGame[]
+): Promise<{ title: string; nextStep: string }[]> {
+  const res = await fetch(`${BASE}/focus-insights`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ games }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.insights ?? [];
+}

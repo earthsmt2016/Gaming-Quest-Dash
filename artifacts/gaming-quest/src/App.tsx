@@ -17,8 +17,8 @@ import {
   nextWork,
   SAMPLE_LOGS,
 } from './lib/logParser';
-import { buildPdfReport, printReport } from './lib/reportBuilder';
-import { fetchLogs, saveLogs, clearLogs } from './lib/api';
+import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
+import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights } from './lib/api';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -185,18 +185,24 @@ export default function App() {
     setToDate('');
   }, []);
 
-  const handleDownloadWeek = useCallback(() => {
+  const handleDownloadWeek = useCallback(async () => {
     const start = monStart(new Date()), end = sunEnd(new Date());
     const wl = getWeekLogs(logs);
-    const html = buildPdfReport(start, end, wl, 'This Week');
+    const focusItems = nextWeekFocus(wl);
+    const rawInsights = await fetchFocusInsights(focusItems);
+    const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
+    const html = buildPdfReport(start, end, wl, 'This Week', aiInsights);
     printReport(html);
   }, [logs]);
 
-  const handleDownloadCustom = useCallback((fromStr: string, toStr: string) => {
+  const handleDownloadCustom = useCallback(async (fromStr: string, toStr: string) => {
     const from = new Date(fromStr + 'T00:00:00');
     const to = new Date(toStr + 'T23:59:59');
     const periodLogs = getLogsForPeriod(logs, from, to);
-    const html = buildPdfReport(from, to, periodLogs);
+    const focusItems = nextWeekFocus(periodLogs);
+    const rawInsights = await fetchFocusInsights(focusItems);
+    const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
+    const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights);
     printReport(html);
   }, [logs]);
 
