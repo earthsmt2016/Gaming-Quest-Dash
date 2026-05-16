@@ -192,13 +192,13 @@ function overallBullets(logs: LogEntry[], manualCompletions: Set<string> = new S
   }
 
   for (const [game, d] of ranked) {
-    if (d.types.has('purchase')) {
+    if (!done(game, d) && d.types.has('purchase')) {
       const firstAction = d.entries.find(e => e.type === 'purchase');
       bullets.push(`New Game — ${game}: Acquired and play began${firstAction ? ` (first session: ${firstAction.action})` : ''}. ${fmtMinutes(d.min)} logged so far.`);
     }
   }
 
-  const rankUpEntries = ranked.filter(([, d]) => d.types.has('rank-up'));
+  const rankUpEntries = ranked.filter(([g, d]) => !done(g, d) && d.types.has('rank-up'));
   if (rankUpEntries.length) {
     for (const [game, d] of rankUpEntries) {
       const rl = d.entries.filter(e => e.type === 'rank-up');
