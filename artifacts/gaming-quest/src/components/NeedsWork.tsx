@@ -3,9 +3,11 @@ import { NeedsWorkItem, badgeFor } from '../lib/logParser';
 
 interface NeedsWorkProps {
   items: NeedsWorkItem[];
+  manualCompletions: Set<string>;
+  onToggleCompletion: (game: string) => void;
 }
 
-export default function NeedsWork({ items }: NeedsWorkProps) {
+export default function NeedsWork({ items, manualCompletions, onToggleCompletion }: NeedsWorkProps) {
   return (
     <article style={{
       background: 'var(--paper)',
@@ -29,26 +31,51 @@ export default function NeedsWork({ items }: NeedsWorkProps) {
             background: '#fffdfa',
             padding: '12px',
           }}>Add more logs to generate suggestions.</div>
-        ) : items.map(item => (
-          <div key={item.game} style={{
-            border: '1px solid var(--soft-line)',
-            borderRadius: '12px',
-            background: '#fffdfa',
-            padding: '12px',
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '8px',
-              alignItems: 'center',
-              flexWrap: 'wrap',
+        ) : items.map(item => {
+          const isManual = manualCompletions.has(item.game);
+          const isCompleted = item.status === 'Completed or parked';
+          return (
+            <div key={item.game} style={{
+              border: '1px solid var(--soft-line)',
+              borderRadius: '12px',
+              background: '#fffdfa',
+              padding: '12px',
             }}>
-              <strong>{item.game}</strong>
-              <span className={`badge ${badgeFor(item.status)}`}>{item.status}</span>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '8px',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}>
+                <strong>{item.game}</strong>
+                <span className={`badge ${badgeFor(item.status)}`}>{item.status}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '8px', flexWrap: 'wrap' }}>
+                <div className="mini">{item.note}</div>
+                {isManual ? (
+                  <button
+                    className="btn soft"
+                    onClick={() => onToggleCompletion(item.game)}
+                    style={{ fontSize: '12px', padding: '3px 10px', flexShrink: 0, color: 'var(--muted)' }}
+                    title="Remove manual completion mark"
+                  >
+                    Unmark
+                  </button>
+                ) : !isCompleted ? (
+                  <button
+                    className="btn soft"
+                    onClick={() => onToggleCompletion(item.game)}
+                    style={{ fontSize: '12px', padding: '3px 10px', flexShrink: 0 }}
+                    title="Mark this game as completed"
+                  >
+                    Mark done ✓
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <div className="mini" style={{ marginTop: '6px' }}>{item.note}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </article>
   );

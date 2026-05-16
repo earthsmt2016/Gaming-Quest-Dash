@@ -59,6 +59,24 @@ export interface FocusGame {
   sessions: { date: string; action: string; minutes: number }[];
 }
 
+export async function fetchCompletions(): Promise<Set<string>> {
+  try {
+    const res = await fetch(`${BASE}/completions`);
+    if (!res.ok) return new Set();
+    const data: string[] = await res.json();
+    return new Set(data);
+  } catch {
+    return new Set();
+  }
+}
+
+export async function toggleCompletion(game: string): Promise<boolean> {
+  const res = await fetch(`${BASE}/completions/${encodeURIComponent(game)}`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to toggle completion');
+  const data = await res.json();
+  return data.completed as boolean;
+}
+
 export async function fetchFocusInsights(
   games: FocusGame[]
 ): Promise<{ title: string; nextStep: string }[]> {

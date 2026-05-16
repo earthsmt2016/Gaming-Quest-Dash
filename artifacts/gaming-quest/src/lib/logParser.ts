@@ -185,7 +185,7 @@ export interface NeedsWorkItem {
   wm: number;
 }
 
-export function nextWork(allLogs: LogEntry[]): NeedsWorkItem[] {
+export function nextWork(allLogs: LogEntry[], manualCompletions: Set<string> = new Set()): NeedsWorkItem[] {
   const cut = new Date();
   cut.setDate(cut.getDate() - 28);
   const recent = allLogs.filter(l => l.date >= cut);
@@ -218,10 +218,13 @@ export function nextWork(allLogs: LogEntry[]): NeedsWorkItem[] {
       }
       const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|rolled credits/i;
       const gameTypes = new Set(rel.map(l => l.type));
-      const isGameDone = gameTypes.has('complete') || rel.some(l => CREDITS_RE.test(l.action));
-      if (isGameDone) {
+      const isAutoDone = gameTypes.has('complete') || rel.some(l => CREDITS_RE.test(l.action));
+      const isManualDone = manualCompletions.has(game);
+      if (isAutoDone || isManualDone) {
         status = 'Completed or parked';
-        note = 'Game completed — credits rolled.';
+        note = isManualDone && !isAutoDone
+          ? 'Manually marked as completed.'
+          : 'Game completed — credits rolled.';
       }
       return { game, status, note, wm } as NeedsWorkItem;
     })

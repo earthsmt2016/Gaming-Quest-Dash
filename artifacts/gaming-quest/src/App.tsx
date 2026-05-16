@@ -18,7 +18,7 @@ import {
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
-import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights } from './lib/api';
+import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion } from './lib/api';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -35,6 +35,7 @@ export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [saving, setSaving] = useState(false);
+  const [completions, setCompletions] = useState<Set<string>>(new Set());
   const [rawLogs, setRawLogs] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState('all');
@@ -44,11 +45,12 @@ export default function App() {
 
   const weeklyRef = useRef<HTMLElement>(null);
 
-  // Load logs from API on mount
+  // Load logs and manual completions from API on mount
   useEffect(() => {
-    fetchLogs()
-      .then(entries => {
+    Promise.all([fetchLogs(), fetchCompletions()])
+      .then(([entries, comps]) => {
         setLogs(entries);
+        setCompletions(comps);
         setLoadState('ready');
       })
       .catch(() => setLoadState('error'));
@@ -79,7 +81,7 @@ export default function App() {
 
   const weekLogs = useMemo(() => getWeekLogs(logs), [logs]);
   const weeklySummary = useMemo(() => summarise(weekLogs), [weekLogs]);
-  const needsWorkItems = useMemo(() => nextWork(logs), [logs]);
+  const needsWorkItems = useMemo(() => nextWork(logs, completions), [logs, completions]);
 
   const playtime = useMemo(() => filtered.reduce((s, l) => s + l.minutes, 0), [filtered]);
   const gamesCount = useMemo(() => new Set(filtered.map(l => l.game)).size, [filtered]);
@@ -183,6 +185,15 @@ export default function App() {
     setTypeFilter('all');
     setFromDate('');
     setToDate('');
+  }, []);
+
+  const handleToggleCompletion = useCallback(async (game: string) => {
+    const nowDone = await toggleCompletion(game);
+    setCompletions(prev => {
+      const next = new Set(prev);
+      if (nowDone) next.add(game); else next.delete(game);
+      return next;
+    });
   }, []);
 
   const [pdfGenerating, setPdfGenerating] = useState(false);
@@ -331,7 +342,11 @@ export default function App() {
                   onDownload={handleDownloadWeek}
                   pdfGenerating={pdfGenerating}
                 />
-                <NeedsWork items={needsWorkItems} />
+                <NeedsWork
+                  items={needsWorkItems}
+                  manualCompletions={completions}
+                  onToggleCompletion={handleToggleCompletion}
+                />
               </>
             )}
           </main>
