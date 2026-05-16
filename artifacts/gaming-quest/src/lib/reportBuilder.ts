@@ -125,16 +125,17 @@ function isFullyCompleted(d: { types: Set<string>; actions: string[] }): boolean
   return d.types.has('complete') || d.actions.some(a => CREDITS_RE.test(a));
 }
 
-function executiveSummary(logs: LogEntry[], weeks: WeekSection[]): string {
+function executiveSummary(logs: LogEntry[], weeks: WeekSection[], manualCompletions: Set<string> = new Set()): string {
   const stats = byGameStats(logs);
   const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
   const total = logs.reduce((s, l) => s + l.minutes, 0);
   const sessions = logs.length;
-  const completeGames = ranked.filter(([, d]) => isFullyCompleted(d)).map(([g]) => g);
-  const bossGames = ranked.filter(([, d]) => d.types.has('boss') && !isFullyCompleted(d)).map(([g]) => g);
+  const done = (g: string, d: ReturnType<typeof byGameStats>[string]) => isFullyCompleted(d) || manualCompletions.has(g);
+  const completeGames = ranked.filter(([g, d]) => done(g, d)).map(([g]) => g);
+  const bossGames = ranked.filter(([g, d]) => d.types.has('boss') && !done(g, d)).map(([g]) => g);
   const rankUpGames = ranked.filter(([, d]) => d.types.has('rank-up')).map(([g]) => g);
   const purchasedGames = ranked.filter(([, d]) => d.types.has('purchase')).map(([g]) => g);
-  const progressOnly = ranked.filter(([, d]) => !isFullyCompleted(d) && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')).map(([g]) => g);
+  const progressOnly = ranked.filter(([g, d]) => !done(g, d) && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')).map(([g]) => g);
   const topGame = ranked[0]?.[0];
 
   const parts: string[] = [];
@@ -170,14 +171,18 @@ function executiveSummary(logs: LogEntry[], weeks: WeekSection[]): string {
   return parts.join(' ');
 }
 
-function overallBullets(logs: LogEntry[]): string[] {
+function overallBullets(logs: LogEntry[], manualCompletions: Set<string> = new Set()): string[] {
   const stats = byGameStats(logs);
   const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
   const bullets: string[] = [];
+  const done = (g: string, d: ReturnType<typeof byGameStats>[string]) => isFullyCompleted(d) || manualCompletions.has(g);
 
   for (const [game, d] of ranked) {
-    if (isFullyCompleted(d)) {
-      bullets.push(`Completion — ${game}: Reached the credits / main-run end (${fmtMinutes(d.min)} total).`);
+    if (done(game, d)) {
+      const note = manualCompletions.has(game) && !isFullyCompleted(d)
+        ? 'Manually marked as completed'
+        : 'Reached the credits / main-run end';
+      bullets.push(`Completion — ${game}: ${note} (${fmtMinutes(d.min)} total).`);
     } else if (d.types.has('boss')) {
       const cnt = d.entries.filter(e => e.type === 'boss').length;
       bullets.push(`Boss Progress — ${game}: ${cnt} boss encounter${cnt > 1 ? 's' : ''} logged (${fmtMinutes(d.min)} total). Full completion not yet reached.`);
@@ -203,8 +208,8 @@ function overallBullets(logs: LogEntry[]): string[] {
     }
   }
 
-  const progressOnly = ranked.filter(([, d]) =>
-    !isFullyCompleted(d) && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')
+  const progressOnly = ranked.filter(([g, d]) =>
+    !done(g, d) && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')
   );
   for (const [game, d] of progressOnly) {
     bullets.push(`Ongoing — ${game}: ${d.entries.length} session${d.entries.length !== 1 ? 's' : ''}, ${fmtMinutes(d.min)} total. No completion milestone yet.`);
@@ -232,7 +237,7 @@ function lastSessions(d: { entries: LogEntry[] }, n: number) {
     .map(e => ({ date: formatDate(e.date), action: e.action, minutes: e.minutes }));
 }
 
-export function nextWeekFocus(logs: LogEntry[]): FocusItem[] {
+export function nextWeekFocus(logs: LogEntry[], manualCompletions: Set<string> = new Set()): FocusItem[] {
   if (!logs.length) return [];
   const stats = byGameStats(logs);
   const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
@@ -245,9 +250,8 @@ export function nextWeekFocus(logs: LogEntry[]): FocusItem[] {
   const low: FocusItem[] = [];
 
   for (const [game, d] of ranked) {
-    // Skip games that are fully completed.
-    const creditsAction = d.actions.some(a => /saw the credits|finished the game|completed the main.?run|rolled credits/i.test(a));
-    if (d.types.has('complete') || creditsAction) continue;
+    // Skip games that are fully completed (auto-detected or manually marked).
+    if (isFullyCompleted(d) || manualCompletions.has(game)) continue;
 
     // Competitive/multiplayer only → medium
     if (isCompetitive(d)) {
@@ -261,7 +265,7 @@ export function nextWeekFocus(logs: LogEntry[]): FocusItem[] {
     }
 
     // Boss hit, not finished → high
-    if (d.types.has('boss') && !isFullyCompleted(d) && recentGames.has(game)) {
+    if (d.types.has('boss') && !isFullyCompleted(d) && !manualCompletions.has(game) && recentGames.has(game)) {
       high.push({
         title: game,
         priority: 'high',
@@ -544,15 +548,16 @@ export function buildPdfReport(
   to: Date,
   logs: LogEntry[],
   title?: string,
-  aiInsights?: Record<string, string>
+  aiInsights?: Record<string, string>,
+  manualCompletions: Set<string> = new Set()
 ): string {
   const asc = [...logs].sort((a, b) => a.date.getTime() - b.date.getTime());
   const total = asc.reduce((s, l) => s + l.minutes, 0);
   const gameCount = new Set(asc.map(l => l.game)).size;
   const weeks = splitIntoWeeks(asc, from, to);
-  const execSummary = executiveSummary(asc, weeks);
-  const breakdownBullets = overallBullets(asc);
-  const focusItems = nextWeekFocus(asc);
+  const execSummary = executiveSummary(asc, weeks, manualCompletions);
+  const breakdownBullets = overallBullets(asc, manualCompletions);
+  const focusItems = nextWeekFocus(asc, manualCompletions);
 
   const weekSections = weeks.map((w, i) => {
     const wTotal = w.logs.reduce((s, l) => s + l.minutes, 0);

@@ -204,10 +204,10 @@ export default function App() {
     try {
       const start = monStart(new Date()), end = sunEnd(new Date());
       const wl = getWeekLogs(logs);
-      const focusItems = nextWeekFocus(wl);
+      const focusItems = nextWeekFocus(wl, completions);
       const rawInsights = await fetchFocusInsights(focusItems);
       const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
-      const html = buildPdfReport(start, end, wl, 'This Week', aiInsights);
+      const html = buildPdfReport(start, end, wl, 'This Week', aiInsights, completions);
       printReport(html);
     } finally {
       setPdfGenerating(false);
@@ -221,10 +221,10 @@ export default function App() {
       const from = new Date(fromStr + 'T00:00:00');
       const to = new Date(toStr + 'T23:59:59');
       const periodLogs = getLogsForPeriod(logs, from, to);
-      const focusItems = nextWeekFocus(periodLogs);
+      const focusItems = nextWeekFocus(periodLogs, completions);
       const rawInsights = await fetchFocusInsights(focusItems);
       const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
-      const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights);
+      const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights, completions);
       printReport(html);
     } finally {
       setPdfGenerating(false);
