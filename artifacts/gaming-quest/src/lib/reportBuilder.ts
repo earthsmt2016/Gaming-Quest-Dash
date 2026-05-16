@@ -243,18 +243,18 @@ function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; prior
       medium.push({
         title: game,
         priority: 'medium',
-        reason: `Competitive/multiplayer title. ${lastRank ? `Last session: ${lastRank.action}.` : ''} Note: sustained ranked play can divert time from finishing single-player titles — keep sessions contained so story progress doesn't stall.`,
+        reason: `Keep ranked sessions to 2–3 this week and don't let them eat into single-player time.${lastRank ? ` You were last at: "${lastRank.action}".` : ''}`,
       });
       continue;
     }
 
     // Single-player games with a boss encounter but no completion → high (close to the end)
-    if (d.types.has('boss') && !d.types.has('complete') && recentGames.has(game)) {
+    if (d.types.has('boss') && !isFullyCompleted(d) && recentGames.has(game)) {
       const lastBoss = [...d.entries].reverse().find(e => e.type === 'boss');
       high.push({
         title: game,
         priority: 'high',
-        reason: `Boss encountered but not yet finished — push through to complete it. Last noted: "${lastBoss ? lastBoss.action : 'boss fight logged'}". Completing this frees up a slot for the next title.`,
+        reason: `Beat the boss and finish the game — you're at the end. Last logged: "${lastBoss ? lastBoss.action : 'boss fight logged'}". One focused session should clear it and free the slot for your next title.`,
       });
       continue;
     }
@@ -267,8 +267,8 @@ function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; prior
         title: game,
         priority: 'high',
         reason: isNew
-          ? `Recently started — build early momentum before other titles take over. First session: "${lastEntry ? lastEntry.action : 'play began'}".`
-          : `Active story run — keep the momentum going. Currently at: "${lastEntry ? lastEntry.action : 'progress logged'}".`,
+          ? `Start putting in regular sessions before other titles take over. You left off at: "${lastEntry ? lastEntry.action : 'first session logged'}".`
+          : `Continue from where you left off: "${lastEntry ? lastEntry.action : 'progress logged'}". Aim for at least two sessions this week to keep the story moving.`,
       });
       continue;
     }
@@ -280,17 +280,18 @@ function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; prior
       high.push({
         title: game,
         priority: 'high',
-        reason: `Single-player story in progress alongside ranked play — prioritise story sessions to reach completion. Currently at: "${lastStory ? lastStory.action : 'progress logged'}". Consider limiting ranked matches this week to keep the story moving forward.`,
+        reason: `Prioritise story sessions over ranked play this week — do story first, ranked second. You were at: "${lastStory ? lastStory.action : 'progress logged'}". Aim for at least one story session before any ranked matches.`,
       });
       continue;
     }
 
     // Games not touched recently with meaningful time invested → low
     if (!recentGames.has(game) && d.min > 30) {
+      const lastAny = [...d.entries].reverse()[0];
       low.push({
         title: game,
         priority: 'low',
-        reason: `No recent sessions — ${fmtMinutes(d.min)} invested with no completion yet. Worth returning to before losing progress context.`,
+        reason: `Return to this one — you have ${fmtMinutes(d.min)} invested and left off at: "${lastAny ? lastAny.action : 'last session'}". Even a single session will keep the context fresh.`,
       });
     }
   }
