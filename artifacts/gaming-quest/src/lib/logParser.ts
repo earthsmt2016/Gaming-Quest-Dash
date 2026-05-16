@@ -44,10 +44,11 @@ function normaliseType(t: string, action: string): ActionType {
     'collectibles': 'progress', 'exploration': 'progress',
     'credits': 'complete', 'ending': 'complete',
   };
-  if (categoryMap[s]) return categoryMap[s];
 
-  // Fall back to scanning the action text
+  // Check action text — strong completion signals always override the category label.
+  // e.g. "Final Boss | ...saw the credits" should be 'complete', not 'boss'.
   const al = action.toLowerCase();
+  if (/saw the credits|finished the game|completed the main.?run|rolled credits/.test(al)) return 'complete';
   if (al.includes('bought') || al.includes('purchased') || al.includes('new game')) return 'purchase';
   if (al.includes('rank') || al.includes('level') || al.includes('tier') || al.includes('score push')) return 'rank-up';
   if (al.includes('defeated') || al.includes('boss') || al.includes('key')) return 'boss';

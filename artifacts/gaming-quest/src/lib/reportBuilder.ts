@@ -225,8 +225,11 @@ function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; prior
   const low: { title: string; reason: string; priority: 'low' }[] = [];
 
   for (const [game, d] of ranked) {
-    // Skip already-completed games
-    if (d.types.has('complete') && !d.types.has('boss') && !d.types.has('progress')) continue;
+    // Skip games that are fully completed.
+    // Check both the type flag AND action text — a "Final Boss" entry that says
+    // "saw the credits" is a completion regardless of how it was tagged.
+    const creditsAction = d.actions.some(a => /saw the credits|finished the game|completed the main.?run|rolled credits/i.test(a));
+    if (d.types.has('complete') || creditsAction) continue;
 
     // Competitive/multiplayer games → always medium with a caution note
     if (isCompetitive(d)) {
