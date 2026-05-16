@@ -264,13 +264,14 @@ function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; prior
       continue;
     }
 
-    // Games with mixed rank-up and story content → medium
+    // Multiplayer/competitive game being played single-player too → HIGH
+    // The story is unfinished and deserves focused sessions over ranked grinding
     if (d.types.has('rank-up') && (d.types.has('progress') || d.types.has('boss'))) {
-      const lastEntry = [...d.entries].reverse()[0];
-      medium.push({
+      const lastStory = [...d.entries].reverse().find(e => e.type === 'progress' || e.type === 'boss');
+      high.push({
         title: game,
-        priority: 'medium',
-        reason: `Has both competitive and story elements. Prioritise story/completion sessions over ranked play to make meaningful progress. Last session: "${lastEntry ? lastEntry.action : 'activity logged'}".`,
+        priority: 'high',
+        reason: `Single-player story in progress alongside ranked play — prioritise story sessions to reach completion. Currently at: "${lastStory ? lastStory.action : 'progress logged'}". Consider limiting ranked matches this week to keep the story moving forward.`,
       });
       continue;
     }
@@ -326,9 +327,10 @@ const REPORT_STYLES = `
   }
 
   .report-title {
-    font-size: 14pt;
+    font-size: 26pt;
     font-weight: 700;
-    margin-bottom: 4px;
+    line-height: 1.2;
+    margin-bottom: 6px;
   }
 
   .report-meta {
