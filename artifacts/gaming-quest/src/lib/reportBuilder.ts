@@ -312,6 +312,7 @@ const REPORT_STYLES = `
     line-height: 1.5;
     padding: 28px 36px;
     max-width: 900px;
+    min-width: 660px;
     margin: 0 auto;
   }
 
@@ -422,14 +423,14 @@ const REPORT_STYLES = `
   th.col-pt { text-align: right; }
 
   .type-badge {
-    display: block;
+    display: inline-block;
     font-size: 7.5pt;
     font-weight: 600;
-    padding: 2px 4px;
+    padding: 2px 5px;
     border-radius: 4px;
-    text-align: center;
-    white-space: normal;
-    word-break: break-word;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .week-total {
@@ -593,7 +594,7 @@ export function buildPdfReport(from: Date, to: Date, logs: LogEntry[], title?: s
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta name="viewport" content="width=700">
   <title>${title || 'Gaming Report'}</title>
   <style>${REPORT_STYLES}</style>
 </head>
