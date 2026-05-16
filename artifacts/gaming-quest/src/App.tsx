@@ -6,6 +6,7 @@ import QuestTable from './components/QuestTable';
 import PeriodDownload from './components/PeriodDownload';
 import WeeklyReport from './components/WeeklyReport';
 import NeedsWork from './components/NeedsWork';
+import GameLibrary from './components/GameLibrary';
 import {
   LogEntry,
   parseRaw,
@@ -38,6 +39,7 @@ export default function App() {
   const [completions, setCompletions] = useState<Set<string>>(new Set());
   const [rawLogs, setRawLogs] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [fromDate, setFromDate] = useState('');
@@ -319,6 +321,13 @@ export default function App() {
                 Could not reach the server. Check your connection and reload.
               </div>
             )}
+            <GameLibrary
+              open={libraryOpen}
+              onClose={() => setLibraryOpen(false)}
+              logs={logs}
+              manualCompletions={completions}
+              onToggleCompletion={handleToggleCompletion}
+            />
             {loadState === 'ready' && (
               <>
                 <Hero
@@ -346,6 +355,7 @@ export default function App() {
                   items={needsWorkItems}
                   manualCompletions={completions}
                   onToggleCompletion={handleToggleCompletion}
+                  onOpenLibrary={() => setLibraryOpen(true)}
                 />
               </>
             )}

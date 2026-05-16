@@ -5,9 +5,10 @@ interface NeedsWorkProps {
   items: NeedsWorkItem[];
   manualCompletions: Set<string>;
   onToggleCompletion: (game: string) => void;
+  onOpenLibrary: () => void;
 }
 
-export default function NeedsWork({ items, manualCompletions, onToggleCompletion }: NeedsWorkProps) {
+export default function NeedsWork({ items, manualCompletions, onToggleCompletion, onOpenLibrary }: NeedsWorkProps) {
   return (
     <article style={{
       background: 'var(--paper)',
@@ -21,6 +22,14 @@ export default function NeedsWork({ items, manualCompletions, onToggleCompletion
           <h3 style={{ margin: 0, fontSize: '17px' }}>What needs work next</h3>
           <div className="mini">Based on last 28 days of activity</div>
         </div>
+        <button
+          className="btn soft"
+          onClick={onOpenLibrary}
+          style={{ fontSize: '12px', padding: '4px 12px', flexShrink: 0, whiteSpace: 'nowrap' }}
+          title="View all games and manage completion status"
+        >
+          All games ↗
+        </button>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
