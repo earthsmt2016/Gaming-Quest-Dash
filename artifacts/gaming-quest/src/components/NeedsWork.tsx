@@ -4,11 +4,13 @@ import { NeedsWorkItem, badgeFor } from '../lib/logParser';
 interface NeedsWorkProps {
   items: NeedsWorkItem[];
   manualCompletions: Set<string>;
+  paused: Set<string>;
   onToggleCompletion: (game: string) => void;
+  onTogglePaused: (game: string) => void;
   onOpenLibrary: () => void;
 }
 
-export default function NeedsWork({ items, manualCompletions, onToggleCompletion, onOpenLibrary }: NeedsWorkProps) {
+export default function NeedsWork({ items, manualCompletions, paused, onToggleCompletion, onTogglePaused, onOpenLibrary }: NeedsWorkProps) {
   return (
     <article style={{
       background: 'var(--paper)',
@@ -42,13 +44,17 @@ export default function NeedsWork({ items, manualCompletions, onToggleCompletion
           }}>Add more logs to generate suggestions.</div>
         ) : items.map(item => {
           const isManual = manualCompletions.has(item.game);
+          const isOnHold = paused.has(item.game);
           const isCompleted = item.status === 'Completed or parked';
+          const isActive = !isCompleted && !isOnHold;
+
           return (
             <div key={item.game} style={{
               border: '1px solid var(--soft-line)',
               borderRadius: '12px',
-              background: '#fffdfa',
+              background: isOnHold ? '#faf8ff' : '#fffdfa',
               padding: '12px',
+              opacity: isOnHold ? 0.85 : 1,
             }}>
               <div style={{
                 display: 'flex',
@@ -62,25 +68,48 @@ export default function NeedsWork({ items, manualCompletions, onToggleCompletion
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '8px', flexWrap: 'wrap' }}>
                 <div className="mini">{item.note}</div>
-                {isManual ? (
-                  <button
-                    className="btn soft"
-                    onClick={() => onToggleCompletion(item.game)}
-                    style={{ fontSize: '12px', padding: '3px 10px', flexShrink: 0, color: 'var(--muted)' }}
-                    title="Remove manual completion mark"
-                  >
-                    Unmark
-                  </button>
-                ) : !isCompleted ? (
-                  <button
-                    className="btn soft"
-                    onClick={() => onToggleCompletion(item.game)}
-                    style={{ fontSize: '12px', padding: '3px 10px', flexShrink: 0 }}
-                    title="Mark this game as completed"
-                  >
-                    Mark done ✓
-                  </button>
-                ) : null}
+                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                  {isOnHold && (
+                    <button
+                      className="btn soft"
+                      onClick={() => onTogglePaused(item.game)}
+                      style={{ fontSize: '12px', padding: '3px 10px' }}
+                      title="Resume this game"
+                    >
+                      Resume ▶
+                    </button>
+                  )}
+                  {isManual && (
+                    <button
+                      className="btn soft"
+                      onClick={() => onToggleCompletion(item.game)}
+                      style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }}
+                      title="Remove manual completion mark"
+                    >
+                      Unmark
+                    </button>
+                  )}
+                  {isActive && (
+                    <>
+                      <button
+                        className="btn soft"
+                        onClick={() => onTogglePaused(item.game)}
+                        style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }}
+                        title="Put this game on hold"
+                      >
+                        Put down
+                      </button>
+                      <button
+                        className="btn soft"
+                        onClick={() => onToggleCompletion(item.game)}
+                        style={{ fontSize: '12px', padding: '3px 10px' }}
+                        title="Mark this game as completed"
+                      >
+                        Mark done ✓
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           );

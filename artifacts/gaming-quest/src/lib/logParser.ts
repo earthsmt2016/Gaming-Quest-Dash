@@ -180,12 +180,16 @@ export function summarise(logs: LogEntry[]): Summary {
 
 export interface NeedsWorkItem {
   game: string;
-  status: 'Needs attention' | 'Light progress' | 'On track' | 'Completed or parked';
+  status: 'Needs attention' | 'Light progress' | 'On track' | 'On hold' | 'Completed or parked';
   note: string;
   wm: number;
 }
 
-export function nextWork(allLogs: LogEntry[], manualCompletions: Set<string> = new Set()): NeedsWorkItem[] {
+export function nextWork(
+  allLogs: LogEntry[],
+  manualCompletions: Set<string> = new Set(),
+  paused: Set<string> = new Set(),
+): NeedsWorkItem[] {
   const cut = new Date();
   cut.setDate(cut.getDate() - 28);
   const recent = allLogs.filter(l => l.date >= cut);
@@ -197,7 +201,8 @@ export function nextWork(allLogs: LogEntry[], manualCompletions: Set<string> = n
     'Needs attention': 0,
     'Light progress': 1,
     'On track': 2,
-    'Completed or parked': 3,
+    'On hold': 3,
+    'Completed or parked': 4,
   };
 
   const games = [...new Set(recent.map(l => l.game))];
@@ -219,6 +224,10 @@ export function nextWork(allLogs: LogEntry[], manualCompletions: Set<string> = n
       const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|rolled credits/i;
       const isAutoDone = rel.some(l => CREDITS_RE.test(l.action));
       const isManualDone = manualCompletions.has(game);
+      if (paused.has(game)) {
+        status = 'On hold';
+        note = 'Intentionally put down — resume when ready.';
+      }
       if (isAutoDone || isManualDone) {
         status = 'Completed or parked';
         note = isManualDone && !isAutoDone
@@ -228,12 +237,13 @@ export function nextWork(allLogs: LogEntry[], manualCompletions: Set<string> = n
       return { game, status, note, wm } as NeedsWorkItem;
     })
     .sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.wm - b.wm)
-    .slice(0, 6);
+    .slice(0, 7);
 }
 
 export function badgeFor(status: NeedsWorkItem['status']): ActionType {
   if (status === 'Needs attention') return 'boss';
   if (status === 'Light progress') return 'rank-up';
+  if (status === 'On hold') return 'purchase';
   if (status === 'Completed or parked') return 'complete';
   return 'progress';
 }

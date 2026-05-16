@@ -20,7 +20,7 @@ import {
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
-import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, updateLog, deleteLog } from './lib/api';
+import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, fetchPaused, togglePaused, updateLog, deleteLog } from './lib/api';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -38,6 +38,7 @@ export default function App() {
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [saving, setSaving] = useState(false);
   const [completions, setCompletions] = useState<Set<string>>(new Set());
+  const [paused, setPaused] = useState<Set<string>>(new Set());
   const [rawLogs, setRawLogs] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -49,12 +50,13 @@ export default function App() {
 
   const weeklyRef = useRef<HTMLElement>(null);
 
-  // Load logs and manual completions from API on mount
+  // Load logs, completions and paused state from API on mount
   useEffect(() => {
-    Promise.all([fetchLogs(), fetchCompletions()])
-      .then(([entries, comps]) => {
+    Promise.all([fetchLogs(), fetchCompletions(), fetchPaused()])
+      .then(([entries, comps, pausedGames]) => {
         setLogs(entries);
         setCompletions(comps);
+        setPaused(pausedGames);
         setLoadState('ready');
       })
       .catch(() => setLoadState('error'));
@@ -85,7 +87,7 @@ export default function App() {
 
   const weekLogs = useMemo(() => getWeekLogs(logs), [logs]);
   const weeklySummary = useMemo(() => summarise(weekLogs), [weekLogs]);
-  const needsWorkItems = useMemo(() => nextWork(logs, completions), [logs, completions]);
+  const needsWorkItems = useMemo(() => nextWork(logs, completions, paused), [logs, completions, paused]);
 
   const playtime = useMemo(() => filtered.reduce((s, l) => s + l.minutes, 0), [filtered]);
   const gamesCount = useMemo(() => new Set(filtered.map(l => l.game)).size, [filtered]);
@@ -200,6 +202,15 @@ export default function App() {
     });
   }, []);
 
+  const handleTogglePaused = useCallback(async (game: string) => {
+    const nowPaused = await togglePaused(game);
+    setPaused(prev => {
+      const next = new Set(prev);
+      if (nowPaused) next.add(game); else next.delete(game);
+      return next;
+    });
+  }, []);
+
   const handleSaveEdit = useCallback(async (id: string, patch: Parameters<typeof updateLog>[1]) => {
     const updated = await updateLog(id, patch);
     setLogs(prev => prev.map(l => l.id === id ? updated : l));
@@ -218,10 +229,10 @@ export default function App() {
     try {
       const start = monStart(new Date()), end = sunEnd(new Date());
       const wl = getWeekLogs(logs);
-      const focusItems = nextWeekFocus(wl, completions);
+      const focusItems = nextWeekFocus(wl, completions, paused);
       const rawInsights = await fetchFocusInsights(focusItems);
       const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
-      const html = buildPdfReport(start, end, wl, 'This Week', aiInsights, completions);
+      const html = buildPdfReport(start, end, wl, 'This Week', aiInsights, completions, paused);
       printReport(html);
     } finally {
       setPdfGenerating(false);
@@ -235,10 +246,10 @@ export default function App() {
       const from = new Date(fromStr + 'T00:00:00');
       const to = new Date(toStr + 'T23:59:59');
       const periodLogs = getLogsForPeriod(logs, from, to);
-      const focusItems = nextWeekFocus(periodLogs, completions);
+      const focusItems = nextWeekFocus(periodLogs, completions, paused);
       const rawInsights = await fetchFocusInsights(focusItems);
       const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
-      const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights, completions);
+      const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights, completions, paused);
       printReport(html);
     } finally {
       setPdfGenerating(false);
@@ -338,7 +349,9 @@ export default function App() {
               onClose={() => setLibraryOpen(false)}
               logs={logs}
               manualCompletions={completions}
+              paused={paused}
               onToggleCompletion={handleToggleCompletion}
+              onTogglePaused={handleTogglePaused}
             />
             <EditLogModal
               entry={editingEntry}
@@ -372,7 +385,9 @@ export default function App() {
                 <NeedsWork
                   items={needsWorkItems}
                   manualCompletions={completions}
+                  paused={paused}
                   onToggleCompletion={handleToggleCompletion}
+                  onTogglePaused={handleTogglePaused}
                   onOpenLibrary={() => setLibraryOpen(true)}
                 />
               </>

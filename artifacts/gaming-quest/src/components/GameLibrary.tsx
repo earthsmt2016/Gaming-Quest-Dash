@@ -15,7 +15,9 @@ interface GameLibraryProps {
   onClose: () => void;
   logs: LogEntry[];
   manualCompletions: Set<string>;
+  paused: Set<string>;
   onToggleCompletion: (game: string) => void;
+  onTogglePaused: (game: string) => void;
 }
 
 function fmtMin(m: number) {
@@ -30,7 +32,7 @@ function fmtDate(d: Date) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function GameLibrary({ open, onClose, logs, manualCompletions, onToggleCompletion }: GameLibraryProps) {
+export default function GameLibrary({ open, onClose, logs, manualCompletions, paused, onToggleCompletion, onTogglePaused }: GameLibraryProps) {
   const rows = useMemo<GameRow[]>(() => {
     const map = new Map<string, { min: number; last: Date; actions: string[] }>();
     for (const l of logs) {
@@ -54,7 +56,8 @@ export default function GameLibrary({ open, onClose, logs, manualCompletions, on
   }, [logs]);
 
   const completed = rows.filter(r => r.autoCompleted || manualCompletions.has(r.game));
-  const active = rows.filter(r => !r.autoCompleted && !manualCompletions.has(r.game));
+  const onHold    = rows.filter(r => !r.autoCompleted && !manualCompletions.has(r.game) && paused.has(r.game));
+  const active    = rows.filter(r => !r.autoCompleted && !manualCompletions.has(r.game) && !paused.has(r.game));
 
   if (!open) return null;
 
@@ -71,8 +74,8 @@ export default function GameLibrary({ open, onClose, logs, manualCompletions, on
           background: var(--paper);
           border-radius: var(--radius);
           box-shadow: 0 8px 40px rgba(0,0,0,0.18);
-          width: 100%; max-width: 540px;
-          max-height: 85vh;
+          width: 100%; max-width: 560px;
+          max-height: 88vh;
           display: flex; flex-direction: column;
           overflow: hidden;
         }
@@ -100,6 +103,7 @@ export default function GameLibrary({ open, onClose, logs, manualCompletions, on
           background: #fffdfa;
           margin-bottom: 6px;
         }
+        .gl-row-hold { background: #faf8ff; }
         .gl-row:last-child { margin-bottom: 0; }
         .gl-info { flex: 1; min-width: 0; }
         .gl-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -108,8 +112,10 @@ export default function GameLibrary({ open, onClose, logs, manualCompletions, on
           font-size: 11px; font-weight: 600; padding: 2px 8px;
           border-radius: 99px; flex-shrink: 0; white-space: nowrap;
         }
-        .gl-tag-auto { background: #d1fae5; color: #065f46; }
+        .gl-tag-auto   { background: #d1fae5; color: #065f46; }
         .gl-tag-manual { background: #ede9fe; color: #4c1d95; }
+        .gl-tag-hold   { background: #fef3c7; color: #92400e; }
+        .gl-btns { display: flex; gap: 6px; flex-shrink: 0; }
         .gl-close-btn {
           background: none; border: none; cursor: pointer;
           color: var(--muted); padding: 4px; line-height: 0;
@@ -126,7 +132,7 @@ export default function GameLibrary({ open, onClose, logs, manualCompletions, on
             <div>
               <div style={{ fontSize: '16px', fontWeight: 700 }}>Game Library</div>
               <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-                {rows.length} title{rows.length !== 1 ? 's' : ''} — toggle completion status
+                {rows.length} title{rows.length !== 1 ? 's' : ''} — manage status
               </div>
             </div>
             <button className="gl-close-btn" onClick={onClose} aria-label="Close">
@@ -138,6 +144,7 @@ export default function GameLibrary({ open, onClose, logs, manualCompletions, on
 
           <div className="gl-body">
 
+            {/* Active */}
             <div>
               <div className="gl-section-label">Active ({active.length})</div>
               {active.length === 0 ? (
@@ -148,18 +155,63 @@ export default function GameLibrary({ open, onClose, logs, manualCompletions, on
                     <div className="gl-name" title={r.game}>{r.game}</div>
                     <div className="gl-meta">{fmtMin(r.totalMin)} total · last played {fmtDate(r.lastPlayed)}</div>
                   </div>
-                  <button
-                    className="btn soft"
-                    onClick={() => onToggleCompletion(r.game)}
-                    style={{ fontSize: '12px', padding: '4px 11px', flexShrink: 0 }}
-                    title="Mark this game as completed"
-                  >
-                    Mark done ✓
-                  </button>
+                  <div className="gl-btns">
+                    <button
+                      className="btn soft"
+                      onClick={() => onTogglePaused(r.game)}
+                      style={{ fontSize: '12px', padding: '4px 10px', color: 'var(--muted)' }}
+                      title="Put this game on hold"
+                    >
+                      Put down
+                    </button>
+                    <button
+                      className="btn soft"
+                      onClick={() => onToggleCompletion(r.game)}
+                      style={{ fontSize: '12px', padding: '4px 10px' }}
+                      title="Mark as completed"
+                    >
+                      Mark done ✓
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
 
+            {/* On Hold */}
+            <div>
+              <div className="gl-section-label">On Hold ({onHold.length})</div>
+              {onHold.length === 0 ? (
+                <div className="gl-empty">No games on hold.</div>
+              ) : onHold.map(r => (
+                <div className="gl-row gl-row-hold" key={r.game}>
+                  <div className="gl-info">
+                    <div className="gl-name" title={r.game}>{r.game}</div>
+                    <div className="gl-meta">{fmtMin(r.totalMin)} total · last played {fmtDate(r.lastPlayed)}</div>
+                  </div>
+                  <span className="gl-tag gl-tag-hold">On hold</span>
+                  <div className="gl-btns">
+                    <button
+                      className="btn soft"
+                      onClick={() => onTogglePaused(r.game)}
+                      style={{ fontSize: '12px', padding: '4px 10px' }}
+                      title="Resume this game"
+                    >
+                      Resume ▶
+                    </button>
+                    <button
+                      className="btn soft"
+                      onClick={() => onToggleCompletion(r.game)}
+                      style={{ fontSize: '12px', padding: '4px 10px' }}
+                      title="Mark as completed instead"
+                    >
+                      Mark done ✓
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Completed */}
             <div>
               <div className="gl-section-label">Completed ({completed.length})</div>
               {completed.length === 0 ? (
@@ -179,7 +231,7 @@ export default function GameLibrary({ open, onClose, logs, manualCompletions, on
                       <button
                         className="btn soft"
                         onClick={() => onToggleCompletion(r.game)}
-                        style={{ fontSize: '12px', padding: '4px 11px', flexShrink: 0, color: 'var(--muted)' }}
+                        style={{ fontSize: '12px', padding: '4px 10px', color: 'var(--muted)' }}
                         title="Remove manual completion"
                       >
                         Unmark
