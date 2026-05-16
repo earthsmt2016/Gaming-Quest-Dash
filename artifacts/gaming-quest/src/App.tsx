@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import TopBar from './components/TopBar';
-import Sidebar from './components/Sidebar';
 import Hero from './components/Hero';
 import StatsStrip from './components/StatsStrip';
 import QuestTable from './components/QuestTable';
@@ -19,6 +18,7 @@ import {
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport } from './lib/reportBuilder';
+import { fetchLogs, saveLogs, clearLogs } from './lib/api';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -29,8 +29,12 @@ function getLogsForPeriod(logs: LogEntry[], from: Date, to: Date): LogEntry[] {
   return logs.filter(l => l.date >= from && l.date <= to).sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
+type LoadState = 'loading' | 'ready' | 'error';
+
 export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [saving, setSaving] = useState(false);
   const [rawLogs, setRawLogs] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState('all');
@@ -39,6 +43,16 @@ export default function App() {
   const [toDate, setToDate] = useState('');
 
   const weeklyRef = useRef<HTMLElement>(null);
+
+  // Load logs from API on mount
+  useEffect(() => {
+    fetchLogs()
+      .then(entries => {
+        setLogs(entries);
+        setLoadState('ready');
+      })
+      .catch(() => setLoadState('error'));
+  }, []);
 
   // Filtered logs
   const filtered = useMemo(() => {
@@ -74,41 +88,87 @@ export default function App() {
     [needsWorkItems]);
 
   const rangeLabel = useMemo(() => {
+    if (loadState === 'loading') return 'Loading saved logs…';
+    if (loadState === 'error') return 'Could not connect to server.';
     if (!filtered.length) return 'No logs loaded yet.';
     const sorted = [...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
     return `Coverage: ${formatDate(sorted[0].date)} – ${formatDate(sorted[sorted.length - 1].date)}`;
-  }, [filtered]);
+  }, [filtered, loadState]);
 
-  const importLogs = useCallback((raw: string) => {
+  const importLogs = useCallback(async (raw: string) => {
     const parsed = parseRaw(raw);
     if (!parsed.length) {
       alert('No valid rows found. Format: timestamp | game | action | minutes | type');
       return false;
     }
-    setLogs(prev => dedupe([...prev, ...parsed]).sort((a, b) => b.date.getTime() - a.date.getTime()));
+    // Only send new entries (not already in DB — deduped by key)
+    const existing = new Set(logs.map(l => `${l.timestamp}|${l.game}|${l.action}|${l.minutes}|${l.type}`));
+    const newEntries = parsed.filter(e => {
+      const k = `${e.timestamp}|${e.game}|${e.action}|${e.minutes}|${e.type}`;
+      return !existing.has(k);
+    });
+    if (!newEntries.length) {
+      alert('All entries already saved — no new rows to import.');
+      return false;
+    }
+    setSaving(true);
+    try {
+      const saved = await saveLogs(newEntries);
+      setLogs(prev => dedupe([...prev, ...saved]).sort((a, b) => b.date.getTime() - a.date.getTime()));
+    } catch {
+      alert('Failed to save logs to the server. Please try again.');
+      return false;
+    } finally {
+      setSaving(false);
+    }
     return true;
-  }, []);
+  }, [logs]);
 
-  const handleImport = useCallback(() => {
-    const ok = importLogs(rawLogs);
+  const handleImport = useCallback(async () => {
+    const ok = await importLogs(rawLogs);
     if (ok) setSidebarOpen(false);
   }, [rawLogs, importLogs]);
 
-  const handleSample = useCallback(() => {
+  const handleSample = useCallback(async () => {
     setRawLogs(SAMPLE_LOGS);
-    setLogs([]);
     const parsed = parseRaw(SAMPLE_LOGS);
-    setLogs(dedupe(parsed).sort((a, b) => b.date.getTime() - a.date.getTime()));
+    const existing = new Set(logs.map(l => `${l.timestamp}|${l.game}|${l.action}|${l.minutes}|${l.type}`));
+    const newEntries = parsed.filter(e => {
+      const k = `${e.timestamp}|${e.game}|${e.action}|${e.minutes}|${e.type}`;
+      return !existing.has(k);
+    });
+    if (!newEntries.length) {
+      setSidebarOpen(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await saveLogs(newEntries);
+      setLogs(prev => dedupe([...prev, ...saved]).sort((a, b) => b.date.getTime() - a.date.getTime()));
+    } catch {
+      alert('Failed to save sample data.');
+    } finally {
+      setSaving(false);
+    }
     setSidebarOpen(false);
-  }, []);
+  }, [logs]);
 
-  const handleClear = useCallback(() => {
-    setLogs([]);
-    setRawLogs('');
-    setGameFilter('all');
-    setTypeFilter('all');
-    setFromDate('');
-    setToDate('');
+  const handleClear = useCallback(async () => {
+    if (!confirm('Delete all saved logs? This cannot be undone.')) return;
+    setSaving(true);
+    try {
+      await clearLogs();
+      setLogs([]);
+      setRawLogs('');
+      setGameFilter('all');
+      setTypeFilter('all');
+      setFromDate('');
+      setToDate('');
+    } catch {
+      alert('Failed to clear logs.');
+    } finally {
+      setSaving(false);
+    }
   }, []);
 
   const handleThisWeek = useCallback(() => {
@@ -146,11 +206,7 @@ export default function App() {
 
   // Lock body scroll when sidebar is open on mobile
   useEffect(() => {
-    if (sidebarOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    document.body.style.overflow = sidebarOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [sidebarOpen]);
 
@@ -203,6 +259,7 @@ export default function App() {
             onToDate={setToDate}
             onThisWeek={handleThisWeek}
             onReset={handleReset}
+            saving={saving}
           />
 
           <main style={{
@@ -213,26 +270,47 @@ export default function App() {
             flexDirection: 'column',
             gap: '16px',
           }}>
-            <Hero
-              rangeLabel={rangeLabel}
-              onScrollToReport={scrollToReport}
-              onDownloadWeek={handleDownloadWeek}
-            />
-            <StatsStrip
-              entries={filtered.length}
-              playtime={playtime}
-              games={gamesCount}
-              needsWork={focusCount}
-            />
-            <QuestTable entries={filtered} />
-            <PeriodDownload onDownload={handleDownloadCustom} />
-            <WeeklyReport
-              ref={weeklyRef}
-              weekLogs={weekLogs}
-              summary={weeklySummary}
-              onDownload={handleDownloadWeek}
-            />
-            <NeedsWork items={needsWorkItems} />
+            {loadState === 'loading' && (
+              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--muted)', fontSize: '14px' }}>
+                Loading saved logs…
+              </div>
+            )}
+            {loadState === 'error' && (
+              <div style={{
+                padding: '14px 16px',
+                background: '#fff0f0',
+                border: '1px solid #f5c6cb',
+                borderRadius: 'var(--radius)',
+                fontSize: '14px',
+                color: '#842029',
+              }}>
+                Could not reach the server. Check your connection and reload.
+              </div>
+            )}
+            {loadState === 'ready' && (
+              <>
+                <Hero
+                  rangeLabel={rangeLabel}
+                  onScrollToReport={scrollToReport}
+                  onDownloadWeek={handleDownloadWeek}
+                />
+                <StatsStrip
+                  entries={filtered.length}
+                  playtime={playtime}
+                  games={gamesCount}
+                  needsWork={focusCount}
+                />
+                <QuestTable entries={filtered} />
+                <PeriodDownload onDownload={handleDownloadCustom} />
+                <WeeklyReport
+                  ref={weeklyRef}
+                  weekLogs={weekLogs}
+                  summary={weeklySummary}
+                  onDownload={handleDownloadWeek}
+                />
+                <NeedsWork items={needsWorkItems} />
+              </>
+            )}
           </main>
         </div>
       </div>
@@ -240,8 +318,30 @@ export default function App() {
   );
 }
 
-// Separate sidebar that handles both mobile overlay and desktop static positioning
-function DesktopSidebar(props: React.ComponentProps<typeof Sidebar>) {
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+  rawLogs: string;
+  onRawLogsChange: (v: string) => void;
+  onImport: () => void;
+  onSample: () => void;
+  onClear: () => void;
+  games: string[];
+  types: string[];
+  gameFilter: string;
+  typeFilter: string;
+  fromDate: string;
+  toDate: string;
+  onGameFilter: (v: string) => void;
+  onTypeFilter: (v: string) => void;
+  onFromDate: (v: string) => void;
+  onToDate: (v: string) => void;
+  onThisWeek: () => void;
+  onReset: () => void;
+  saving: boolean;
+}
+
+function DesktopSidebar(props: SidebarProps) {
   const inputStyle: React.CSSProperties = {
     width: '100%',
     minHeight: '44px',
@@ -265,21 +365,14 @@ function DesktopSidebar(props: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <>
-      {/* Mobile overlay */}
       {props.open && (
         <div
           onClick={props.onClose}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(28,24,20,.38)',
-            zIndex: 9,
-          }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(28,24,20,.38)', zIndex: 9 }}
           className="mobile-overlay"
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className="desktop-sidebar"
         style={{
@@ -327,9 +420,11 @@ function DesktopSidebar(props: React.ComponentProps<typeof Sidebar>) {
               />
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <button className="btn primary" onClick={props.onImport}>Import</button>
-              <button className="btn" onClick={props.onSample}>Sample data</button>
-              <button className="btn" onClick={props.onClear}>Clear all</button>
+              <button className="btn primary" onClick={props.onImport} disabled={props.saving}>
+                {props.saving ? 'Saving…' : 'Import'}
+              </button>
+              <button className="btn" onClick={props.onSample} disabled={props.saving}>Sample data</button>
+              <button className="btn" onClick={props.onClear} disabled={props.saving}>Clear all</button>
             </div>
           </div>
         </section>
@@ -372,7 +467,6 @@ function DesktopSidebar(props: React.ComponentProps<typeof Sidebar>) {
         </section>
       </aside>
 
-      {/* Desktop static placeholder to push content right */}
       <style>{`
         @media (min-width: 1100px) {
           .desktop-sidebar {
