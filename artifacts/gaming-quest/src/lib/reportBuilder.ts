@@ -1,4 +1,4 @@
-import { LogEntry, formatDate, formatDateTime, monStart, sunEnd } from './logParser';
+import { LogEntry, formatDate, monStart, sunEnd } from './logParser';
 
 function esc(s: string | number): string {
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m] ?? m));
@@ -9,12 +9,10 @@ function fmtMinutes(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   if (m === 0) return `${mins} minutes (${h} ${h === 1 ? 'hour' : 'hours'})`;
-  const hFrac = +(mins / 60).toFixed(2);
-  // Use fractional form for simple halves/quarters, otherwise H hr M min
   const frac = mins / 60;
-  const simple = frac === Math.floor(frac) || (frac * 4) === Math.floor(frac * 4);
-  if (simple) return `${mins} minutes (${frac % 1 === 0 ? frac : hFrac} hours)`;
-  return `${mins} minutes (${h} hour${h !== 1 ? 's' : ''} ${m} minutes)`;
+  const simple = (frac * 4) === Math.floor(frac * 4);
+  if (simple) return `${mins} minutes (${+frac.toFixed(2)} hours)`;
+  return `${mins} minutes (${h} hour${h !== 1 ? 's' : ''} ${m} min)`;
 }
 
 export interface WeekSection {
@@ -22,204 +20,267 @@ export interface WeekSection {
   start: Date;
   end: Date;
   logs: LogEntry[];
-  label: string; // e.g. "Week 1"
+  label: string;
   isCurrentWeek: boolean;
 }
 
-/** Split a set of logs into Mon–Sun calendar weeks within a date range */
 export function splitIntoWeeks(logs: LogEntry[], from: Date, to: Date): WeekSection[] {
   if (!logs.length) return [];
-
-  // Walk from the Monday of the earliest log to the Sunday of the latest
   const earliest = new Date(Math.max(from.getTime(), Math.min(...logs.map(l => l.date.getTime()))));
   const latest   = new Date(Math.min(to.getTime(),   Math.max(...logs.map(l => l.date.getTime()))));
-
   const weeks: WeekSection[] = [];
   let cursor = monStart(earliest);
   let weekNum = 1;
   const today = new Date();
-
   while (cursor <= latest) {
     const wEnd = sunEnd(cursor);
     const cappedEnd = wEnd > to ? to : wEnd;
-    const wLogs = logs
-      .filter(l => l.date >= cursor && l.date <= cappedEnd)
-      .sort((a, b) => a.date.getTime() - b.date.getTime());
-
+    const wLogs = logs.filter(l => l.date >= cursor && l.date <= cappedEnd).sort((a, b) => a.date.getTime() - b.date.getTime());
     if (wLogs.length > 0) {
-      weeks.push({
-        weekNum,
-        start: new Date(cursor),
-        end: new Date(cappedEnd),
-        logs: wLogs,
-        label: `Week ${weekNum}`,
-        isCurrentWeek: today >= cursor && today <= wEnd,
-      });
+      weeks.push({ weekNum, start: new Date(cursor), end: new Date(cappedEnd), logs: wLogs, label: `Week ${weekNum}`, isCurrentWeek: today >= cursor && today <= wEnd });
       weekNum++;
     }
-
     cursor = new Date(wEnd.getTime() + 1);
   }
-
   return weeks;
 }
 
-/** Generate a short narrative sentence for a week */
+function byGameStats(logs: LogEntry[]): Record<string, { min: number; types: Set<string>; actions: string[]; entries: LogEntry[] }> {
+  const map: Record<string, { min: number; types: Set<string>; actions: string[]; entries: LogEntry[] }> = {};
+  for (const l of logs) {
+    if (!map[l.game]) map[l.game] = { min: 0, types: new Set(), actions: [], entries: [] };
+    map[l.game].min += l.minutes;
+    map[l.game].types.add(l.type);
+    map[l.game].actions.push(l.action);
+    map[l.game].entries.push(l);
+  }
+  return map;
+}
+
+function typeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    progress: 'Progress', complete: 'Complete', boss: 'Boss', 'rank-up': 'Rank Up', purchase: 'New Game',
+  };
+  return labels[type] ?? type;
+}
+
 function weekNarrative(section: WeekSection): string {
   const logs = section.logs;
-  const byGame: Record<string, { min: number; cnt: number }> = {};
-  logs.forEach(l => {
-    if (!byGame[l.game]) byGame[l.game] = { min: 0, cnt: 0 };
-    byGame[l.game].min += l.minutes;
-    byGame[l.game].cnt++;
-  });
-  const ranked = Object.entries(byGame).sort((a, b) => b[1].min - a[1].min);
+  const stats = byGameStats(logs);
+  const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
   const gameNames = ranked.map(([g]) => g);
-  const completes = logs.filter(l => ['complete', 'boss'].includes(l.type));
-  const rankUps = logs.filter(l => l.type === 'rank-up');
-  const purchases = logs.filter(l => l.type === 'purchase');
+  const totalMins = logs.reduce((s, l) => s + l.minutes, 0);
+  const sessions = logs.length;
+  const prefix = section.isCurrentWeek ? 'This current week' : 'This week';
 
   const parts: string[] = [];
 
+  if (ranked.length === 0) return '';
+
   if (ranked.length === 1) {
-    const [top] = ranked;
-    parts.push(`This week was entirely dedicated to ${top[0]}.`);
+    const [g, d] = ranked[0];
+    parts.push(`${prefix} was fully dedicated to ${g} — ${sessions} session${sessions !== 1 ? 's' : ''} totalling ${fmtMinutes(d.min)}.`);
   } else if (ranked.length === 2) {
-    parts.push(`This week featured ${gameNames[0]} and ${gameNames[1]}.`);
+    parts.push(`${prefix} split time between ${gameNames[0]} (${fmtMinutes(ranked[0][1].min)}) and ${gameNames[1]} (${fmtMinutes(ranked[1][1].min)}), covering ${sessions} sessions and ${fmtMinutes(totalMins)} total.`);
   } else {
-    const top = gameNames[0];
-    const others = gameNames.slice(1).join(', ');
-    const dominated = ranked[0][1].min > ranked[1][1].min * 1.5;
+    const top = ranked[0];
+    const dominated = top[1].min > ranked[1][1].min * 1.5;
     if (dominated) {
-      parts.push(`This week was ${top}-heavy, with additional progress in ${others}.`);
+      parts.push(`${prefix} was ${top[0]}-heavy (${fmtMinutes(top[1].min)}) with lighter sessions in ${gameNames.slice(1).join(', ')}. Total: ${sessions} sessions, ${fmtMinutes(totalMins)}.`);
     } else {
-      parts.push(`This week saw varied activity across ${gameNames.length} titles: ${gameNames.join(', ')}.`);
+      parts.push(`${prefix} was well-spread across ${gameNames.length} titles — ${gameNames.join(', ')}. Total: ${sessions} sessions, ${fmtMinutes(totalMins)}.`);
     }
   }
 
-  const milestones: string[] = [];
-  if (completes.length) {
-    const games = [...new Set(completes.map(l => l.game))];
-    milestones.push(`completion milestones in ${games.join(' and ')}`);
-  }
-  if (rankUps.length) {
-    const games = [...new Set(rankUps.map(l => l.game))];
-    milestones.push(`competitive progress in ${games.join(' and ')}`);
-  }
-  if (purchases.length) {
-    const games = [...new Set(purchases.map(l => l.game))];
-    milestones.push(`new purchase${purchases.length > 1 ? 's' : ''} (${games.join(', ')})`);
+  const gameBreakdowns: string[] = [];
+  for (const [game, d] of ranked) {
+    const highlights: string[] = [];
+    if (d.types.has('complete')) {
+      const creditAction = d.actions.find(a => /credits|final boss|completed the main|saw the credits/i.test(a));
+      highlights.push(creditAction ? `reached the credits` : `logged a major completion`);
+    }
+    if (d.types.has('boss')) highlights.push(`defeated a boss`);
+    if (d.types.has('rank-up')) {
+      const lastRank = d.entries.filter(e => e.type === 'rank-up').pop();
+      highlights.push(lastRank ? `ranked up (${lastRank.action.substring(0, 60)}${lastRank.action.length > 60 ? '…' : ''})` : `ranked up`);
+    }
+    if (d.types.has('purchase')) highlights.push(`purchased and started`);
+    const note = highlights.length ? ` — ${highlights.join(', ')}` : '';
+    gameBreakdowns.push(`${game}: ${fmtMinutes(d.min)}${note}.`);
   }
 
-  if (section.isCurrentWeek) {
-    parts[0] = parts[0].replace('This week', 'This current week');
-    if (ranked.length > 2) {
-      parts[0] = `This current week shifted to a more varied portfolio, with activity spread across ${gameNames.join(', ')}.`;
-    }
+  if (gameBreakdowns.length) {
+    parts.push('<br><strong>Session breakdown:</strong><br>' + gameBreakdowns.map(b => `&nbsp;&nbsp;• ${esc(b)}`).join('<br>'));
   }
 
   return parts.join(' ');
 }
 
-/** Generate the executive summary for the whole period */
 function executiveSummary(logs: LogEntry[], weeks: WeekSection[]): string {
-  const byGame: Record<string, { min: number; types: Set<string> }> = {};
-  logs.forEach(l => {
-    if (!byGame[l.game]) byGame[l.game] = { min: 0, types: new Set() };
-    byGame[l.game].min += l.minutes;
-    byGame[l.game].types.add(l.type);
-  });
-  const gameList = Object.keys(byGame);
-  const completeGames = gameList.filter(g => byGame[g].types.has('complete'));
-  const progressGames = gameList.filter(g => !byGame[g].types.has('complete') && byGame[g].types.has('progress'));
-  const rankUpGames = gameList.filter(g => byGame[g].types.has('rank-up'));
-  const ranked = Object.entries(byGame).sort((a, b) => b[1].min - a[1].min);
+  const stats = byGameStats(logs);
+  const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
+  const total = logs.reduce((s, l) => s + l.minutes, 0);
+  const sessions = logs.length;
+  const completeGames = ranked.filter(([, d]) => d.types.has('complete')).map(([g]) => g);
+  const bossGames = ranked.filter(([, d]) => d.types.has('boss') && !d.types.has('complete')).map(([g]) => g);
+  const rankUpGames = ranked.filter(([, d]) => d.types.has('rank-up')).map(([g]) => g);
+  const purchasedGames = ranked.filter(([, d]) => d.types.has('purchase')).map(([g]) => g);
+  const progressOnly = ranked.filter(([, d]) => !d.types.has('complete') && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')).map(([g]) => g);
+  const topGame = ranked[0]?.[0];
 
   const parts: string[] = [];
 
   parts.push(
-    `This report consolidates all gaming activity logged${weeks.length > 1 ? ` so far across ${weeks.length} reporting window${weeks.length > 1 ? 's' : ''}` : ''}.`
+    `This report covers ${weeks.length} week${weeks.length !== 1 ? 's' : ''} of gaming activity: ` +
+    `${sessions} total sessions, ${fmtMinutes(total)} logged across ${ranked.length} title${ranked.length !== 1 ? 's' : ''}.`
   );
 
-  const descriptions: string[] = [];
-  if (completeGames.length) descriptions.push(`major ${completeGames.join(' and ')} completion milestones`);
-  if (rankUpGames.length) descriptions.push(`competitive ${rankUpGames.join(' and ')} gains`);
-  if (progressGames.length) descriptions.push(`steady advancement in ${progressGames.join(', ')}`);
-
-  if (descriptions.length) {
-    const tracked = ranked.map(([g]) => g);
+  if (topGame) {
+    const topPct = Math.round((stats[topGame].min / total) * 100);
     parts.push(
-      `The tracked play shows a mix of focused completion runs and broader variety weeks, ranging from ${descriptions.join(', and ')}.`
+      `The most-played title was ${topGame} at ${fmtMinutes(stats[topGame].min)} (${topPct}% of total playtime).`
     );
+  }
+
+  if (completeGames.length) {
+    parts.push(`Major completions this period: ${completeGames.join(', ')}.`);
+  }
+  if (bossGames.length) {
+    parts.push(`Boss encounters logged (no full completion yet): ${bossGames.join(', ')}.`);
+  }
+  if (rankUpGames.length) {
+    parts.push(`Competitive rank progress recorded in: ${rankUpGames.join(', ')}.`);
+  }
+  if (purchasedGames.length) {
+    parts.push(`New acquisitions this period: ${purchasedGames.join(', ')}.`);
+  }
+  if (progressOnly.length) {
+    parts.push(`Ongoing progress (not yet completed): ${progressOnly.join(', ')}.`);
   }
 
   return parts.join(' ');
 }
 
-/** Generate overall breakdown bullets */
-function overallBullets(logs: LogEntry[], weeks: WeekSection[]): string[] {
-  const byGame: Record<string, { min: number; types: Set<string>; actions: string[] }> = {};
-  logs.forEach(l => {
-    if (!byGame[l.game]) byGame[l.game] = { min: 0, types: new Set(), actions: [] };
-    byGame[l.game].min += l.minutes;
-    byGame[l.game].types.add(l.type);
-    byGame[l.game].actions.push(l.action);
-  });
-  const ranked = Object.entries(byGame).sort((a, b) => b[1].min - a[1].min);
-
+function overallBullets(logs: LogEntry[]): string[] {
+  const stats = byGameStats(logs);
+  const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
   const bullets: string[] = [];
 
-  // Completions / major milestones
-  for (const [game, data] of ranked) {
-    if (data.types.has('complete') || data.types.has('boss')) {
-      const creditAction = data.actions.find(a => /credits|final boss|completed the main/i.test(a));
+  for (const [game, d] of ranked) {
+    if (d.types.has('complete') || d.types.has('boss')) {
+      const creditAction = d.actions.find(a => /credits|final boss|completed the main|saw the credits/i.test(a));
       if (creditAction) {
-        bullets.push(`Focused Completion: ${game} reached the credits / main-run end.`);
+        bullets.push(`Completion — ${game}: Reached the credits / main-run end (${fmtMinutes(d.min)} total).`);
+      } else if (d.types.has('boss')) {
+        const cnt = d.entries.filter(e => e.type === 'boss').length;
+        bullets.push(`Boss Progress — ${game}: ${cnt} boss encounter${cnt > 1 ? 's' : ''} logged (${fmtMinutes(d.min)} total). Full completion not yet reached.`);
       } else {
-        const bossCount = logs.filter(l => l.game === game && l.type === 'boss').length;
-        if (bossCount) {
-          bullets.push(`Boss Progress: ${game} had ${bossCount} boss encounter${bossCount > 1 ? 's' : ''} logged.`);
-        } else {
-          bullets.push(`Completion Milestone: ${game} logged major completion entries.`);
-        }
+        bullets.push(`Completion Milestone — ${game}: Major area completions logged (${fmtMinutes(d.min)} total).`);
       }
     }
   }
 
-  // New momentum / games that started this period
-  for (const [game, data] of ranked) {
-    if (data.types.has('purchase')) {
-      bullets.push(`New Purchase: ${game} was acquired and play began this period.`);
+  for (const [game, d] of ranked) {
+    if (d.types.has('purchase')) {
+      const firstAction = d.entries.find(e => e.type === 'purchase');
+      bullets.push(`New Game — ${game}: Acquired and play began${firstAction ? ` (first session: ${firstAction.action.substring(0, 70)}${firstAction.action.length > 70 ? '…' : ''})` : ''}. ${fmtMinutes(d.min)} logged so far.`);
     }
   }
 
-  // Rank-up / competitive
-  const rankUpGames = ranked.filter(([, d]) => d.types.has('rank-up')).map(([g]) => g);
-  if (rankUpGames.length) {
-    const details: string[] = [];
-    for (const game of rankUpGames) {
-      const rl = logs.filter(l => l.game === game && l.type === 'rank-up');
-      details.push(`${game} (${rl.length} rank-up entr${rl.length > 1 ? 'ies' : 'y'})`);
+  const rankUpEntries = ranked.filter(([, d]) => d.types.has('rank-up'));
+  if (rankUpEntries.length) {
+    for (const [game, d] of rankUpEntries) {
+      const rl = d.entries.filter(e => e.type === 'rank-up');
+      const lastRank = rl[rl.length - 1];
+      const detail = lastRank ? `Last recorded: ${lastRank.action.substring(0, 80)}${lastRank.action.length > 80 ? '…' : ''}` : '';
+      bullets.push(`Competitive — ${game}: ${rl.length} rank-up event${rl.length > 1 ? 's' : ''} over the period. ${detail}.`);
     }
-    bullets.push(`Competitive Progress: ${details.join(', ')}.`);
   }
 
-  // Variety / portfolio
-  const allGames = Object.keys(byGame);
-  if (allGames.length > 3) {
-    bullets.push(`Total Portfolio: Logged titles now include ${allGames.join(', ')}.`);
-  }
-
-  // Progress-only games
-  const progressOnly = ranked
-    .filter(([, d]) => !d.types.has('complete') && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase'))
-    .map(([g]) => g);
-  if (progressOnly.length) {
-    bullets.push(`Steady Advancement: ${progressOnly.join(', ')} ${progressOnly.length > 1 ? 'are' : 'is'} ongoing with regular progress entries.`);
+  const progressOnly = ranked.filter(([, d]) =>
+    !d.types.has('complete') && !d.types.has('boss') && !d.types.has('rank-up') && !d.types.has('purchase')
+  );
+  for (const [game, d] of progressOnly) {
+    bullets.push(`Ongoing — ${game}: ${d.entries.length} session${d.entries.length !== 1 ? 's' : ''}, ${fmtMinutes(d.min)} total. No completion milestone yet.`);
   }
 
   return bullets;
 }
+
+function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; priority: 'high' | 'medium' | 'low' }[] {
+  if (!logs.length) return [];
+  const stats = byGameStats(logs);
+  const ranked = Object.entries(stats).sort((a, b) => b[1].min - a[1].min);
+
+  const recentCutoff = new Date(Math.max(...logs.map(l => l.date.getTime())) - 14 * 24 * 60 * 60 * 1000);
+  const recentGames = new Set(logs.filter(l => l.date >= recentCutoff).map(l => l.game));
+
+  const items: { title: string; reason: string; priority: 'high' | 'medium' | 'low' }[] = [];
+
+  for (const [game, d] of ranked) {
+    if (d.types.has('complete')) continue;
+
+    if (d.types.has('boss') && recentGames.has(game)) {
+      const lastBoss = [...d.entries].reverse().find(e => e.type === 'boss');
+      items.push({
+        title: game,
+        reason: `Boss encountered but game not finished — ${lastBoss ? `last noted: "${lastBoss.action.substring(0, 70)}${lastBoss.action.length > 70 ? '…' : ''}"` : 'push towards the final encounter'}.`,
+        priority: 'high',
+      });
+      continue;
+    }
+
+    if (d.types.has('rank-up')) {
+      const lastRank = [...d.entries].reverse().find(e => e.type === 'rank-up');
+      items.push({
+        title: game,
+        reason: `Active competitive run — keep the ranking momentum going${lastRank ? ` (current progress: "${lastRank.action.substring(0, 70)}${lastRank.action.length > 70 ? '…' : ''}")` : ''}.`,
+        priority: 'high',
+      });
+      continue;
+    }
+
+    if (d.types.has('purchase') && recentGames.has(game)) {
+      items.push({
+        title: game,
+        reason: `Recently started — early investment, good time to push further in before other titles take over.`,
+        priority: 'medium',
+      });
+      continue;
+    }
+
+    if (d.types.has('progress') && recentGames.has(game)) {
+      const lastEntry = [...d.entries].reverse().find(e => e.type === 'progress');
+      items.push({
+        title: game,
+        reason: `Active progress run — ${lastEntry ? `currently at: "${lastEntry.action.substring(0, 70)}${lastEntry.action.length > 70 ? '…' : ''}"` : 'keep the run going to maintain momentum'}.`,
+        priority: 'medium',
+      });
+      continue;
+    }
+
+    if (!recentGames.has(game) && d.min > 30) {
+      items.push({
+        title: game,
+        reason: `No recent sessions logged — ${fmtMinutes(d.min)} invested with no completion. Worth returning to before losing progress context.`,
+        priority: 'low',
+      });
+    }
+  }
+
+  return items.slice(0, 6);
+}
+
+const PRIORITY_COLOR: Record<string, string> = {
+  high: '#1a6b4a',
+  medium: '#7a5c00',
+  low: '#555',
+};
+const PRIORITY_BG: Record<string, string> = {
+  high: '#e6f4ef',
+  medium: '#fef8e6',
+  low: '#f5f5f5',
+};
 
 const REPORT_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -247,9 +308,9 @@ const REPORT_STYLES = `
   }
 
   .report-title {
-    font-size: 13pt;
+    font-size: 14pt;
     font-weight: 700;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
   }
 
   .report-meta {
@@ -261,37 +322,45 @@ const REPORT_STYLES = `
   .divider {
     border: none;
     border-top: 1px solid #ccc;
-    margin: 14px 0;
+    margin: 16px 0;
   }
 
   h2 {
-    font-size: 11pt;
+    font-size: 11.5pt;
     font-weight: 700;
-    margin: 20px 0 6px;
+    margin: 22px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid #1a6b4a;
+    color: #1a4a35;
   }
 
   .exec-summary {
     font-size: 10pt;
     color: #222;
-    line-height: 1.7;
+    line-height: 1.8;
     margin-bottom: 12px;
   }
 
-  /* Week sections */
+  .exec-summary p { margin-bottom: 6px; }
+
   .week-heading {
     font-size: 11pt;
     font-weight: 700;
-    margin: 20px 0 4px;
+    margin: 22px 0 4px;
+    color: #1a4a35;
   }
 
   .week-narrative {
     font-size: 10pt;
     color: #333;
-    line-height: 1.6;
+    line-height: 1.7;
     margin-bottom: 10px;
+    padding: 10px 14px;
+    background: #f8fbf9;
+    border-left: 3px solid #1a6b4a;
+    border-radius: 0 4px 4px 0;
   }
 
-  /* Tables */
   table {
     width: 100%;
     border-collapse: collapse;
@@ -299,9 +368,7 @@ const REPORT_STYLES = `
     table-layout: fixed;
   }
 
-  thead tr {
-    background: #f2f2f2;
-  }
+  thead tr { background: #f2f2f2; }
 
   th {
     text-align: left;
@@ -323,31 +390,78 @@ const REPORT_STYLES = `
 
   tr:nth-child(even) td { background: #fafafa; }
 
-  .col-ts  { width: 17%; }
-  .col-gm  { width: 20%; }
-  .col-ac  { width: 53%; }
-  .col-pt  { width: 10%; white-space: nowrap; text-align: right; }
-
+  .col-ts  { width: 15%; }
+  .col-gm  { width: 18%; }
+  .col-ac  { width: 48%; }
+  .col-ty  { width: 10%; }
+  .col-pt  { width: 9%; white-space: nowrap; text-align: right; }
   th.col-pt { text-align: right; }
+
+  .type-badge {
+    display: inline-block;
+    font-size: 8pt;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
 
   .week-total {
     font-size: 10pt;
     font-weight: 700;
-    margin: 8px 0 18px;
+    margin: 8px 0 20px;
     color: #222;
   }
 
-  /* Overall breakdown */
   .breakdown-list {
-    list-style: disc;
-    padding-left: 18px;
-    margin-top: 6px;
+    list-style: none;
+    padding: 0;
+    margin-top: 8px;
   }
 
   .breakdown-list li {
     font-size: 10pt;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     line-height: 1.6;
+    padding: 8px 12px;
+    background: #fafafa;
+    border-radius: 4px;
+    border-left: 3px solid #ccc;
+  }
+
+  .breakdown-list li strong { color: #1a4a35; }
+
+  /* Next week focus */
+  .focus-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .focus-item {
+    padding: 12px 14px;
+    border-radius: 6px;
+    border-left: 4px solid;
+  }
+
+  .focus-item-title {
+    font-size: 10.5pt;
+    font-weight: 700;
+    margin-bottom: 3px;
+  }
+
+  .focus-item-reason {
+    font-size: 9.5pt;
+    line-height: 1.6;
+    color: #333;
+  }
+
+  .focus-item-priority {
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
   }
 
   @media print {
@@ -358,35 +472,43 @@ const REPORT_STYLES = `
     table { page-break-inside: auto; }
     tr { page-break-inside: avoid; }
     thead { display: table-header-group; }
+    .focus-item { break-inside: avoid; }
   }
 `;
 
-export function buildPdfReport(
-  from: Date,
-  to: Date,
-  logs: LogEntry[],
-  title?: string,
-): string {
+const TYPE_STYLES: Record<string, string> = {
+  progress:  'background:#e8f4fd;color:#1565c0',
+  complete:  'background:#e8f5e9;color:#2e7d32',
+  boss:      'background:#fce4ec;color:#b71c1c',
+  'rank-up': 'background:#fff3e0;color:#e65100',
+  purchase:  'background:#f3e5f5;color:#6a1b9a',
+};
+
+export function buildPdfReport(from: Date, to: Date, logs: LogEntry[], title?: string): string {
   const asc = [...logs].sort((a, b) => a.date.getTime() - b.date.getTime());
   const total = asc.reduce((s, l) => s + l.minutes, 0);
   const gameCount = new Set(asc.map(l => l.game)).size;
   const weeks = splitIntoWeeks(asc, from, to);
   const execSummary = executiveSummary(asc, weeks);
-  const breakdownBullets = overallBullets(asc, weeks);
+  const breakdownBullets = overallBullets(asc);
+  const focusItems = nextWeekFocus(asc);
 
   const weekSections = weeks.map((w, i) => {
     const wTotal = w.logs.reduce((s, l) => s + l.minutes, 0);
     const isLast = i === weeks.length - 1;
     const narrative = weekNarrative(w);
 
-    const rows = w.logs.map(l => `
+    const rows = w.logs.map(l => {
+      const badgeStyle = TYPE_STYLES[l.type] ?? 'background:#eee;color:#333';
+      return `
       <tr>
         <td class="col-ts">${esc(formatDate(l.date))}</td>
         <td class="col-gm">${esc(l.game)}</td>
         <td class="col-ac">${esc(l.action)}</td>
+        <td class="col-ty"><span class="type-badge" style="${badgeStyle}">${esc(typeLabel(l.type))}</span></td>
         <td class="col-pt">${l.minutes} min</td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
 
     const totalLabel = isLast && w.isCurrentWeek
       ? `${w.label} Total So Far: ${fmtMinutes(wTotal)}`
@@ -395,30 +517,44 @@ export function buildPdfReport(
     return `
       <div class="no-break">
         <div class="week-heading">${esc(w.label)}: ${esc(formatDate(w.start))} – ${esc(formatDate(w.end))}</div>
-        <p class="week-narrative">${esc(narrative)}</p>
+        <div class="week-narrative">${narrative}</div>
         <table>
           <thead>
             <tr>
-              <th class="col-ts">Timestamp</th>
+              <th class="col-ts">Date</th>
               <th class="col-gm">Game</th>
-              <th class="col-ac">Action</th>
-              <th class="col-pt">Playtime</th>
+              <th class="col-ac">Session Notes</th>
+              <th class="col-ty">Type</th>
+              <th class="col-pt">Time</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
         <div class="week-total">${esc(totalLabel)}</div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 
   const breakdownHtml = breakdownBullets.length
-    ? `<ul class="breakdown-list">${breakdownBullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`
+    ? `<ul class="breakdown-list">${breakdownBullets.map(b => {
+        const [head, ...rest] = b.split(' — ');
+        return `<li><strong>${esc(head)}</strong>${rest.length ? ' — ' + esc(rest.join(' — ')) : ''}</li>`;
+      }).join('')}</ul>`
     : '<p style="font-size:10pt;color:#555">No breakdown available yet.</p>';
+
+  const focusHtml = focusItems.length
+    ? `<div class="focus-grid">${focusItems.map(item => `
+        <div class="focus-item" style="background:${PRIORITY_BG[item.priority]};border-color:${PRIORITY_COLOR[item.priority]}">
+          <div class="focus-item-priority" style="color:${PRIORITY_COLOR[item.priority]}">${item.priority} priority</div>
+          <div class="focus-item-title">${esc(item.title)}</div>
+          <div class="focus-item-reason">${esc(item.reason)}</div>
+        </div>`).join('')}</div>`
+    : '<p style="font-size:10pt;color:#555">Not enough data yet to generate next-week recommendations.</p>';
 
   const emptyNote = !asc.length
     ? '<p style="padding:24px;text-align:center;color:#666;font-size:10pt;">No entries were logged for this period.</p>'
     : '';
+
+  const execParas = execSummary.split('. ').filter(Boolean).map(s => `<p>${esc(s.endsWith('.') ? s : s + '.')}</p>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -429,17 +565,17 @@ export function buildPdfReport(
   <style>${REPORT_STYLES}</style>
 </head>
 <body>
-  <div class="report-label">All Gaming Logs Report</div>
+  <div class="report-label">Gaming Quest — Session Report</div>
   <div class="report-title">Gaming Quest Log${title ? ` — ${esc(title)}` : ''}</div>
   <div class="report-meta">Coverage Period: ${esc(formatDate(from))} – ${esc(formatDate(to))}</div>
   <div class="report-meta">Total Logged Playtime: ${esc(fmtMinutes(total))}</div>
-  <div class="report-meta">Total Games Logged: ${gameCount}</div>
+  <div class="report-meta">Total Games Logged: ${gameCount} &nbsp;|&nbsp; Total Sessions: ${asc.length}</div>
 
   <hr class="divider">
 
   ${asc.length ? `
   <h2>Executive Summary</h2>
-  <p class="exec-summary">${esc(execSummary)}</p>
+  <div class="exec-summary">${execParas}</div>
 
   ${weekSections}
 
@@ -447,12 +583,16 @@ export function buildPdfReport(
 
   <h2>Overall Breakdown</h2>
   ${breakdownHtml}
+
+  <hr class="divider">
+
+  <h2>What to Work on Next Week</h2>
+  ${focusHtml}
   ` : emptyNote}
 </body>
 </html>`;
 }
 
-/** Open report in a new window and trigger print dialog */
 export function printReport(html: string): void {
   const win = window.open('', '_blank');
   if (!win) {
@@ -461,17 +601,10 @@ export function printReport(html: string): void {
   }
   win.document.write(html);
   win.document.close();
-  // Give fonts time to load before printing
-  win.onload = () => {
-    setTimeout(() => win.print(), 600);
-  };
-  // Fallback if onload already fired
-  setTimeout(() => {
-    if (win.document.readyState === 'complete') win.print();
-  }, 1200);
+  win.onload = () => { setTimeout(() => win.print(), 600); };
+  setTimeout(() => { if (win.document.readyState === 'complete') win.print(); }, 1200);
 }
 
-/** Legacy: download as HTML file */
 export function downloadHtml(html: string, filename: string): void {
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
@@ -484,5 +617,4 @@ export function downloadHtml(html: string, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Keep old buildReport export for any callers — redirect to new builder
 export { buildPdfReport as buildReport };
