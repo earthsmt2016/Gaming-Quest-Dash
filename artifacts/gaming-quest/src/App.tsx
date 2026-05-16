@@ -185,26 +185,40 @@ export default function App() {
     setToDate('');
   }, []);
 
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+
   const handleDownloadWeek = useCallback(async () => {
-    const start = monStart(new Date()), end = sunEnd(new Date());
-    const wl = getWeekLogs(logs);
-    const focusItems = nextWeekFocus(wl);
-    const rawInsights = await fetchFocusInsights(focusItems);
-    const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
-    const html = buildPdfReport(start, end, wl, 'This Week', aiInsights);
-    printReport(html);
-  }, [logs]);
+    if (pdfGenerating) return;
+    setPdfGenerating(true);
+    try {
+      const start = monStart(new Date()), end = sunEnd(new Date());
+      const wl = getWeekLogs(logs);
+      const focusItems = nextWeekFocus(wl);
+      const rawInsights = await fetchFocusInsights(focusItems);
+      const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
+      const html = buildPdfReport(start, end, wl, 'This Week', aiInsights);
+      printReport(html);
+    } finally {
+      setPdfGenerating(false);
+    }
+  }, [logs, pdfGenerating]);
 
   const handleDownloadCustom = useCallback(async (fromStr: string, toStr: string) => {
-    const from = new Date(fromStr + 'T00:00:00');
-    const to = new Date(toStr + 'T23:59:59');
-    const periodLogs = getLogsForPeriod(logs, from, to);
-    const focusItems = nextWeekFocus(periodLogs);
-    const rawInsights = await fetchFocusInsights(focusItems);
-    const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
-    const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights);
-    printReport(html);
-  }, [logs]);
+    if (pdfGenerating) return;
+    setPdfGenerating(true);
+    try {
+      const from = new Date(fromStr + 'T00:00:00');
+      const to = new Date(toStr + 'T23:59:59');
+      const periodLogs = getLogsForPeriod(logs, from, to);
+      const focusItems = nextWeekFocus(periodLogs);
+      const rawInsights = await fetchFocusInsights(focusItems);
+      const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
+      const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights);
+      printReport(html);
+    } finally {
+      setPdfGenerating(false);
+    }
+  }, [logs, pdfGenerating]);
 
   const scrollToReport = useCallback(() => {
     weeklyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -242,6 +256,7 @@ export default function App() {
           onHamburger={() => setSidebarOpen(o => !o)}
           onWeekReport={scrollToReport}
           onDownloadWeek={handleDownloadWeek}
+          pdfGenerating={pdfGenerating}
         />
 
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -299,6 +314,7 @@ export default function App() {
                   rangeLabel={rangeLabel}
                   onScrollToReport={scrollToReport}
                   onDownloadWeek={handleDownloadWeek}
+                  pdfGenerating={pdfGenerating}
                 />
                 <StatsStrip
                   entries={filtered.length}
@@ -307,12 +323,13 @@ export default function App() {
                   needsWork={focusCount}
                 />
                 <QuestTable entries={filtered} />
-                <PeriodDownload onDownload={handleDownloadCustom} />
+                <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
                 <WeeklyReport
                   ref={weeklyRef}
                   weekLogs={weekLogs}
                   summary={weeklySummary}
                   onDownload={handleDownloadWeek}
+                  pdfGenerating={pdfGenerating}
                 />
                 <NeedsWork items={needsWorkItems} />
               </>

@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 
 interface PeriodDownloadProps {
   onDownload: (from: string, to: string) => void;
+  pdfGenerating?: boolean;
 }
 
-export default function PeriodDownload({ onDownload }: PeriodDownloadProps) {
+export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDownloadProps) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
@@ -65,9 +66,10 @@ export default function PeriodDownload({ onDownload }: PeriodDownloadProps) {
           <button
             className="btn primary"
             onClick={handleDownload}
-            style={{ borderRadius: 'var(--radius-sm)', width: '100%' }}
+            disabled={pdfGenerating}
+            style={{ borderRadius: 'var(--radius-sm)', width: '100%', opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
           >
-            ⎙ Save as PDF
+            {pdfGenerating ? '⏳ Generating…' : '⎙ Save as PDF'}
           </button>
         </label>
       </div>

@@ -5,10 +5,11 @@ interface WeeklyReportProps {
   weekLogs: LogEntry[];
   summary: Summary;
   onDownload: () => void;
+  pdfGenerating?: boolean;
 }
 
 const WeeklyReport = forwardRef<HTMLElement, WeeklyReportProps>(function WeeklyReport(
-  { weekLogs, summary, onDownload },
+  { weekLogs, summary, onDownload, pdfGenerating },
   ref,
 ) {
   const start = monStart(new Date());
@@ -131,7 +132,14 @@ const WeeklyReport = forwardRef<HTMLElement, WeeklyReportProps>(function WeeklyR
       </div>
 
       <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-        <button className="btn primary" onClick={onDownload}>⎙ Save this week as PDF</button>
+        <button
+          className="btn primary"
+          onClick={onDownload}
+          disabled={pdfGenerating}
+          style={{ opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
+        >
+          {pdfGenerating ? '⏳ Generating…' : '⎙ Save this week as PDF'}
+        </button>
       </div>
     </article>
   );

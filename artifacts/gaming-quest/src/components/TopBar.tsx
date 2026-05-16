@@ -4,9 +4,10 @@ interface TopBarProps {
   onHamburger: () => void;
   onWeekReport: () => void;
   onDownloadWeek: () => void;
+  pdfGenerating?: boolean;
 }
 
-export default function TopBar({ onHamburger, onWeekReport, onDownloadWeek }: TopBarProps) {
+export default function TopBar({ onHamburger, onWeekReport, onDownloadWeek, pdfGenerating }: TopBarProps) {
   return (
     <>
       <style>{`
@@ -70,13 +71,20 @@ export default function TopBar({ onHamburger, onWeekReport, onDownloadWeek }: To
               </svg>
             </span>
           </button>
-          <button className="btn primary" onClick={onDownloadWeek} style={{ padding: '0 14px' }}>
-            <span className="topbar-pdf-label">⎙ This week PDF</span>
+          <button
+            className="btn primary"
+            onClick={onDownloadWeek}
+            disabled={pdfGenerating}
+            style={{ padding: '0 14px', opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
+          >
+            <span className="topbar-pdf-label">{pdfGenerating ? '⏳ Generating…' : '⎙ This week PDF'}</span>
             <span className="topbar-pdf-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2v13M8 11l4 4 4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
-              </svg>
-              PDF
+              {pdfGenerating ? '⏳' : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2v13M8 11l4 4 4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+                </svg>
+              )}
+              {pdfGenerating ? '' : 'PDF'}
             </span>
           </button>
         </div>
