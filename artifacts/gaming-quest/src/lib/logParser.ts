@@ -52,7 +52,7 @@ function normaliseType(t: string, action: string): ActionType {
   if (al.includes('bought') || al.includes('purchased') || al.includes('new game')) return 'purchase';
   if (al.includes('rank') || al.includes('level') || al.includes('tier') || al.includes('score push')) return 'rank-up';
   if (al.includes('defeated') || al.includes('boss') || al.includes('key')) return 'boss';
-  if (al.includes('completed') || al.includes('credits') || al.includes('final boss') || al.includes('saw the credits')) return 'complete';
+  if (al.includes('credits')) return 'complete';
   return 'progress';
 }
 
@@ -217,8 +217,7 @@ export function nextWork(allLogs: LogEntry[], manualCompletions: Set<string> = n
         note = `Only ${wm} min this week — good candidate for next session.`;
       }
       const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|rolled credits/i;
-      const gameTypes = new Set(rel.map(l => l.type));
-      const isAutoDone = gameTypes.has('complete') || rel.some(l => CREDITS_RE.test(l.action));
+      const isAutoDone = rel.some(l => CREDITS_RE.test(l.action));
       const isManualDone = manualCompletions.has(game);
       if (isAutoDone || isManualDone) {
         status = 'Completed or parked';
