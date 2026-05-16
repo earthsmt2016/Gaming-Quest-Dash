@@ -115,8 +115,8 @@ export default function App() {
     try {
       const saved = await saveLogs(newEntries);
       setLogs(prev => dedupe([...prev, ...saved]).sort((a, b) => b.date.getTime() - a.date.getTime()));
-    } catch {
-      alert('Failed to save logs to the server. Please try again.');
+    } catch (err) {
+      alert(`Failed to save logs: ${err instanceof Error ? err.message : String(err)}`);
       return false;
     } finally {
       setSaving(false);

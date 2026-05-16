@@ -39,7 +39,11 @@ export async function saveLogs(entries: LogEntry[]): Promise<LogEntry[]> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error('Failed to save logs');
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try { const j = await res.json(); detail += `: ${j.error || j.detail || JSON.stringify(j)}`; } catch {}
+    throw new Error(detail);
+  }
   const rows: ApiLogRow[] = await res.json();
   return rows.map(rowToEntry).filter((e): e is LogEntry => e !== null);
 }
