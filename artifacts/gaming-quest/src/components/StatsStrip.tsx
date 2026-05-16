@@ -5,6 +5,7 @@ interface StatsStripProps {
   playtime: number;
   games: number;
   needsWork: number;
+  streak: number;
 }
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
@@ -29,7 +30,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub: st
   );
 }
 
-export default function StatsStrip({ entries, playtime, games, needsWork }: StatsStripProps) {
+export default function StatsStrip({ entries, playtime, games, needsWork, streak }: StatsStripProps) {
   return (
     <div style={{
       display: 'grid',
@@ -42,6 +43,11 @@ export default function StatsStrip({ entries, playtime, games, needsWork }: Stat
       <StatCard label="Playtime" value={`${playtime}m`} sub="Filtered total" />
       <StatCard label="Games active" value={String(games)} sub="Distinct titles" />
       <StatCard label="Needs work" value={String(needsWork)} sub="From weekly review" />
+      <StatCard
+        label="Play streak"
+        value={streak > 0 ? `${streak}d` : '—'}
+        sub={streak > 1 ? `${streak} days in a row` : streak === 1 ? 'Played today' : 'No streak yet'}
+      />
     </div>
   );
 }

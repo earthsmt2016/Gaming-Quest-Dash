@@ -1,4 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActionType } from '../lib/logParser';
+
+const ACTION_TYPES: { value: ActionType; label: string }[] = [
+  { value: 'progress', label: 'Progress' },
+  { value: 'boss',     label: 'Boss' },
+  { value: 'complete', label: 'Complete' },
+  { value: 'rank-up',  label: 'Rank Up' },
+  { value: 'purchase', label: 'Purchase' },
+];
 
 interface SidebarProps {
   open: boolean;
@@ -8,6 +17,7 @@ interface SidebarProps {
   onImport: () => void;
   onSample: () => void;
   onClear: () => void;
+  onQuickAdd: (rawLine: string) => Promise<void>;
   games: string[];
   types: string[];
   gameFilter: string;
@@ -26,10 +36,19 @@ function labelType(t: string): string {
   return t.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+function nowDateLocal() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+function nowTimeLocal() {
+  const d = new Date();
+  return d.toTimeString().slice(0, 5);
+}
+
 export default function Sidebar({
   open, onClose,
   rawLogs, onRawLogsChange,
-  onImport, onSample, onClear,
+  onImport, onSample, onClear, onQuickAdd,
   games, types,
   gameFilter, typeFilter, fromDate, toDate,
   onGameFilter, onTypeFilter, onFromDate, onToDate,
@@ -37,6 +56,15 @@ export default function Sidebar({
 }: SidebarProps) {
 
   const sidebarRef = useRef<HTMLElement>(null);
+  const [qaOpen, setQaOpen] = useState(false);
+  const [qaDate, setQaDate] = useState(nowDateLocal);
+  const [qaTime, setQaTime] = useState(nowTimeLocal);
+  const [qaGame, setQaGame] = useState('');
+  const [qaAction, setQaAction] = useState('');
+  const [qaMinutes, setQaMinutes] = useState(30);
+  const [qaType, setQaType] = useState<ActionType>('progress');
+  const [qaAdding, setQaAdding] = useState(false);
+  const [qaError, setQaError] = useState('');
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -46,6 +74,31 @@ export default function Sidebar({
     return () => document.removeEventListener('keydown', handleKey);
   }, [open, onClose]);
 
+  const handleQuickAdd = async () => {
+    if (!qaGame.trim() || !qaAction.trim()) {
+      setQaError('Game and action are required.');
+      return;
+    }
+    const ts = `${qaDate} ${qaTime}`;
+    const rawLine = `${ts} | ${qaGame.trim()} | ${qaAction.trim()} | ${qaMinutes} | ${qaType}`;
+    setQaAdding(true);
+    setQaError('');
+    try {
+      await onQuickAdd(rawLine);
+      setQaAction('');
+      setQaDate(nowDateLocal());
+      setQaTime(nowTimeLocal());
+      setQaGame('');
+      setQaMinutes(30);
+      setQaType('progress');
+      setQaError('');
+    } catch (e: any) {
+      setQaError(e.message ?? 'Failed to save entry.');
+    } finally {
+      setQaAdding(false);
+    }
+  };
+
   const inputStyle: React.CSSProperties = {
     width: '100%',
     minHeight: '44px',
@@ -54,6 +107,8 @@ export default function Sidebar({
     borderRadius: 'var(--radius-sm)',
     padding: '10px 12px',
     fontSize: '15px',
+    boxSizing: 'border-box',
+    fontFamily: 'inherit',
   };
 
   const labelWrapStyle: React.CSSProperties = {
@@ -63,9 +118,19 @@ export default function Sidebar({
     fontSize: '14px',
   };
 
+  const qaInputStyle: React.CSSProperties = {
+    width: '100%',
+    border: '1px solid var(--line)',
+    background: 'var(--paper)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '8px 10px',
+    fontSize: '14px',
+    boxSizing: 'border-box',
+    fontFamily: 'inherit',
+  };
+
   return (
     <>
-      {/* Overlay */}
       {open && (
         <div
           onClick={onClose}
@@ -78,7 +143,6 @@ export default function Sidebar({
         />
       )}
 
-      {/* Sidebar */}
       <aside
         ref={sidebarRef}
         style={{
@@ -101,10 +165,100 @@ export default function Sidebar({
           boxShadow: open && window.innerWidth < 1100 ? '4px 0 24px rgba(0,0,0,0.15)' : 'none',
         }}
       >
+        {/* Quick Add */}
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button
+            onClick={() => setQaOpen(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              width: '100%',
+            }}
+          >
+            <div className="eyebrow" style={{ margin: 0 }}>Quick add</div>
+            <span style={{ fontSize: '18px', color: 'var(--muted)', lineHeight: 1 }}>{qaOpen ? '−' : '+'}</span>
+          </button>
+
+          {qaOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {qaError && (
+                <div style={{ fontSize: '13px', color: '#c0392b', background: '#fff0f0', padding: '7px 10px', borderRadius: '6px' }}>
+                  {qaError}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
+                  <span>Date</span>
+                  <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} style={qaInputStyle} />
+                </label>
+                <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
+                  <span>Time</span>
+                  <input type="time" value={qaTime} onChange={e => setQaTime(e.target.value)} style={qaInputStyle} />
+                </label>
+              </div>
+
+              <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
+                <span>Game</span>
+                <input
+                  type="text"
+                  placeholder="Game title"
+                  value={qaGame}
+                  onChange={e => setQaGame(e.target.value)}
+                  list="qa-game-list"
+                  style={qaInputStyle}
+                />
+                <datalist id="qa-game-list">
+                  {games.map(g => <option key={g} value={g} />)}
+                </datalist>
+              </label>
+
+              <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
+                <span>Action / Notes</span>
+                <textarea
+                  placeholder="What happened?"
+                  value={qaAction}
+                  onChange={e => setQaAction(e.target.value)}
+                  rows={2}
+                  style={{ ...qaInputStyle, resize: 'vertical' }}
+                />
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
+                  <span>Minutes (0 = achievement)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={999}
+                    value={qaMinutes}
+                    onChange={e => setQaMinutes(Number(e.target.value))}
+                    style={qaInputStyle}
+                  />
+                </label>
+                <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
+                  <span>Type</span>
+                  <select value={qaType} onChange={e => setQaType(e.target.value as ActionType)} style={qaInputStyle}>
+                    {ACTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <button className="btn primary" onClick={handleQuickAdd} disabled={qaAdding} style={{ width: '100%' }}>
+                {qaAdding ? 'Adding…' : '+ Add entry'}
+              </button>
+            </div>
+          )}
+        </section>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: 0 }} />
+
+        {/* Raw Logs */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="eyebrow">Raw logs</div>
           <p className="muted" style={{ margin: 0, fontSize: '13px' }}>
-            Format: <code>timestamp | game | action | minutes | type</code>
+            Format: <code>timestamp | game | action | minutes | type</code><br />
+            <span style={{ color: 'var(--muted)', fontSize: '12px' }}>Use <code>0</code> minutes for achievements with no playtime.</span>
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <label style={labelWrapStyle}>
@@ -135,6 +289,7 @@ export default function Sidebar({
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: 0 }} />
 
+        {/* Filters */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="eyebrow">Filters</div>
 

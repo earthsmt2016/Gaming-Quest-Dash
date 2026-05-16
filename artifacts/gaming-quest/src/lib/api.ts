@@ -125,6 +125,29 @@ export async function togglePaused(game: string): Promise<boolean> {
   return data.paused as boolean;
 }
 
+export async function fetchGuides(): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(`${BASE}/guides`);
+    if (!res.ok) return {};
+    const rows: { game: string; url: string }[] = await res.json();
+    return Object.fromEntries(rows.map(r => [r.game, r.url]));
+  } catch {
+    return {};
+  }
+}
+
+export async function setGuide(game: string, url: string): Promise<void> {
+  await fetch(`${BASE}/guides/${encodeURIComponent(game)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+}
+
+export async function deleteGuide(game: string): Promise<void> {
+  await fetch(`${BASE}/guides/${encodeURIComponent(game)}`, { method: 'DELETE' });
+}
+
 export async function fetchFocusInsights(
   games: FocusGame[]
 ): Promise<{ title: string; nextStep: string }[]> {

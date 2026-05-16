@@ -10,6 +10,7 @@ import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
 import {
   LogEntry,
+  ActionType,
   parseRaw,
   dedupe,
   monStart,
@@ -17,10 +18,11 @@ import {
   formatDate,
   summarise,
   nextWork,
+  computeStreak,
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
-import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, fetchPaused, togglePaused, updateLog, deleteLog } from './lib/api';
+import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, fetchPaused, togglePaused, fetchGuides, setGuide, deleteGuide, updateLog, deleteLog } from './lib/api';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -39,6 +41,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [completions, setCompletions] = useState<Set<string>>(new Set());
   const [paused, setPaused] = useState<Set<string>>(new Set());
+  const [guides, setGuides] = useState<Record<string, string>>({});
   const [rawLogs, setRawLogs] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -50,13 +53,14 @@ export default function App() {
 
   const weeklyRef = useRef<HTMLElement>(null);
 
-  // Load logs, completions and paused state from API on mount
+  // Load logs, completions, paused state and guides from API on mount
   useEffect(() => {
-    Promise.all([fetchLogs(), fetchCompletions(), fetchPaused()])
-      .then(([entries, comps, pausedGames]) => {
+    Promise.all([fetchLogs(), fetchCompletions(), fetchPaused(), fetchGuides()])
+      .then(([entries, comps, pausedGames, guideMap]) => {
         setLogs(entries);
         setCompletions(comps);
         setPaused(pausedGames);
+        setGuides(guideMap);
         setLoadState('ready');
       })
       .catch(() => setLoadState('error'));
@@ -88,6 +92,7 @@ export default function App() {
   const weekLogs = useMemo(() => getWeekLogs(logs), [logs]);
   const weeklySummary = useMemo(() => summarise(weekLogs), [weekLogs]);
   const needsWorkItems = useMemo(() => nextWork(logs, completions, paused), [logs, completions, paused]);
+  const streak = useMemo(() => computeStreak(logs), [logs]);
 
   const playtime = useMemo(() => filtered.reduce((s, l) => s + l.minutes, 0), [filtered]);
   const gamesCount = useMemo(() => new Set(filtered.map(l => l.game)).size, [filtered]);
@@ -211,6 +216,20 @@ export default function App() {
     });
   }, []);
 
+  const handleSetGuide = useCallback(async (game: string, url: string) => {
+    await setGuide(game, url);
+    setGuides(prev => ({ ...prev, [game]: url }));
+  }, []);
+
+  const handleDeleteGuide = useCallback(async (game: string) => {
+    await deleteGuide(game);
+    setGuides(prev => { const next = { ...prev }; delete next[game]; return next; });
+  }, []);
+
+  const handleQuickAdd = useCallback(async (rawLine: string) => {
+    await importLogs(rawLine);
+  }, [importLogs]);
+
   const handleSaveEdit = useCallback(async (id: string, patch: Parameters<typeof updateLog>[1]) => {
     const updated = await updateLog(id, patch);
     setLogs(prev => prev.map(l => l.id === id ? updated : l));
@@ -270,8 +289,11 @@ export default function App() {
     <>
       <style>{`
         @media (min-width: 768px) {
-          .stats-grid { grid-template-columns: repeat(4, 1fr) !important; }
+          .stats-grid { grid-template-columns: repeat(3, 1fr) !important; }
           .report-meta-grid { grid-template-columns: repeat(4, 1fr) !important; }
+        }
+        @media (min-width: 1024px) {
+          .stats-grid { grid-template-columns: repeat(5, 1fr) !important; }
         }
         @media (min-width: 1100px) {
           .desktop-sidebar {
@@ -304,6 +326,7 @@ export default function App() {
             onImport={handleImport}
             onSample={handleSample}
             onClear={handleClear}
+            onQuickAdd={handleQuickAdd}
             games={games}
             types={types}
             gameFilter={gameFilter}
@@ -372,6 +395,7 @@ export default function App() {
                   playtime={playtime}
                   games={gamesCount}
                   needsWork={focusCount}
+                  streak={streak}
                 />
                 <QuestTable entries={filtered} onEdit={setEditingEntry} />
                 <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
@@ -386,8 +410,11 @@ export default function App() {
                   items={needsWorkItems}
                   manualCompletions={completions}
                   paused={paused}
+                  guides={guides}
                   onToggleCompletion={handleToggleCompletion}
                   onTogglePaused={handleTogglePaused}
+                  onSetGuide={handleSetGuide}
+                  onDeleteGuide={handleDeleteGuide}
                   onOpenLibrary={() => setLibraryOpen(true)}
                 />
               </>
@@ -399,6 +426,14 @@ export default function App() {
   );
 }
 
+const QA_TYPES: { value: ActionType; label: string }[] = [
+  { value: 'progress', label: 'Progress' },
+  { value: 'boss',     label: 'Boss' },
+  { value: 'complete', label: 'Complete' },
+  { value: 'rank-up',  label: 'Rank Up' },
+  { value: 'purchase', label: 'Purchase' },
+];
+
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
@@ -407,6 +442,7 @@ interface SidebarProps {
   onImport: () => void;
   onSample: () => void;
   onClear: () => void;
+  onQuickAdd: (raw: string) => Promise<void>;
   games: string[];
   types: string[];
   gameFilter: string;
@@ -423,22 +459,44 @@ interface SidebarProps {
 }
 
 function DesktopSidebar(props: SidebarProps) {
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    minHeight: '44px',
-    border: '1px solid var(--line)',
-    background: 'var(--paper)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '10px 12px',
-    fontSize: '15px',
+  const [qaOpen, setQaOpen] = React.useState(false);
+  const [qaDate, setQaDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [qaTime, setQaTime] = React.useState(() => new Date().toTimeString().slice(0, 5));
+  const [qaGame, setQaGame] = React.useState('');
+  const [qaAction, setQaAction] = React.useState('');
+  const [qaMinutes, setQaMinutes] = React.useState(30);
+  const [qaType, setQaType] = React.useState<ActionType>('progress');
+  const [qaAdding, setQaAdding] = React.useState(false);
+  const [qaError, setQaError] = React.useState('');
+
+  const handleQuickAdd = async () => {
+    if (!qaGame.trim() || !qaAction.trim()) { setQaError('Game and action are required.'); return; }
+    const rawLine = `${qaDate} ${qaTime} | ${qaGame.trim()} | ${qaAction.trim()} | ${qaMinutes} | ${qaType}`;
+    setQaAdding(true); setQaError('');
+    try {
+      await props.onQuickAdd(rawLine);
+      setQaAction('');
+      setQaDate(new Date().toISOString().slice(0, 10));
+      setQaTime(new Date().toTimeString().slice(0, 5));
+    } catch (e: any) {
+      setQaError(e.message ?? 'Failed to save.');
+    } finally {
+      setQaAdding(false);
+    }
   };
 
-  const labelWrapStyle: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
-    fontSize: '14px',
+  const inputStyle: React.CSSProperties = {
+    width: '100%', minHeight: '44px', border: '1px solid var(--line)',
+    background: 'var(--paper)', borderRadius: 'var(--radius-sm)',
+    padding: '10px 12px', fontSize: '15px', boxSizing: 'border-box', fontFamily: 'inherit',
   };
+  const qaInputStyle: React.CSSProperties = {
+    width: '100%', border: '1px solid var(--line)', background: 'var(--paper)',
+    borderRadius: 'var(--radius-sm)', padding: '8px 10px', fontSize: '14px',
+    boxSizing: 'border-box', fontFamily: 'inherit',
+  };
+  const labelWrapStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px' };
+  const qaLabelStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px' };
 
   function labelType(t: string): string {
     return t.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -457,29 +515,84 @@ function DesktopSidebar(props: SidebarProps) {
       <aside
         className="desktop-sidebar"
         style={{
-          width: '320px',
-          flexShrink: 0,
-          overflowY: 'auto',
-          borderRight: '1px solid var(--line)',
-          background: 'var(--paper-2)',
-          padding: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          height: '100dvh',
-          zIndex: 10,
+          width: '320px', flexShrink: 0, overflowY: 'auto',
+          borderRight: '1px solid var(--line)', background: 'var(--paper-2)',
+          padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px',
+          position: 'fixed', top: 0, left: 0, height: '100dvh', zIndex: 10,
           transform: props.open ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.25s ease',
           boxShadow: props.open ? '4px 0 24px rgba(0,0,0,0.15)' : 'none',
         }}
       >
+        {/* Quick Add */}
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button
+            onClick={() => setQaOpen(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%',
+            }}
+          >
+            <div className="eyebrow" style={{ margin: 0 }}>Quick add</div>
+            <span style={{ fontSize: '18px', color: 'var(--muted)', lineHeight: 1 }}>{qaOpen ? '−' : '+'}</span>
+          </button>
+
+          {qaOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+              {qaError && (
+                <div style={{ fontSize: '13px', color: '#c0392b', background: '#fff0f0', padding: '7px 10px', borderRadius: '6px' }}>
+                  {qaError}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <label style={qaLabelStyle}>
+                  <span>Date</span>
+                  <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} style={qaInputStyle} />
+                </label>
+                <label style={qaLabelStyle}>
+                  <span>Time</span>
+                  <input type="time" value={qaTime} onChange={e => setQaTime(e.target.value)} style={qaInputStyle} />
+                </label>
+              </div>
+              <label style={qaLabelStyle}>
+                <span>Game</span>
+                <input type="text" placeholder="Game title" value={qaGame}
+                  onChange={e => setQaGame(e.target.value)} list="qa-games" style={qaInputStyle} />
+                <datalist id="qa-games">{props.games.map(g => <option key={g} value={g} />)}</datalist>
+              </label>
+              <label style={qaLabelStyle}>
+                <span>Action / Notes</span>
+                <textarea placeholder="What happened?" value={qaAction} onChange={e => setQaAction(e.target.value)}
+                  rows={2} style={{ ...qaInputStyle, resize: 'vertical' }} />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <label style={qaLabelStyle}>
+                  <span>Minutes (0 = no time)</span>
+                  <input type="number" min={0} max={999} value={qaMinutes}
+                    onChange={e => setQaMinutes(Number(e.target.value))} style={qaInputStyle} />
+                </label>
+                <label style={qaLabelStyle}>
+                  <span>Type</span>
+                  <select value={qaType} onChange={e => setQaType(e.target.value as ActionType)} style={qaInputStyle}>
+                    {QA_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <button className="btn primary" onClick={handleQuickAdd} disabled={qaAdding} style={{ width: '100%' }}>
+                {qaAdding ? 'Adding…' : '+ Add entry'}
+              </button>
+            </div>
+          )}
+        </section>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: 0 }} />
+
+        {/* Raw Logs */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="eyebrow">Raw logs</div>
           <p className="muted" style={{ margin: 0, fontSize: '13px' }}>
-            Format: <code>timestamp | game | action | minutes | type</code>
+            Format: <code>timestamp | game | action | minutes | type</code><br />
+            <span style={{ fontSize: '12px' }}>Use <code>0</code> minutes for achievements with no playtime.</span>
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <label style={labelWrapStyle}>
@@ -489,14 +602,9 @@ function DesktopSidebar(props: SidebarProps) {
                 onChange={e => props.onRawLogsChange(e.target.value)}
                 placeholder="2026-05-13 22:26 | Mario Kart Tour | 1st place | 60 | rank-up"
                 style={{
-                  width: '100%',
-                  minHeight: '140px',
-                  border: '1px solid var(--line)',
-                  background: 'var(--paper)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '10px 12px',
-                  fontSize: '14px',
-                  resize: 'vertical',
+                  width: '100%', minHeight: '140px', border: '1px solid var(--line)',
+                  background: 'var(--paper)', borderRadius: 'var(--radius-sm)',
+                  padding: '10px 12px', fontSize: '14px', resize: 'vertical',
                 }}
               />
             </label>
@@ -512,6 +620,7 @@ function DesktopSidebar(props: SidebarProps) {
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: 0 }} />
 
+        {/* Filters */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="eyebrow">Filters</div>
 

@@ -52,7 +52,7 @@ export default function EditLogModal({ entry, onClose, onSave, onDelete }: EditL
   if (!entry) return null;
 
   const handleSave = async () => {
-    if (!game.trim() || !action.trim() || minutes < 1 || !timestamp) {
+    if (!game.trim() || !action.trim() || minutes < 0 || !timestamp) {
       setError('Please fill in all fields.');
       return;
     }
@@ -165,7 +165,7 @@ export default function EditLogModal({ entry, onClose, onSave, onDelete }: EditL
             <div className="elm-row2">
               <div className="elm-field">
                 <label className="elm-label">Minutes</label>
-                <input className="elm-input" type="number" min={1} max={999} value={minutes} onChange={e => setMinutes(Number(e.target.value))} />
+                <input className="elm-input" type="number" min={0} max={999} value={minutes} onChange={e => setMinutes(Number(e.target.value))} />
               </div>
               <div className="elm-field">
                 <label className="elm-label">Type</label>

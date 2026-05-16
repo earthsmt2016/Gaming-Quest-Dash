@@ -93,7 +93,7 @@ export function parseRaw(raw: string): LogEntry[] {
       }
 
       const date = parseDate(ts);
-      if (!date || !game || !action || isNaN(minutes) || minutes <= 0) return null;
+      if (!date || !game || !action || isNaN(minutes) || minutes < 0) return null;
       return {
         id: `${date.getTime()}-${i}`,
         timestamp: ts,
@@ -238,6 +238,24 @@ export function nextWork(
     })
     .sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.wm - b.wm)
     .slice(0, 7);
+}
+
+/** Returns the current consecutive-day play streak (days in a row with ≥1 log). */
+export function computeStreak(logs: LogEntry[]): number {
+  if (!logs.length) return 0;
+  const days = new Set(logs.map(l => l.date.toDateString()));
+  let streak = 0;
+  const check = new Date();
+  check.setHours(0, 0, 0, 0);
+  // If today has no entry, start checking from yesterday so the streak isn't broken yet
+  if (!days.has(check.toDateString())) {
+    check.setDate(check.getDate() - 1);
+  }
+  while (days.has(check.toDateString())) {
+    streak++;
+    check.setDate(check.getDate() - 1);
+  }
+  return streak;
 }
 
 export function badgeFor(status: NeedsWorkItem['status']): ActionType {
