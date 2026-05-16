@@ -102,7 +102,7 @@ function weekNarrative(section: WeekSection): string {
     if (d.types.has('boss')) highlights.push(`defeated a boss`);
     if (d.types.has('rank-up')) {
       const lastRank = d.entries.filter(e => e.type === 'rank-up').pop();
-      highlights.push(lastRank ? `ranked up (${lastRank.action.substring(0, 60)}${lastRank.action.length > 60 ? '…' : ''})` : `ranked up`);
+      highlights.push(lastRank ? `ranked up (${lastRank.action})` : `ranked up`);
     }
     if (d.types.has('purchase')) highlights.push(`purchased and started`);
     const note = highlights.length ? ` — ${highlights.join(', ')}` : '';
@@ -183,7 +183,7 @@ function overallBullets(logs: LogEntry[]): string[] {
   for (const [game, d] of ranked) {
     if (d.types.has('purchase')) {
       const firstAction = d.entries.find(e => e.type === 'purchase');
-      bullets.push(`New Game — ${game}: Acquired and play began${firstAction ? ` (first session: ${firstAction.action.substring(0, 70)}${firstAction.action.length > 70 ? '…' : ''})` : ''}. ${fmtMinutes(d.min)} logged so far.`);
+      bullets.push(`New Game — ${game}: Acquired and play began${firstAction ? ` (first session: ${firstAction.action})` : ''}. ${fmtMinutes(d.min)} logged so far.`);
     }
   }
 
@@ -192,7 +192,7 @@ function overallBullets(logs: LogEntry[]): string[] {
     for (const [game, d] of rankUpEntries) {
       const rl = d.entries.filter(e => e.type === 'rank-up');
       const lastRank = rl[rl.length - 1];
-      const detail = lastRank ? `Last recorded: ${lastRank.action.substring(0, 80)}${lastRank.action.length > 80 ? '…' : ''}` : '';
+      const detail = lastRank ? `Last recorded: ${lastRank.action}` : '';
       bullets.push(`Competitive — ${game}: ${rl.length} rank-up event${rl.length > 1 ? 's' : ''} over the period. ${detail}.`);
     }
   }
@@ -207,6 +207,11 @@ function overallBullets(logs: LogEntry[]): string[] {
   return bullets;
 }
 
+/** Returns true if a game is primarily competitive/multiplayer (only rank-up activity, no story arc) */
+function isCompetitive(d: { types: Set<string> }): boolean {
+  return d.types.has('rank-up') && !d.types.has('progress') && !d.types.has('complete') && !d.types.has('boss') && !d.types.has('purchase');
+}
+
 function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; priority: 'high' | 'medium' | 'low' }[] {
   if (!logs.length) return [];
   const stats = byGameStats(logs);
@@ -215,60 +220,72 @@ function nextWeekFocus(logs: LogEntry[]): { title: string; reason: string; prior
   const recentCutoff = new Date(Math.max(...logs.map(l => l.date.getTime())) - 14 * 24 * 60 * 60 * 1000);
   const recentGames = new Set(logs.filter(l => l.date >= recentCutoff).map(l => l.game));
 
-  const items: { title: string; reason: string; priority: 'high' | 'medium' | 'low' }[] = [];
+  const high: { title: string; reason: string; priority: 'high' }[] = [];
+  const medium: { title: string; reason: string; priority: 'medium' }[] = [];
+  const low: { title: string; reason: string; priority: 'low' }[] = [];
 
   for (const [game, d] of ranked) {
-    if (d.types.has('complete')) continue;
+    // Skip already-completed games
+    if (d.types.has('complete') && !d.types.has('boss') && !d.types.has('progress')) continue;
 
-    if (d.types.has('boss') && recentGames.has(game)) {
-      const lastBoss = [...d.entries].reverse().find(e => e.type === 'boss');
-      items.push({
-        title: game,
-        reason: `Boss encountered but game not finished — ${lastBoss ? `last noted: "${lastBoss.action.substring(0, 70)}${lastBoss.action.length > 70 ? '…' : ''}"` : 'push towards the final encounter'}.`,
-        priority: 'high',
-      });
-      continue;
-    }
-
-    if (d.types.has('rank-up')) {
+    // Competitive/multiplayer games → always medium with a caution note
+    if (isCompetitive(d)) {
       const lastRank = [...d.entries].reverse().find(e => e.type === 'rank-up');
-      items.push({
+      medium.push({
         title: game,
-        reason: `Active competitive run — keep the ranking momentum going${lastRank ? ` (current progress: "${lastRank.action.substring(0, 70)}${lastRank.action.length > 70 ? '…' : ''}")` : ''}.`,
+        priority: 'medium',
+        reason: `Competitive/multiplayer title. ${lastRank ? `Last session: ${lastRank.action}.` : ''} Note: sustained ranked play can divert time from finishing single-player titles — keep sessions contained so story progress doesn't stall.`,
+      });
+      continue;
+    }
+
+    // Single-player games with a boss encounter but no completion → high (close to the end)
+    if (d.types.has('boss') && !d.types.has('complete') && recentGames.has(game)) {
+      const lastBoss = [...d.entries].reverse().find(e => e.type === 'boss');
+      high.push({
+        title: game,
         priority: 'high',
+        reason: `Boss encountered but not yet finished — push through to complete it. Last noted: "${lastBoss ? lastBoss.action : 'boss fight logged'}". Completing this frees up a slot for the next title.`,
       });
       continue;
     }
 
-    if (d.types.has('purchase') && recentGames.has(game)) {
-      items.push({
+    // Active story progress in a single-player game → high
+    if ((d.types.has('progress') || d.types.has('purchase')) && recentGames.has(game) && !d.types.has('rank-up')) {
+      const lastEntry = [...d.entries].reverse().find(e => e.type === 'progress' || e.type === 'purchase');
+      const isNew = d.types.has('purchase') && !d.types.has('progress');
+      high.push({
         title: game,
-        reason: `Recently started — early investment, good time to push further in before other titles take over.`,
-        priority: 'medium',
+        priority: 'high',
+        reason: isNew
+          ? `Recently started — build early momentum before other titles take over. First session: "${lastEntry ? lastEntry.action : 'play began'}".`
+          : `Active story run — keep the momentum going. Currently at: "${lastEntry ? lastEntry.action : 'progress logged'}".`,
       });
       continue;
     }
 
-    if (d.types.has('progress') && recentGames.has(game)) {
-      const lastEntry = [...d.entries].reverse().find(e => e.type === 'progress');
-      items.push({
+    // Games with mixed rank-up and story content → medium
+    if (d.types.has('rank-up') && (d.types.has('progress') || d.types.has('boss'))) {
+      const lastEntry = [...d.entries].reverse()[0];
+      medium.push({
         title: game,
-        reason: `Active progress run — ${lastEntry ? `currently at: "${lastEntry.action.substring(0, 70)}${lastEntry.action.length > 70 ? '…' : ''}"` : 'keep the run going to maintain momentum'}.`,
         priority: 'medium',
+        reason: `Has both competitive and story elements. Prioritise story/completion sessions over ranked play to make meaningful progress. Last session: "${lastEntry ? lastEntry.action : 'activity logged'}".`,
       });
       continue;
     }
 
+    // Games not touched recently with meaningful time invested → low
     if (!recentGames.has(game) && d.min > 30) {
-      items.push({
+      low.push({
         title: game,
-        reason: `No recent sessions logged — ${fmtMinutes(d.min)} invested with no completion. Worth returning to before losing progress context.`,
         priority: 'low',
+        reason: `No recent sessions — ${fmtMinutes(d.min)} invested with no completion yet. Worth returning to before losing progress context.`,
       });
     }
   }
 
-  return items.slice(0, 6);
+  return [...high, ...medium, ...low].slice(0, 7);
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -374,17 +391,18 @@ const REPORT_STYLES = `
 
   th {
     text-align: left;
-    font-size: 9pt;
+    font-size: 9.5pt;
     font-weight: 600;
-    padding: 6px 8px;
+    padding: 9px 12px;
     border-bottom: 1.5px solid #aaa;
     color: #444;
     overflow: hidden;
   }
 
   td {
-    font-size: 9pt;
-    padding: 6px 8px;
+    font-size: 9.5pt;
+    padding: 9px 12px;
+    line-height: 1.55;
     vertical-align: top;
     border-bottom: 1px solid #e0e0e0;
     word-break: break-word;
