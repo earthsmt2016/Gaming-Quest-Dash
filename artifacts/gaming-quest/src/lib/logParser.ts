@@ -216,8 +216,9 @@ export function nextWork(allLogs: LogEntry[]): NeedsWorkItem[] {
         status = 'Light progress';
         note = `Only ${wm} min this week — good candidate for next session.`;
       }
-      const GAME_END_RE = /saw the credits|rolled credits|finished the game|completed the main.?run|defeated the final boss/i;
-      const isGameDone = rel.some(l => GAME_END_RE.test(l.action));
+      const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|rolled credits/i;
+      const gameTypes = new Set(rel.map(l => l.type));
+      const isGameDone = gameTypes.has('complete') || rel.some(l => CREDITS_RE.test(l.action));
       if (isGameDone) {
         status = 'Completed or parked';
         note = 'Game completed — credits rolled.';
