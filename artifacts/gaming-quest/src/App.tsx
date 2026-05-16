@@ -7,6 +7,7 @@ import PeriodDownload from './components/PeriodDownload';
 import WeeklyReport from './components/WeeklyReport';
 import NeedsWork from './components/NeedsWork';
 import GameLibrary from './components/GameLibrary';
+import EditLogModal from './components/EditLogModal';
 import {
   LogEntry,
   parseRaw,
@@ -19,7 +20,7 @@ import {
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
-import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion } from './lib/api';
+import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, updateLog, deleteLog } from './lib/api';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -40,6 +41,7 @@ export default function App() {
   const [rawLogs, setRawLogs] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [gameFilter, setGameFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [fromDate, setFromDate] = useState('');
@@ -198,6 +200,16 @@ export default function App() {
     });
   }, []);
 
+  const handleSaveEdit = useCallback(async (id: string, patch: Parameters<typeof updateLog>[1]) => {
+    const updated = await updateLog(id, patch);
+    setLogs(prev => prev.map(l => l.id === id ? updated : l));
+  }, []);
+
+  const handleDeleteEntry = useCallback(async (id: string) => {
+    await deleteLog(id);
+    setLogs(prev => prev.filter(l => l.id !== id));
+  }, []);
+
   const [pdfGenerating, setPdfGenerating] = useState(false);
 
   const handleDownloadWeek = useCallback(async () => {
@@ -328,6 +340,12 @@ export default function App() {
               manualCompletions={completions}
               onToggleCompletion={handleToggleCompletion}
             />
+            <EditLogModal
+              entry={editingEntry}
+              onClose={() => setEditingEntry(null)}
+              onSave={handleSaveEdit}
+              onDelete={handleDeleteEntry}
+            />
             {loadState === 'ready' && (
               <>
                 <Hero
@@ -342,7 +360,7 @@ export default function App() {
                   games={gamesCount}
                   needsWork={focusCount}
                 />
-                <QuestTable entries={filtered} />
+                <QuestTable entries={filtered} onEdit={setEditingEntry} />
                 <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
                 <WeeklyReport
                   ref={weeklyRef}

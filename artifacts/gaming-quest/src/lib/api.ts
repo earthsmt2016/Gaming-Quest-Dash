@@ -53,6 +53,36 @@ export async function clearLogs(): Promise<void> {
   if (!res.ok) throw new Error('Failed to clear logs');
 }
 
+export interface LogPatch {
+  game?: string;
+  action?: string;
+  minutes?: number;
+  type?: string;
+  timestamp?: string;
+}
+
+export async function updateLog(id: string, patch: LogPatch): Promise<LogEntry> {
+  const res = await fetch(`${BASE}/logs/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try { const j = await res.json(); detail += `: ${j.error || JSON.stringify(j)}`; } catch {}
+    throw new Error(detail);
+  }
+  const row: ApiLogRow = await res.json();
+  const entry = rowToEntry(row);
+  if (!entry) throw new Error('Could not parse updated entry');
+  return entry;
+}
+
+export async function deleteLog(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/logs/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete log entry');
+}
+
 export interface FocusGame {
   title: string;
   label: string;
