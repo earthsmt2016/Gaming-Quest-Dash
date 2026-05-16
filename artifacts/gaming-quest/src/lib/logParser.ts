@@ -32,11 +32,26 @@ function normaliseType(t: string, action: string): ActionType {
   const s = (t || '').trim().toLowerCase();
   const validTypes: ActionType[] = ['progress', 'complete', 'rank-up', 'purchase', 'boss'];
   if (validTypes.includes(s as ActionType)) return s as ActionType;
+
+  // Map common category labels users write in the 3rd pipe field
+  const categoryMap: Record<string, ActionType> = {
+    'final boss': 'boss', 'boss fight': 'boss', 'boss battle': 'boss',
+    'keys collected': 'boss', 'boss key': 'boss',
+    'new game': 'purchase', 'purchased': 'purchase',
+    'level up': 'rank-up', 'ranked match': 'rank-up', 'rank up': 'rank-up',
+    'score push': 'rank-up', 'morning session': 'rank-up',
+    'story progress': 'progress', 'license progress': 'progress',
+    'collectibles': 'progress', 'exploration': 'progress',
+    'credits': 'complete', 'ending': 'complete',
+  };
+  if (categoryMap[s]) return categoryMap[s];
+
+  // Fall back to scanning the action text
   const al = action.toLowerCase();
-  if (al.includes('bought')) return 'purchase';
-  if (al.includes('rank') || al.includes('level')) return 'rank-up';
-  if (al.includes('defeated') || al.includes('boss')) return 'boss';
-  if (al.includes('completed') || al.includes('credits')) return 'complete';
+  if (al.includes('bought') || al.includes('purchased') || al.includes('new game')) return 'purchase';
+  if (al.includes('rank') || al.includes('level') || al.includes('tier') || al.includes('score push')) return 'rank-up';
+  if (al.includes('defeated') || al.includes('boss') || al.includes('key')) return 'boss';
+  if (al.includes('completed') || al.includes('credits') || al.includes('final boss') || al.includes('saw the credits')) return 'complete';
   return 'progress';
 }
 
@@ -55,10 +70,29 @@ export function parseRaw(raw: string): LogEntry[] {
         ? line.split('|').map(s => s.trim())
         : line.split(',').map(s => s.trim());
       if (parts.length < 4) return null;
-      const [ts, game, action, minText, type] = parts;
+
+      let ts: string, game: string, action: string, minutes: number, typeHint: string;
+
+      if (parts.length >= 5) {
+        // Original format: timestamp | game | action | minutes | type
+        [ts, game, action] = parts;
+        typeHint = parts[4] ?? '';
+        minutes = parseInt(String(parts[3]).replace(/[^\d]/g, ''), 10);
+      } else {
+        // Natural format: timestamp | game | category | description (N min)
+        // e.g. 2026-05-15 21:28 | Mario Kart Tour | Score Push | Improved score to 28,079. (30 min)
+        [ts, game, typeHint] = parts;
+        const descField = parts[3];
+        // Extract minutes from trailing "(N min)" pattern
+        const minMatch = descField.match(/\((\d+)\s*min\)\s*$/i);
+        if (!minMatch) return null;
+        minutes = parseInt(minMatch[1], 10);
+        // Strip the "(N min)" suffix to get the clean action text
+        action = descField.replace(/\s*\(\d+\s*min\)\s*$/i, '').trim();
+      }
+
       const date = parseDate(ts);
-      const minutes = parseInt(String(minText).replace(/[^\d]/g, ''), 10);
-      if (!date || !game || !action || isNaN(minutes)) return null;
+      if (!date || !game || !action || isNaN(minutes) || minutes <= 0) return null;
       return {
         id: `${date.getTime()}-${i}`,
         timestamp: ts,
@@ -66,7 +100,7 @@ export function parseRaw(raw: string): LogEntry[] {
         game,
         action,
         minutes,
-        type: normaliseType(type, action),
+        type: normaliseType(typeHint, action),
       } as LogEntry;
     })
     .filter((x): x is LogEntry => x !== null);
