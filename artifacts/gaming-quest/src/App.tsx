@@ -18,7 +18,7 @@ import {
   nextWork,
   SAMPLE_LOGS,
 } from './lib/logParser';
-import { buildReport, downloadHtml } from './lib/reportBuilder';
+import { buildPdfReport, printReport } from './lib/reportBuilder';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -128,21 +128,16 @@ export default function App() {
   const handleDownloadWeek = useCallback(() => {
     const start = monStart(new Date()), end = sunEnd(new Date());
     const wl = getWeekLogs(logs);
-    const summary = summarise(wl);
-    const nw = nextWork(logs);
-    const html = buildReport(start, end, wl, summary, nw, 'Weekly');
-    downloadHtml(html, `gaming-report-${start.toISOString().slice(0, 10)}.html`);
+    const html = buildPdfReport(start, end, wl, 'This Week');
+    printReport(html);
   }, [logs]);
 
   const handleDownloadCustom = useCallback((fromStr: string, toStr: string) => {
     const from = new Date(fromStr + 'T00:00:00');
     const to = new Date(toStr + 'T23:59:59');
     const periodLogs = getLogsForPeriod(logs, from, to);
-    const summary = summarise(periodLogs);
-    const nw = nextWork(logs);
-    const label = `${formatDate(from)} – ${formatDate(to)}`;
-    const html = buildReport(from, to, periodLogs, summary, nw, label);
-    downloadHtml(html, `gaming-report-${fromStr}-to-${toStr}.html`);
+    const html = buildPdfReport(from, to, periodLogs);
+    printReport(html);
   }, [logs]);
 
   const scrollToReport = useCallback(() => {

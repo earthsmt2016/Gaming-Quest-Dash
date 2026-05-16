@@ -41,7 +41,7 @@ export default function TopBar({ onHamburger, onWeekReport, onDownloadWeek }: To
       </div>
       <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
         <button className="btn soft" onClick={onWeekReport}>Weekly</button>
-        <button className="btn primary" onClick={onDownloadWeek}>↓ This week</button>
+        <button className="btn primary" onClick={onDownloadWeek}>⎙ This week PDF</button>
       </div>
     </header>
   );

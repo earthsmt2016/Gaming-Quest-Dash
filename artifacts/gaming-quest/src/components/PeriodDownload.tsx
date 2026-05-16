@@ -44,7 +44,7 @@ export default function PeriodDownload({ onDownload }: PeriodDownloadProps) {
       borderRadius: 'var(--radius)',
       padding: '14px 16px',
     }}>
-      <h3 style={{ margin: '0 0 10px', fontSize: '16px' }}>Download custom period report</h3>
+      <h3 style={{ margin: '0 0 10px', fontSize: '16px' }}>Save custom period report as PDF</h3>
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
@@ -67,11 +67,11 @@ export default function PeriodDownload({ onDownload }: PeriodDownloadProps) {
             onClick={handleDownload}
             style={{ borderRadius: 'var(--radius-sm)', width: '100%' }}
           >
-            ↓ Download report
+            ⎙ Save as PDF
           </button>
         </label>
       </div>
-      <p className="mini">Downloads a clean, printable HTML report file covering the selected date range with full table and summary.</p>
+      <p className="mini">Opens a print dialog — choose "Save as PDF" to export a clean, week-by-week report for the selected period.</p>
     </section>
   );
 }

@@ -21,7 +21,7 @@ export default function Hero({ rangeLabel, onScrollToReport, onDownloadWeek }: H
       <p style={{ margin: 0, color: 'var(--muted)', fontSize: '14px' }}>{rangeLabel}</p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
         <button className="btn soft" onClick={onScrollToReport}>Preview weekly report ↓</button>
-        <button className="btn primary" onClick={onDownloadWeek}>↓ Download this week's report</button>
+        <button className="btn primary" onClick={onDownloadWeek}>⎙ Save this week as PDF</button>
       </div>
     </section>
   );

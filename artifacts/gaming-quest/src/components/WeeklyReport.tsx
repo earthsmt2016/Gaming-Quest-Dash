@@ -131,7 +131,7 @@ const WeeklyReport = forwardRef<HTMLElement, WeeklyReportProps>(function WeeklyR
       </div>
 
       <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-        <button className="btn primary" onClick={onDownload}>↓ Download this week</button>
+        <button className="btn primary" onClick={onDownload}>⎙ Save this week as PDF</button>
       </div>
     </article>
   );
