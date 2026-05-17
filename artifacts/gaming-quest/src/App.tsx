@@ -446,7 +446,7 @@ export default function App() {
                   needsWork={focusCount}
                   streak={streak}
                 />
-                <QuestTable entries={filtered} onEdit={setEditingEntry} />
+                <QuestTable entries={filtered} onEdit={setEditingEntry} onSave={handleSaveEdit} />
                 <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
                 <WeeklyReport
                   ref={weeklyRef}
