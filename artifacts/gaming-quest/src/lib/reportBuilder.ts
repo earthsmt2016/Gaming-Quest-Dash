@@ -440,31 +440,28 @@ const REPORT_STYLES = `
     line-height: 1.55;
     vertical-align: top;
     border-bottom: 1px solid #e0e0e0;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-    overflow: hidden;
-    hyphens: auto;
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: none;
   }
 
   tr:nth-child(even) td { background: #fafafa; }
 
   /* Columns total exactly 100% */
-  .col-ts  { width: 14%; }
-  .col-gm  { width: 19%; }
-  .col-ac  { width: 47%; }
-  .col-ty  { width: 11%; }
-  .col-pt  { width: 9%; text-align: right; }
+  .col-ts  { width: 15%; white-space: nowrap; }
+  .col-gm  { width: 22%; word-break: break-word; }
+  .col-ac  { width: 38%; }
+  .col-ty  { width: 14%; white-space: nowrap; }
+  .col-pt  { width: 11%; white-space: nowrap; text-align: right; }
   th.col-pt { text-align: right; }
 
   .type-badge {
     display: inline-block;
     font-size: 7.5pt;
     font-weight: 600;
-    padding: 2px 5px;
+    padding: 2px 6px;
     border-radius: 4px;
     white-space: nowrap;
-    max-width: 100%;
-    overflow: hidden;
   }
 
   .week-total {
@@ -530,8 +527,8 @@ const REPORT_STYLES = `
     @page { size: A4 portrait; margin: 12mm 14mm; }
     body { padding: 0; margin: 0; max-width: none; width: 100%; font-size: 9.5pt; }
     table { width: 100% !important; table-layout: fixed !important; }
-    th, td { padding: 5px 6px; font-size: 8.5pt; overflow: hidden; }
-    .type-badge { font-size: 7pt; padding: 1px 3px; }
+    th, td { padding: 5px 6px; font-size: 8.5pt; }
+    .type-badge { font-size: 7pt; padding: 1px 4px; white-space: nowrap; }
     .no-break { page-break-inside: avoid; break-inside: avoid; }
     .week-heading { page-break-before: auto; break-before: auto; }
     table { page-break-inside: auto; break-inside: auto; }
