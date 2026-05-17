@@ -34,7 +34,7 @@ export default function NeedsWork({
   const [playerOpen, setPlayerOpen] = useState<string | null>(null);
   const [searchingFor, setSearchingFor] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, YouTubeVideo[]>>({});
-  const [searchErr, setSearchErr] = useState<Record<string, string>>({});
+  const [searchErr, setSearchErr] = useState<Record<string, boolean>>({});
   const [pasteGame, setPasteGame] = useState<string | null>(null);
   const [pasteUrl, setPasteUrl] = useState('');
   const [pasteSaving, setPasteSaving] = useState(false);
@@ -44,9 +44,17 @@ export default function NeedsWork({
     setSearchErr(prev => { const n = { ...prev }; delete n[item.game]; return n; });
     try {
       const videos = await searchYouTubeGuides(item.game, statusHint(item));
-      setResults(prev => ({ ...prev, [item.game]: videos }));
+      if (videos === null || videos.length === 0) {
+        setPasteGame(item.game);
+        setPasteUrl('');
+        if (videos === null) setSearchErr(prev => ({ ...prev, [item.game]: true }));
+      } else {
+        setResults(prev => ({ ...prev, [item.game]: videos }));
+      }
     } catch {
-      setSearchErr(prev => ({ ...prev, [item.game]: 'Could not reach YouTube. Try again.' }));
+      setPasteGame(item.game);
+      setPasteUrl('');
+      setSearchErr(prev => ({ ...prev, [item.game]: true }));
     } finally {
       setSearchingFor(null);
     }
@@ -329,16 +337,6 @@ export default function NeedsWork({
                     </div>
                   )}
 
-                  {/* Error */}
-                  {err && !isSearching && (
-                    <div style={{ fontSize: '12px', color: '#c0392b', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <span>{err}</span>
-                      <button className="btn soft" onClick={() => handleFindGuides(item)}
-                        style={{ fontSize: '11px', padding: '2px 8px' }}>
-                        Retry
-                      </button>
-                    </div>
-                  )}
 
                   {/* Video results grid */}
                   {hasResults && !isPasting && (
@@ -390,25 +388,40 @@ export default function NeedsWork({
 
                   {/* Paste URL fallback */}
                   {isPasting && (
-                    <div className="nw-paste-row">
-                      <input
-                        className="nw-paste-input"
-                        type="url"
-                        placeholder="https://youtube.com/watch?v=..."
-                        value={pasteUrl}
-                        onChange={e => setPasteUrl(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') handlePasteSave(item.game); if (e.key === 'Escape') setPasteGame(null); }}
-                        autoFocus
-                      />
-                      <button className="btn primary" onClick={() => handlePasteSave(item.game)}
-                        disabled={pasteSaving} style={{ fontSize: '12px', padding: '5px 12px' }}>
-                        {pasteSaving ? '…' : 'Save'}
-                      </button>
-                      <button className="btn soft" onClick={() => setPasteGame(null)}
-                        style={{ fontSize: '12px', padding: '5px 10px' }}>
-                        Cancel
-                      </button>
-                    </div>
+                    <>
+                      {err && (
+                        <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '6px' }}>
+                          YouTube search isn't available right now — paste a link below instead.
+                        </div>
+                      )}
+                      <div className="nw-paste-row">
+                        <input
+                          className="nw-paste-input"
+                          type="url"
+                          placeholder="https://youtube.com/watch?v=..."
+                          value={pasteUrl}
+                          onChange={e => setPasteUrl(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handlePasteSave(item.game);
+                            if (e.key === 'Escape') {
+                              setPasteGame(null);
+                              setSearchErr(prev => { const n = { ...prev }; delete n[item.game]; return n; });
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <button className="btn primary" onClick={() => handlePasteSave(item.game)}
+                          disabled={pasteSaving} style={{ fontSize: '12px', padding: '5px 12px' }}>
+                          {pasteSaving ? '…' : 'Save'}
+                        </button>
+                        <button className="btn soft" onClick={() => {
+                          setPasteGame(null);
+                          setSearchErr(prev => { const n = { ...prev }; delete n[item.game]; return n; });
+                        }} style={{ fontSize: '12px', padding: '5px 10px' }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </>
                   )}
 
                 </div>

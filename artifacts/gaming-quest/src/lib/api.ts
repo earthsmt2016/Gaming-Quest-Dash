@@ -156,12 +156,14 @@ export interface YouTubeVideo {
   views: number;
 }
 
-export async function searchYouTubeGuides(game: string, hint?: string): Promise<YouTubeVideo[]> {
+export async function searchYouTubeGuides(game: string, hint?: string): Promise<YouTubeVideo[] | null> {
   const url = new URL(`${BASE}/youtube-guides/${encodeURIComponent(game)}`);
   if (hint) url.searchParams.set('hint', hint);
   const res = await fetch(url.toString());
-  if (!res.ok) throw new Error('YouTube search failed');
-  return res.json();
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data && data.unavailable) return null;
+  return data as YouTubeVideo[];
 }
 
 export async function fetchFocusInsights(

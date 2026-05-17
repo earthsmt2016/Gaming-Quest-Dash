@@ -36,21 +36,30 @@ router.get('/youtube-guides/:game', async (req, res) => {
   const query = hint ? `${game} ${hint} guide` : `${game} walkthrough guide tips`;
 
   try {
-    const response = await fetch(INNERTUBE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'X-Youtube-Client-Name': '1',
-        'X-Youtube-Client-Version': '2.20240101',
-      },
-      body: JSON.stringify({ context: INNERTUBE_CONTEXT, query }),
-    });
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 8000);
+
+    let response: Response;
+    try {
+      response = await fetch(INNERTUBE_URL, {
+        method: 'POST',
+        signal: abort.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'X-Youtube-Client-Name': '1',
+          'X-Youtube-Client-Version': '2.20240101',
+        },
+        body: JSON.stringify({ context: INNERTUBE_CONTEXT, query }),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!response.ok) {
-      res.status(502).json({ error: 'YouTube API unavailable' });
+      res.json({ unavailable: true, videos: [] });
       return;
     }
 
@@ -92,8 +101,8 @@ router.get('/youtube-guides/:game', async (req, res) => {
 
     res.json(videos);
   } catch (err) {
-    console.error('YouTube InnerTube error:', err);
-    res.status(500).json({ error: 'Failed to search YouTube' });
+    console.warn('YouTube InnerTube unavailable:', (err as Error)?.message ?? err);
+    res.json({ unavailable: true, videos: [] });
   }
 });
 
