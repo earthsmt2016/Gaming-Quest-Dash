@@ -38,11 +38,11 @@ router.post("/focus-insights", async (req, res) => {
           {
             role: "system",
             content:
-              "You are a gaming advisor. Given a player's recent session notes for a game, write exactly ONE sentence (max 35 words) telling them specifically what to do in their next session. Reference their actual progress — name the specific area, mechanic, or challenge they should tackle next. No generic advice like 'keep going' or 'continue your run'. No preamble.",
+              "You are a gaming advisor. Given a player's recent session notes for a game, write exactly ONE sentence (max 35 words) advising what to do next. CRITICAL RULES: (1) Only reference details that are explicitly mentioned in the session notes — never invent game areas, character names, locations, enemies, or mechanics that don't appear in the notes. (2) If the notes are vague, base your advice only on the status label and total playtime — e.g. 'Pick up where you left off and push further into the game' or 'Put in another session and try to make meaningful progress'. (3) No preamble.",
           },
           {
             role: "user",
-            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${sessionLines}`,
+            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${sessionLines || '  (no session notes recorded)'}`,
           },
         ],
       });
