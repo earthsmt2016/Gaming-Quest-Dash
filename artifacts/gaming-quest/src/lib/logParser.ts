@@ -307,10 +307,13 @@ export function computeRecommendations(
     const types = new Set(gameLogs.map(l => l.type));
     const isCreditsRolled = gameLogs.some(l => CREDITS_RE.test(l.action));
 
+    const latestGameLog = [...gameLogs].sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+    const atBoss = latestGameLog?.type === 'boss';
+
     let priorityBonus = 0;
     let priorityLabel = '';
     if (!isCreditsRolled) {
-      if (types.has('boss')) {
+      if (atBoss) {
         priorityBonus = 100; priorityLabel = '🔥 Boss fight reached';
       } else if (types.has('purchase') && !types.has('progress')) {
         priorityBonus = 60; priorityLabel = '✨ Just started';

@@ -272,8 +272,10 @@ export function nextWeekFocus(logs: LogEntry[], manualCompletions: Set<string> =
       continue;
     }
 
-    // Boss hit, not finished or paused → high
-    if (d.types.has('boss') && !isFullyCompleted(d) && !manualCompletions.has(game) && !paused.has(game) && recentGames.has(game)) {
+    // Boss hit as most recent session (still at/approaching the boss) → high
+    const latestEntry = d.entries[d.entries.length - 1];
+    const atBoss = latestEntry?.type === 'boss';
+    if (atBoss && !isFullyCompleted(d) && !manualCompletions.has(game) && !paused.has(game) && recentGames.has(game)) {
       high.push({
         title: game,
         priority: 'high',
