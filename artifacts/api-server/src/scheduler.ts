@@ -92,16 +92,16 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
     try {
       const lines = game.sessions.map(s => `  - ${s.date} (${s.minutes}m): ${s.action}`).join('\n');
       const resp = await openai.chat.completions.create({
-        model: 'gpt-4.1-mini',
+        model: 'gpt-4.1',
         max_completion_tokens: 120,
         messages: [
           {
             role: 'system',
-            content: "You are a gaming advisor. Given a player's recent session notes for a game, write exactly ONE sentence (max 35 words) advising what to do next. CRITICAL RULES: (1) Only reference details explicitly mentioned in the session notes — never invent game areas, character names, locations, enemies, or mechanics not in the notes. (2) If notes are vague, base advice only on the status label and total playtime. (3) No preamble.",
+            content: "You are a sharp, knowledgeable gaming advisor. Given a player's recent session notes, write exactly ONE actionable sentence (max 35 words) for their next session. Rules: (1) You MAY use your knowledge of the game's mechanics, typical goals, and progression to give meaningful advice — but NEVER state or imply where the player currently is in the game unless their notes explicitly say so. (2) Prioritise anything specific mentioned in the notes. (3) Be concrete and game-specific, not generic. (4) No preamble.",
           },
           {
             role: 'user',
-            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${lines || '  (no session notes recorded)'}`,
+            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${lines || '  (no notes recorded)'}`,
           },
         ],
       });

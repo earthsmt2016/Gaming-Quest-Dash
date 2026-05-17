@@ -32,17 +32,17 @@ router.post("/focus-insights", async (req, res) => {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-4.1",
         max_completion_tokens: 120,
         messages: [
           {
             role: "system",
             content:
-              "You are a gaming advisor. Given a player's recent session notes for a game, write exactly ONE sentence (max 35 words) advising what to do next. CRITICAL RULES: (1) Only reference details that are explicitly mentioned in the session notes — never invent game areas, character names, locations, enemies, or mechanics that don't appear in the notes. (2) If the notes are vague, base your advice only on the status label and total playtime — e.g. 'Pick up where you left off and push further into the game' or 'Put in another session and try to make meaningful progress'. (3) No preamble.",
+              "You are a sharp, knowledgeable gaming advisor. Given a player's recent session notes, write exactly ONE actionable sentence (max 35 words) for their next session. Rules: (1) You MAY use your knowledge of the game's mechanics, typical goals, and progression to give meaningful advice — but NEVER state or imply where the player currently is in the game unless their notes explicitly say so. (2) Prioritise anything specific mentioned in the notes. (3) Be concrete and game-specific, not generic. (4) No preamble.",
           },
           {
             role: "user",
-            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${sessionLines || '  (no session notes recorded)'}`,
+            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${sessionLines || '  (no notes recorded)'}`,
           },
         ],
       });
