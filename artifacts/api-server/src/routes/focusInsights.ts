@@ -32,7 +32,7 @@ router.post("/focus-insights", async (req, res) => {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4.1",
+        model: "gpt-5.4",
         max_completion_tokens: 120,
         messages: [
           {

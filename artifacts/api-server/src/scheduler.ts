@@ -92,7 +92,7 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
     try {
       const lines = game.sessions.map(s => `  - ${s.date} (${s.minutes}m): ${s.action}`).join('\n');
       const resp = await openai.chat.completions.create({
-        model: 'gpt-4.1',
+        model: 'gpt-5.4',
         max_completion_tokens: 120,
         messages: [
           {
