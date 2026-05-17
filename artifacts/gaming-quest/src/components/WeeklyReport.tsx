@@ -6,10 +6,12 @@ interface WeeklyReportProps {
   summary: Summary;
   onDownload: () => void;
   pdfGenerating?: boolean;
+  onSaveToLibrary?: () => Promise<void>;
+  reportSaving?: boolean;
 }
 
 const WeeklyReport = forwardRef<HTMLElement, WeeklyReportProps>(function WeeklyReport(
-  { weekLogs, summary, onDownload, pdfGenerating },
+  { weekLogs, summary, onDownload, pdfGenerating, onSaveToLibrary, reportSaving },
   ref,
 ) {
   const start = monStart(new Date());
@@ -135,11 +137,30 @@ const WeeklyReport = forwardRef<HTMLElement, WeeklyReportProps>(function WeeklyR
         <button
           className="btn primary"
           onClick={onDownload}
-          disabled={pdfGenerating}
-          style={{ opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
+          disabled={pdfGenerating || reportSaving}
+          style={{ opacity: (pdfGenerating || reportSaving) ? 0.6 : 1, cursor: (pdfGenerating || reportSaving) ? 'not-allowed' : 'pointer' }}
         >
           {pdfGenerating ? '⏳ Generating…' : '⎙ Save this week as PDF'}
         </button>
+        {onSaveToLibrary && (
+          <button
+            className="btn soft"
+            onClick={onSaveToLibrary}
+            disabled={pdfGenerating || reportSaving}
+            style={{ opacity: (pdfGenerating || reportSaving) ? 0.6 : 1, cursor: (pdfGenerating || reportSaving) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            {reportSaving ? '⏳ Saving…' : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                Save to library
+              </>
+            )}
+          </button>
+        )}
       </div>
     </article>
   );

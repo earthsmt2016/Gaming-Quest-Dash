@@ -1,0 +1,154 @@
+import { pool } from '@workspace/db';
+import { openai } from '@workspace/integrations-openai-ai-server';
+
+const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|rolled credits/i;
+
+function monStart(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d;
+}
+
+function sunEnd(date: Date): Date {
+  const d = monStart(date);
+  d.setDate(d.getDate() + 6);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+async function generateWeeklyReport(): Promise<void> {
+  const now = new Date();
+  const weekStart = monStart(now);
+  const weekEnd = sunEnd(now);
+  const today = now.toISOString().slice(0, 10);
+
+  // Avoid double-generation on the same day
+  const dup = await pool.query(
+    `SELECT id FROM saved_reports WHERE trigger_type='scheduled' AND generated_at::date = $1`,
+    [today]
+  );
+  if (dup.rows.length > 0) {
+    console.log('Scheduler: report already generated today, skipping.');
+    return;
+  }
+
+  // Fetch logs for the current week
+  const logsResult = await pool.query(
+    `SELECT timestamp, game, action, minutes, type FROM log_entries ORDER BY timestamp`
+  );
+  const weekLogs = (logsResult.rows as { timestamp: string; game: string; action: string; minutes: number; type: string }[])
+    .filter(l => {
+      const d = new Date(l.timestamp);
+      return d >= weekStart && d <= weekEnd;
+    });
+
+  if (!weekLogs.length) {
+    console.log('Scheduler: no logs for current week — skipping.');
+    return;
+  }
+
+  // Load completions + pauses for filtering
+  const [compRows, pauseRows] = await Promise.all([
+    pool.query('SELECT game FROM game_completions').catch(() => ({ rows: [] })),
+    pool.query('SELECT game FROM game_pauses').catch(() => ({ rows: [] })),
+  ]);
+  const completedGames = new Set((compRows.rows as { game: string }[]).map(r => r.game));
+  const pausedGames = new Set((pauseRows.rows as { game: string }[]).map(r => r.game));
+
+  // Build per-game map for active games
+  const gameMap: Record<string, typeof weekLogs> = {};
+  weekLogs.forEach(l => {
+    if (!gameMap[l.game]) gameMap[l.game] = [];
+    gameMap[l.game].push(l);
+  });
+
+  const focusGames = Object.entries(gameMap)
+    .filter(([game, logs]) => {
+      if (completedGames.has(game) || pausedGames.has(game)) return false;
+      if (logs.some(l => CREDITS_RE.test(l.action))) return false;
+      return true;
+    })
+    .slice(0, 5)
+    .map(([game, logs]) => {
+      const wm = logs.reduce((s, l) => s + l.minutes, 0);
+      return {
+        title: game,
+        label: wm < 30 ? 'Light progress' : 'On track',
+        sessions: logs.map(l => ({ date: l.timestamp.slice(0, 10), action: l.action, minutes: l.minutes })),
+      };
+    });
+
+  // Generate AI insights
+  const aiInsights: Record<string, string> = {};
+  for (const game of focusGames) {
+    try {
+      const lines = game.sessions.map(s => `  - ${s.date} (${s.minutes}m): ${s.action}`).join('\n');
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4.1-mini',
+        max_completion_tokens: 120,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a gaming advisor. Given a player\'s recent session notes for a game, write exactly ONE sentence (max 35 words) telling them specifically what to do in their next session. Reference their actual progress. No generic advice. No preamble.',
+          },
+          {
+            role: 'user',
+            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${lines}`,
+          },
+        ],
+      });
+      aiInsights[game.title] = resp.choices[0]?.message?.content?.trim() || 'Continue from your last session.';
+    } catch {
+      aiInsights[game.title] = 'Continue from your last session.';
+    }
+  }
+
+  const title = `Week of ${fmtDate(weekStart)} – ${fmtDate(weekEnd)}`;
+
+  await pool.query(
+    `INSERT INTO saved_reports (title, period_from, period_to, logs_json, ai_insights_json, trigger_type)
+     VALUES ($1,$2,$3,$4,$5,'scheduled')`,
+    [
+      title,
+      weekStart.toISOString().slice(0, 10),
+      weekEnd.toISOString().slice(0, 10),
+      JSON.stringify(weekLogs),
+      JSON.stringify(aiInsights),
+    ]
+  );
+
+  console.log(`Scheduler: auto-generated report "${title}"`);
+}
+
+export function startScheduler(): void {
+  console.log('Scheduler: started (checks every 60s)');
+
+  setInterval(async () => {
+    try {
+      const result = await pool.query(
+        'SELECT day_of_week, hour, minute, enabled FROM report_schedule LIMIT 1'
+      );
+      if (!result.rows.length) return;
+      const { day_of_week, hour, minute, enabled } = result.rows[0];
+      if (!enabled) return;
+
+      const now = new Date();
+      if (
+        now.getDay() === day_of_week &&
+        now.getHours() === hour &&
+        now.getMinutes() === minute
+      ) {
+        console.log('Scheduler: trigger time reached, generating report…');
+        await generateWeeklyReport();
+      }
+    } catch {
+      // Table doesn't exist yet — ignore until first schedule is saved
+    }
+  }, 60_000);
+}

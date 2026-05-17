@@ -7,6 +7,7 @@ import PeriodDownload from './components/PeriodDownload';
 import WeeklyReport from './components/WeeklyReport';
 import NeedsWork from './components/NeedsWork';
 import DailyCheckin from './components/DailyCheckin';
+import ReportsPage from './components/ReportsPage';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
 import {
@@ -24,7 +25,7 @@ import {
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
-import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, fetchPaused, togglePaused, fetchGuides, setGuide, deleteGuide, updateLog, deleteLog } from './lib/api';
+import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, fetchPaused, togglePaused, fetchGuides, setGuide, deleteGuide, updateLog, deleteLog, saveReport } from './lib/api';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -47,6 +48,8 @@ export default function App() {
   const [rawLogs, setRawLogs] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [reportSaving, setReportSaving] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [gameFilter, setGameFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -244,6 +247,33 @@ export default function App() {
 
   const [pdfGenerating, setPdfGenerating] = useState(false);
 
+  const handleSaveWeekToLibrary = useCallback(async () => {
+    if (reportSaving || pdfGenerating) return;
+    const wl = getWeekLogs(logs);
+    if (!wl.length) { alert('No logs for this week yet.'); return; }
+    setReportSaving(true);
+    try {
+      const start = monStart(new Date()), end = sunEnd(new Date());
+      const focusItems = nextWeekFocus(wl, completions, paused);
+      const rawInsights = await fetchFocusInsights(focusItems);
+      const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
+      const title = `Week of ${formatDate(start)} – ${formatDate(end)}`;
+      await saveReport({
+        title,
+        period_from: start.toISOString().slice(0, 10),
+        period_to: end.toISOString().slice(0, 10),
+        logs_json: wl.map(l => ({ timestamp: l.timestamp, game: l.game, action: l.action, minutes: l.minutes, type: l.type })),
+        ai_insights_json: aiInsights,
+        trigger_type: 'manual',
+      });
+      alert('Report saved to library!');
+    } catch (err) {
+      alert(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setReportSaving(false);
+    }
+  }, [logs, reportSaving, pdfGenerating, completions, paused]);
+
   const handleDownloadWeek = useCallback(async () => {
     if (pdfGenerating) return;
     setPdfGenerating(true);
@@ -316,6 +346,7 @@ export default function App() {
           onHamburger={() => setSidebarOpen(o => !o)}
           onWeekReport={scrollToReport}
           onDownloadWeek={handleDownloadWeek}
+          onOpenReports={() => setReportsOpen(true)}
           pdfGenerating={pdfGenerating}
         />
 
@@ -369,6 +400,10 @@ export default function App() {
                 Could not reach the server. Check your connection and reload.
               </div>
             )}
+            <ReportsPage
+              open={reportsOpen}
+              onClose={() => setReportsOpen(false)}
+            />
             <GameLibrary
               open={libraryOpen}
               onClose={() => setLibraryOpen(false)}
@@ -412,6 +447,8 @@ export default function App() {
                   summary={weeklySummary}
                   onDownload={handleDownloadWeek}
                   pdfGenerating={pdfGenerating}
+                  onSaveToLibrary={handleSaveWeekToLibrary}
+                  reportSaving={reportSaving}
                 />
                 <NeedsWork
                   items={needsWorkItems}

@@ -176,3 +176,80 @@ export async function fetchFocusInsights(
   const data = await res.json();
   return data.insights ?? [];
 }
+
+// ─── Saved Reports ────────────────────────────────────────────────────────────
+
+export interface ReportSchedule {
+  id: number | null;
+  day_of_week: number;
+  hour: number;
+  minute: number;
+  enabled: boolean;
+}
+
+export interface SavedReportMeta {
+  id: number;
+  title: string;
+  period_from: string;
+  period_to: string;
+  trigger_type: 'manual' | 'scheduled';
+  generated_at: string;
+  log_count: number;
+}
+
+export interface SavedReportFull extends SavedReportMeta {
+  logs_json: Array<{ timestamp: string; game: string; action: string; minutes: number; type: string }>;
+  ai_insights_json: Record<string, string>;
+}
+
+export async function fetchReportSchedule(): Promise<ReportSchedule> {
+  const res = await fetch(`${BASE}/report-schedule`);
+  if (!res.ok) return { id: null, day_of_week: 0, hour: 17, minute: 0, enabled: false };
+  return res.json();
+}
+
+export async function saveReportSchedule(s: Omit<ReportSchedule, 'id'>): Promise<ReportSchedule> {
+  const res = await fetch(`${BASE}/report-schedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(s),
+  });
+  if (!res.ok) throw new Error('Failed to save schedule');
+  return res.json();
+}
+
+export async function fetchSavedReports(): Promise<SavedReportMeta[]> {
+  const res = await fetch(`${BASE}/saved-reports`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchSavedReport(id: number): Promise<SavedReportFull> {
+  const res = await fetch(`${BASE}/saved-reports/${id}`);
+  if (!res.ok) throw new Error('Failed to fetch report');
+  return res.json();
+}
+
+export interface SaveReportPayload {
+  title: string;
+  period_from: string;
+  period_to: string;
+  logs_json: Array<{ timestamp: string; game: string; action: string; minutes: number; type: string }>;
+  ai_insights_json: Record<string, string>;
+  trigger_type?: 'manual' | 'scheduled';
+}
+
+export async function saveReport(payload: SaveReportPayload): Promise<SavedReportMeta> {
+  const res = await fetch(`${BASE}/saved-reports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to save report');
+  return res.json();
+}
+
+export async function deleteReport(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/saved-reports/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete report');
+}
