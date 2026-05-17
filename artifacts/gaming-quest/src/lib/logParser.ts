@@ -243,6 +243,8 @@ export function nextWork(
 export interface Recommendation {
   game: string;
   suggestedMinutes: number;
+  priorityLabel: string;
+  sessions: { date: string; action: string; minutes: number }[];
   reason: string;
   status: NeedsWorkItem['status'];
 }
@@ -295,12 +297,32 @@ export function computeRecommendations(
 
   if (!activeGames.length) return [];
 
-  // Score: higher = needs more attention
+  // Score: higher = needs more attention + strategic priority
   const scored = activeGames.map(([game, stats]) => {
     const days = daysSince(stats.lastDate);
     const weekPenalty = stats.weekMin === 0 ? 30 : stats.weekMin < 30 ? 10 : 0;
-    const score = days + weekPenalty;
-    return { game, stats, score };
+
+    // Strategic priority based on game type history
+    const gameLogs = allLogs.filter(l => l.game === game);
+    const types = new Set(gameLogs.map(l => l.type));
+    const isCreditsRolled = gameLogs.some(l => CREDITS_RE.test(l.action));
+
+    let priorityBonus = 0;
+    let priorityLabel = '';
+    if (!isCreditsRolled) {
+      if (types.has('boss')) {
+        priorityBonus = 100; priorityLabel = '🔥 Boss fight reached';
+      } else if (types.has('purchase') && !types.has('progress')) {
+        priorityBonus = 60; priorityLabel = '✨ Just started';
+      } else if (types.has('progress') && !types.has('rank-up')) {
+        priorityBonus = 50; priorityLabel = '📖 Active story run';
+      } else if (types.has('rank-up') && (types.has('progress') || types.has('boss'))) {
+        priorityBonus = 40; priorityLabel = '⚔️ Story unfinished';
+      }
+    }
+
+    const score = days + weekPenalty + priorityBonus;
+    return { game, stats, score, priorityLabel };
   }).sort((a, b) => b.score - a.score);
 
   // Decide how many games to recommend
@@ -343,7 +365,11 @@ export function computeRecommendations(
       reason = `Only ${pick.stats.weekMin}m this week — a short push would make a real difference.`;
     }
 
-    return { game: pick.game, suggestedMinutes: mins, reason, status };
+    const sessions = [...allLogs.filter(l => l.game === pick.game)]
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .map(l => ({ date: l.timestamp.slice(0, 10), action: l.action, minutes: l.minutes }));
+
+    return { game: pick.game, suggestedMinutes: mins, reason, status, priorityLabel: pick.priorityLabel, sessions };
   });
 }
 

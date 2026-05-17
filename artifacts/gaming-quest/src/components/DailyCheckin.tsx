@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { LogEntry, Recommendation, computeRecommendations, badgeFor } from '../lib/logParser';
+import { fetchFocusInsights } from '../lib/api';
 
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
@@ -30,6 +31,8 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   const [useCustom, setUseCustom] = useState(false);
   const [submitted, setSubmitted] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [aiSteps, setAiSteps] = useState<Record<string, string>>({});
+  const [aiLoading, setAiLoading] = useState(false);
 
   const availableMinutes = submitted;
 
@@ -38,7 +41,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
     return computeRecommendations(availableMinutes, logs, manualCompletions, paused);
   }, [availableMinutes, logs, manualCompletions, paused]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     let mins: number;
     if (useCustom) {
       mins = parseInt(customStr, 10);
@@ -48,6 +51,28 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
       mins = selected;
     }
     setSubmitted(mins);
+    setAiSteps({});
+
+    const recs = computeRecommendations(mins, logs, manualCompletions, paused);
+    if (recs.length > 0) {
+      setAiLoading(true);
+      try {
+        const insights = await fetchFocusInsights(
+          recs.map(r => ({
+            title: r.game,
+            label: r.priorityLabel || 'Active',
+            sessions: r.sessions,
+          }))
+        );
+        const steps: Record<string, string> = {};
+        insights.forEach(i => { steps[i.title] = i.nextStep; });
+        setAiSteps(steps);
+      } catch {
+        // AI unavailable — silent fallback
+      } finally {
+        setAiLoading(false);
+      }
+    }
   };
 
   const handleReset = () => {
@@ -55,6 +80,8 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
     setSelected(null);
     setCustomStr('');
     setUseCustom(false);
+    setAiSteps({});
+    setAiLoading(false);
   };
 
   const copyGame = (game: string, mins: number) => {
@@ -175,11 +202,49 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
           font-size: 15px;
           margin-bottom: 3px;
         }
+        .dc-priority-label {
+          font-size: 11px;
+          color: var(--accent);
+          font-weight: 600;
+          margin-bottom: 4px;
+          letter-spacing: 0.01em;
+        }
         .dc-rec-reason {
           font-size: 12px;
           color: var(--muted);
           line-height: 1.4;
         }
+        .dc-ai-step {
+          font-size: 12px;
+          color: var(--text);
+          line-height: 1.45;
+          margin-top: 6px;
+          padding: 6px 8px;
+          background: var(--paper-2);
+          border-radius: 6px;
+          border-left: 2px solid var(--accent);
+        }
+        .dc-ai-loading {
+          font-size: 11px;
+          color: var(--muted);
+          margin-top: 6px;
+          font-style: italic;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        @keyframes dc-pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
+        }
+        .dc-dot {
+          width: 5px; height: 5px;
+          border-radius: 50%;
+          background: var(--accent);
+          animation: dc-pulse 1.2s ease-in-out infinite;
+        }
+        .dc-dot:nth-child(2) { animation-delay: 0.2s; }
+        .dc-dot:nth-child(3) { animation-delay: 0.4s; }
         .dc-rec-badge {
           margin-left: 6px;
           vertical-align: middle;
@@ -220,7 +285,6 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
       `}</style>
 
       <div className="dc-wrap">
-        {/* Collapsible header */}
         <div className="dc-header" onClick={() => setOpen(o => !o)}>
           <div className="dc-header-left">
             <div className="dc-icon">🎮</div>
@@ -240,7 +304,6 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
 
         {open && (
           <div className="dc-body">
-            {/* Time picker (only shown before submitting) */}
             {!submitted && (
               <>
                 <div style={{ fontSize: '13px', color: 'var(--muted)' }}>
@@ -292,14 +355,13 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
               </>
             )}
 
-            {/* Recommendations */}
             {submitted && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '15px' }}>Your {fmtMins(submitted)} plan</div>
                     <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-                      Based on what's been neglected most recently
+                      Ranked by strategic priority + recent neglect
                     </div>
                   </div>
                   <button
@@ -325,13 +387,29 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                                 {i === 0 ? '① Start with' : i === 1 ? '② Then' : '③ Finish with'}
                               </span>
                             </div>
-                            <div className="dc-rec-game" style={{ marginTop: '3px' }}>
+                            {rec.priorityLabel && (
+                              <div className="dc-priority-label">{rec.priorityLabel}</div>
+                            )}
+                            <div className="dc-rec-game" style={{ marginTop: rec.priorityLabel ? '1px' : '3px' }}>
                               {rec.game}
                               <span className={`badge ${badgeFor(rec.status)} dc-rec-badge`}>
                                 {rec.status}
                               </span>
                             </div>
                             <div className="dc-rec-reason">{rec.reason}</div>
+                            {aiLoading && !aiSteps[rec.game] && (
+                              <div className="dc-ai-loading">
+                                <div className="dc-dot" />
+                                <div className="dc-dot" />
+                                <div className="dc-dot" />
+                                <span>Getting AI suggestion…</span>
+                              </div>
+                            )}
+                            {aiSteps[rec.game] && (
+                              <div className="dc-ai-step">
+                                ✦ {aiSteps[rec.game]}
+                              </div>
+                            )}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', flexShrink: 0 }}>
                             <div className="dc-rec-time">{fmtMins(rec.suggestedMinutes)}</div>
