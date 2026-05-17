@@ -427,17 +427,17 @@ export default function App() {
                   onDownloadWeek={handleDownloadWeek}
                   pdfGenerating={pdfGenerating}
                 />
+                <DailyCheckin
+                  logs={logs}
+                  manualCompletions={completions}
+                  paused={paused}
+                />
                 <StatsStrip
                   entries={filtered.length}
                   playtime={playtime}
                   games={gamesCount}
                   needsWork={focusCount}
                   streak={streak}
-                />
-                <DailyCheckin
-                  logs={logs}
-                  manualCompletions={completions}
-                  paused={paused}
                 />
                 <QuestTable entries={filtered} onEdit={setEditingEntry} />
                 <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
