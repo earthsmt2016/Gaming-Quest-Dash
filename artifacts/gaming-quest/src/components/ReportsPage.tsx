@@ -9,6 +9,7 @@ import {
   fetchSavedReport,
   deleteReport,
 } from '../lib/api';
+import { buildPdfReport, printReport } from '../lib/reportBuilder';
 
 const DAYS = [
   { value: 0, label: 'Sunday' },
@@ -58,6 +59,26 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
   const [viewLoading, setViewLoading] = useState(false);
 
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
+
+  const handleDownloadPdf = useCallback(async (r: SavedReportMeta) => {
+    if (pdfLoadingId) return;
+    setPdfLoadingId(r.id);
+    try {
+      const full = await fetchSavedReport(r.id);
+      const from = new Date(r.period_from);
+      const to = new Date(r.period_to);
+      const logs = (full.logs_json ?? []).map((l: any) => ({
+        ...l,
+        date: new Date(l.timestamp),
+      }));
+      const insights = full.ai_insights_json ?? {};
+      const html = buildPdfReport(from, to, logs, r.title, insights);
+      printReport(html);
+    } finally {
+      setPdfLoadingId(null);
+    }
+  }, [pdfLoadingId]);
 
   const loadAll = useCallback(async () => {
     setReportsLoading(true);
@@ -349,6 +370,15 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
                             style={{ fontSize: '12px', padding: '4px 10px' }}
                           >
                             {expandedId === r.id ? 'Collapse ▲' : 'View ▼'}
+                          </button>
+                          <button
+                            className="btn soft"
+                            onClick={e => { e.stopPropagation(); handleDownloadPdf(r); }}
+                            disabled={pdfLoadingId === r.id}
+                            style={{ fontSize: '12px', padding: '4px 10px' }}
+                            title="Download PDF"
+                          >
+                            {pdfLoadingId === r.id ? '…' : '⬇ PDF'}
                           </button>
                           <button
                             className="btn soft"
