@@ -240,6 +240,113 @@ export function nextWork(
     .slice(0, 7);
 }
 
+export interface Recommendation {
+  game: string;
+  suggestedMinutes: number;
+  reason: string;
+  status: NeedsWorkItem['status'];
+}
+
+function roundToFive(n: number): number {
+  return Math.max(5, Math.round(n / 5) * 5);
+}
+
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / 86_400_000);
+}
+
+export function computeRecommendations(
+  availableMinutes: number,
+  allLogs: LogEntry[],
+  manualCompletions: Set<string> = new Set(),
+  paused: Set<string> = new Set(),
+): Recommendation[] {
+  if (!availableMinutes || !allLogs.length) return [];
+
+  const cut = new Date();
+  cut.setDate(cut.getDate() - 60);
+  const recent = allLogs.filter(l => l.date >= cut);
+
+  const weekStart = monStart(new Date());
+  const weekEnd = sunEnd(new Date());
+  const weekLogs = allLogs.filter(l => l.date >= weekStart && l.date <= weekEnd);
+
+  const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|rolled credits/i;
+
+  // Build per-game stats for active games only
+  const gameMap: Record<string, { lastDate: Date; weekMin: number; totalMin: number; sessions: number }> = {};
+  recent.forEach(l => {
+    if (!gameMap[l.game]) gameMap[l.game] = { lastDate: l.date, weekMin: 0, totalMin: 0, sessions: 0 };
+    if (l.date > gameMap[l.game].lastDate) gameMap[l.game].lastDate = l.date;
+    gameMap[l.game].totalMin += l.minutes;
+    gameMap[l.game].sessions += 1;
+  });
+  weekLogs.forEach(l => {
+    if (gameMap[l.game]) gameMap[l.game].weekMin += l.minutes;
+  });
+
+  const activeGames = Object.entries(gameMap).filter(([game]) => {
+    if (paused.has(game)) return false;
+    if (manualCompletions.has(game)) return false;
+    const gameLogs = allLogs.filter(l => l.game === game);
+    if (gameLogs.some(l => CREDITS_RE.test(l.action))) return false;
+    return true;
+  });
+
+  if (!activeGames.length) return [];
+
+  // Score: higher = needs more attention
+  const scored = activeGames.map(([game, stats]) => {
+    const days = daysSince(stats.lastDate);
+    const weekPenalty = stats.weekMin === 0 ? 30 : stats.weekMin < 30 ? 10 : 0;
+    const score = days + weekPenalty;
+    return { game, stats, score };
+  }).sort((a, b) => b.score - a.score);
+
+  // Decide how many games to recommend
+  const maxGames = availableMinutes < 30 ? 1 : availableMinutes < 60 ? 2 : 3;
+  const MIN_PER_GAME = 15;
+  const picks: typeof scored = [];
+  for (const candidate of scored) {
+    if (picks.length >= maxGames) break;
+    const remaining = availableMinutes - picks.reduce((s, p) => s + MIN_PER_GAME, 0);
+    if (remaining >= MIN_PER_GAME) picks.push(candidate);
+  }
+
+  // Split time across picks
+  const splits: number[] = [];
+  if (picks.length === 1) {
+    splits.push(availableMinutes);
+  } else if (picks.length === 2) {
+    const first = roundToFive(availableMinutes * 0.6);
+    splits.push(first, availableMinutes - first);
+  } else {
+    const first = roundToFive(availableMinutes * 0.5);
+    const second = roundToFive(availableMinutes * 0.3);
+    splits.push(first, second, availableMinutes - first - second);
+  }
+
+  return picks.map((pick, i) => {
+    const mins = Math.max(MIN_PER_GAME, splits[i] ?? MIN_PER_GAME);
+    const days = daysSince(pick.stats.lastDate);
+
+    let status: NeedsWorkItem['status'] = 'On track';
+    let reason = `Played ${pick.stats.weekMin}m this week — keep the momentum going.`;
+
+    if (pick.stats.weekMin === 0) {
+      status = 'Needs attention';
+      reason = days === 0
+        ? 'No session logged yet today — great time to start.'
+        : `No sessions in ${days} day${days === 1 ? '' : 's'} — worth revisiting.`;
+    } else if (pick.stats.weekMin < 30) {
+      status = 'Light progress';
+      reason = `Only ${pick.stats.weekMin}m this week — a short push would make a real difference.`;
+    }
+
+    return { game: pick.game, suggestedMinutes: mins, reason, status };
+  });
+}
+
 /** Returns the current consecutive-day play streak (days in a row with ≥1 log). */
 export function computeStreak(logs: LogEntry[]): number {
   if (!logs.length) return 0;

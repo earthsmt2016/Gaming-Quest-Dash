@@ -6,6 +6,7 @@ import QuestTable from './components/QuestTable';
 import PeriodDownload from './components/PeriodDownload';
 import WeeklyReport from './components/WeeklyReport';
 import NeedsWork from './components/NeedsWork';
+import DailyCheckin from './components/DailyCheckin';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
 import {
@@ -19,6 +20,7 @@ import {
   summarise,
   nextWork,
   computeStreak,
+  computeRecommendations,
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
@@ -396,6 +398,11 @@ export default function App() {
                   games={gamesCount}
                   needsWork={focusCount}
                   streak={streak}
+                />
+                <DailyCheckin
+                  logs={logs}
+                  manualCompletions={completions}
+                  paused={paused}
                 />
                 <QuestTable entries={filtered} onEdit={setEditingEntry} />
                 <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
