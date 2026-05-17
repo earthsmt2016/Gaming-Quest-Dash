@@ -240,8 +240,8 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
         }
         .rp-empty { padding: 32px; text-align: center; color: var(--muted); font-size: 14px; }
         @media (max-width: 600px) {
-          .rp-schedule-grid { grid-template-columns: 1fr 1fr; }
-          .rp-schedule-grid > :last-child { grid-column: 1 / -1; }
+          .rp-schedule-grid { grid-template-columns: 1fr; }
+          .rp-input { width: 100%; box-sizing: border-box; }
           .rp-stat-grid { grid-template-columns: repeat(3, 1fr); }
         }
       `}</style>
