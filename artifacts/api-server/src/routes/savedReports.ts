@@ -4,10 +4,10 @@ import { generateWeeklyReport } from '../scheduler';
 
 const router = Router();
 
-// POST /api/reports/generate-now — manual trigger for testing / timezone workaround
+// POST /api/reports/generate-now — manual trigger; saves as 'manual' so it never blocks the auto-scheduler
 router.post('/reports/generate-now', async (_req, res) => {
   try {
-    await generateWeeklyReport();
+    await generateWeeklyReport('manual');
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Generation failed', detail: String(err) });

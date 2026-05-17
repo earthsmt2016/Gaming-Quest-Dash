@@ -22,20 +22,22 @@ function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-async function generateWeeklyReport(): Promise<void> {
+async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'scheduled'): Promise<void> {
   const now = new Date();
   const weekStart = monStart(now);
   const weekEnd = sunEnd(now);
   const today = now.toISOString().slice(0, 10);
 
-  // Avoid double-generation on the same day
-  const dup = await pool.query(
-    `SELECT id FROM saved_reports WHERE trigger_type='scheduled' AND generated_at::date = $1`,
-    [today]
-  );
-  if (dup.rows.length > 0) {
-    console.log('Scheduler: report already generated today, skipping.');
-    return;
+  // Avoid double-generation on the same calendar day (scheduled only — manual always runs)
+  if (triggerType === 'scheduled') {
+    const dup = await pool.query(
+      `SELECT id FROM saved_reports WHERE trigger_type='scheduled' AND generated_at::date = $1`,
+      [today]
+    );
+    if (dup.rows.length > 0) {
+      console.log('Scheduler: report already generated today, skipping.');
+      return;
+    }
   }
 
   // Fetch logs for the current week
@@ -95,11 +97,11 @@ async function generateWeeklyReport(): Promise<void> {
         messages: [
           {
             role: 'system',
-            content: 'You are a gaming advisor. Given a player\'s recent session notes for a game, write exactly ONE sentence (max 35 words) telling them specifically what to do in their next session. Reference their actual progress. No generic advice. No preamble.',
+            content: "You are a gaming advisor. Given a player's recent session notes for a game, write exactly ONE sentence (max 35 words) advising what to do next. CRITICAL RULES: (1) Only reference details explicitly mentioned in the session notes — never invent game areas, character names, locations, enemies, or mechanics not in the notes. (2) If notes are vague, base advice only on the status label and total playtime. (3) No preamble.",
           },
           {
             role: 'user',
-            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${lines}`,
+            content: `Game: ${game.title}\nStatus: ${game.label}\nRecent sessions:\n${lines || '  (no session notes recorded)'}`,
           },
         ],
       });
@@ -113,17 +115,18 @@ async function generateWeeklyReport(): Promise<void> {
 
   await pool.query(
     `INSERT INTO saved_reports (title, period_from, period_to, logs_json, ai_insights_json, trigger_type)
-     VALUES ($1,$2,$3,$4,$5,'scheduled')`,
+     VALUES ($1,$2,$3,$4,$5,$6)`,
     [
       title,
       weekStart.toISOString().slice(0, 10),
       weekEnd.toISOString().slice(0, 10),
       JSON.stringify(weekLogs),
       JSON.stringify(aiInsights),
+      triggerType,
     ]
   );
 
-  console.log(`Scheduler: auto-generated report "${title}"`);
+  console.log(`Scheduler: ${triggerType === 'scheduled' ? 'auto-generated' : 'manually generated'} report "${title}"`);
 }
 
 export { generateWeeklyReport };
