@@ -251,6 +251,14 @@ export async function saveReport(payload: SaveReportPayload): Promise<SavedRepor
   return res.json();
 }
 
+export async function patchReportInsights(id: number, ai_insights_json: Record<string, string>): Promise<void> {
+  await fetch(`${BASE}/saved-reports/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ai_insights_json }),
+  });
+}
+
 export async function deleteReport(id: number): Promise<void> {
   const res = await fetch(`${BASE}/saved-reports/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete report');

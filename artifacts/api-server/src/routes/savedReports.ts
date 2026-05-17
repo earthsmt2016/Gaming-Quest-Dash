@@ -121,6 +121,22 @@ router.post('/saved-reports', async (req, res) => {
   }
 });
 
+// PATCH /api/saved-reports/:id — update AI insights after generation
+router.patch('/saved-reports/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { ai_insights_json } = req.body;
+    const r = await pool.query(
+      'UPDATE saved_reports SET ai_insights_json=$1 WHERE id=$2 RETURNING *',
+      [JSON.stringify(ai_insights_json ?? {}), id]
+    );
+    if (!r.rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(r.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update report', detail: String(err) });
+  }
+});
+
 // DELETE /api/saved-reports/:id
 router.delete('/saved-reports/:id', async (req, res) => {
   try {

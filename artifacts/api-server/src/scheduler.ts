@@ -129,6 +129,9 @@ async function generateWeeklyReport(): Promise<void> {
 export function startScheduler(): void {
   console.log('Scheduler: started (checks every 60s)');
 
+  // Track the last date we fired so we never double-generate on the same calendar day
+  let lastFiredDate = '';
+
   setInterval(async () => {
     try {
       const result = await pool.query(
@@ -139,16 +142,26 @@ export function startScheduler(): void {
       if (!enabled) return;
 
       const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+
+      // Already fired today — skip
+      if (lastFiredDate === todayStr) return;
+
+      const scheduledMinutes = hour * 60 + minute;
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+      // Fire if: right day AND current time has reached or passed scheduled time (within 2h window)
       if (
         now.getDay() === day_of_week &&
-        now.getHours() === hour &&
-        now.getMinutes() === minute
+        nowMinutes >= scheduledMinutes &&
+        nowMinutes < scheduledMinutes + 120
       ) {
         console.log('Scheduler: trigger time reached, generating report…');
+        lastFiredDate = todayStr;
         await generateWeeklyReport();
       }
-    } catch {
-      // Table doesn't exist yet — ignore until first schedule is saved
+    } catch (err) {
+      console.warn('Scheduler check error:', (err as Error)?.message);
     }
   }, 60_000);
 }

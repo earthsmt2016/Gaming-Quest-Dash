@@ -25,7 +25,7 @@ import {
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
-import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, fetchPaused, togglePaused, fetchGuides, setGuide, deleteGuide, updateLog, deleteLog, saveReport } from './lib/api';
+import { fetchLogs, saveLogs, clearLogs, fetchFocusInsights, fetchCompletions, toggleCompletion, fetchPaused, togglePaused, fetchGuides, setGuide, deleteGuide, updateLog, deleteLog, saveReport, patchReportInsights } from './lib/api';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -254,22 +254,29 @@ export default function App() {
     setReportSaving(true);
     try {
       const start = monStart(new Date()), end = sunEnd(new Date());
-      const focusItems = nextWeekFocus(wl, completions, paused);
-      const rawInsights = await fetchFocusInsights(focusItems);
-      const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
       const title = `Week of ${formatDate(start)} – ${formatDate(end)}`;
-      await saveReport({
+      // Save immediately with no AI insights — report is visible right away
+      const saved = await saveReport({
         title,
         period_from: start.toISOString().slice(0, 10),
         period_to: end.toISOString().slice(0, 10),
         logs_json: wl.map(l => ({ timestamp: l.timestamp, game: l.game, action: l.action, minutes: l.minutes, type: l.type })),
-        ai_insights_json: aiInsights,
+        ai_insights_json: {},
         trigger_type: 'manual',
       });
       alert('Report saved to library!');
+      setReportSaving(false);
+      // Enrich with AI insights silently in the background
+      const focusItems = nextWeekFocus(wl, completions, paused);
+      if (focusItems.length > 0) {
+        const rawInsights = await fetchFocusInsights(focusItems);
+        if (rawInsights.length > 0) {
+          const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
+          await patchReportInsights(saved.id, aiInsights);
+        }
+      }
     } catch (err) {
       alert(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
       setReportSaving(false);
     }
   }, [logs, reportSaving, pdfGenerating, completions, paused]);
