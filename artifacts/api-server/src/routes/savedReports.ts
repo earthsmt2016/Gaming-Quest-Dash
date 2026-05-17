@@ -1,7 +1,18 @@
 import { Router } from 'express';
 import { pool } from '@workspace/db';
+import { generateWeeklyReport } from '../scheduler';
 
 const router = Router();
+
+// POST /api/reports/generate-now — manual trigger for testing / timezone workaround
+router.post('/reports/generate-now', async (_req, res) => {
+  try {
+    await generateWeeklyReport();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Generation failed', detail: String(err) });
+  }
+});
 
 const ensureTables = async () => {
   await pool.query(`

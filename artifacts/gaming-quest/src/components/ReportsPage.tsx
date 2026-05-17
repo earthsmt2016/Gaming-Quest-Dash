@@ -8,6 +8,7 @@ import {
   fetchSavedReports,
   fetchSavedReport,
   deleteReport,
+  triggerReport,
 } from '../lib/api';
 import { buildPdfReport, printReport } from '../lib/reportBuilder';
 
@@ -38,6 +39,20 @@ function fmtDateTime(s: string): string {
 
 function padTime(h: number, m: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// The server stores schedule times in UTC. Convert to/from local time for display.
+function utcHMToLocal(utcHour: number, utcMin: number): string {
+  const d = new Date();
+  d.setUTCHours(utcHour, utcMin, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function localHMToUtc(localTime: string): { hour: number; minute: number } {
+  const [h, m] = localTime.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return { hour: d.getUTCHours(), minute: d.getUTCMinutes() };
 }
 
 interface ReportsPageProps {
@@ -85,7 +100,7 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
     try {
       const [sched, reps] = await Promise.all([fetchReportSchedule(), fetchSavedReports()]);
       setSchedule(sched);
-      setScheduleTime(padTime(sched.hour, sched.minute));
+      setScheduleTime(utcHMToLocal(sched.hour, sched.minute));
       setReports(reps);
     } catch {
       // ignore
@@ -98,10 +113,23 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
     if (open) loadAll();
   }, [open, loadAll]);
 
+  const [generating, setGenerating] = useState(false);
+
+  const handleGenerateNow = async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      await triggerReport();
+      await loadAll();
+    } catch {
+      alert('Could not generate report. Check that you have log entries this week.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleSaveSchedule = async () => {
-    const [hStr, mStr] = scheduleTime.split(':');
-    const hour = parseInt(hStr, 10);
-    const minute = parseInt(mStr, 10);
+    const { hour, minute } = localHMToUtc(scheduleTime);
     setScheduleSaving(true);
     try {
       const saved = await saveReportSchedule({ day_of_week: schedule.day_of_week, hour, minute, enabled: schedule.enabled });
@@ -334,6 +362,15 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
                     : 'Schedule disabled — toggle to enable'}
                 </span>
               </div>
+
+              <button
+                className="btn soft"
+                onClick={handleGenerateNow}
+                disabled={generating}
+                style={{ marginTop: '10px', fontSize: '13px', padding: '6px 14px' }}
+              >
+                {generating ? '⏳ Generating…' : '⚡ Generate now'}
+              </button>
             </section>
 
             {/* ── Reports list ── */}

@@ -126,6 +126,8 @@ async function generateWeeklyReport(): Promise<void> {
   console.log(`Scheduler: auto-generated report "${title}"`);
 }
 
+export { generateWeeklyReport };
+
 export function startScheduler(): void {
   console.log('Scheduler: started (checks every 60s)');
 
