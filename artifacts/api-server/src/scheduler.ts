@@ -40,15 +40,15 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
     }
   }
 
-  // Fetch logs for the current week
+  // Fetch ALL logs (used for AI context); filter to current week separately for the report snapshot
   const logsResult = await pool.query(
     `SELECT timestamp, game, action, minutes, type FROM log_entries ORDER BY timestamp`
   );
-  const weekLogs = (logsResult.rows as { timestamp: string; game: string; action: string; minutes: number; type: string }[])
-    .filter(l => {
-      const d = new Date(l.timestamp);
-      return d >= weekStart && d <= weekEnd;
-    });
+  const allLogs = logsResult.rows as { timestamp: string; game: string; action: string; minutes: number; type: string }[];
+  const weekLogs = allLogs.filter(l => {
+    const d = new Date(l.timestamp);
+    return d >= weekStart && d <= weekEnd;
+  });
 
   if (!weekLogs.length) {
     console.log('Scheduler: no logs for current week — skipping.');
@@ -63,26 +63,32 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
   const completedGames = new Set((compRows.rows as { game: string }[]).map(r => r.game));
   const pausedGames = new Set((pauseRows.rows as { game: string }[]).map(r => r.game));
 
-  // Build per-game map for active games
-  const gameMap: Record<string, typeof weekLogs> = {};
-  weekLogs.forEach(l => {
-    if (!gameMap[l.game]) gameMap[l.game] = [];
-    gameMap[l.game].push(l);
+  // Build per-game map using ALL logs for AI context, but only active-this-week games
+  const weekGameSet = new Set(weekLogs.map(l => l.game));
+  const allGameMap: Record<string, typeof allLogs> = {};
+  allLogs.forEach(l => {
+    if (!allGameMap[l.game]) allGameMap[l.game] = [];
+    allGameMap[l.game].push(l);
   });
 
-  const focusGames = Object.entries(gameMap)
+  const focusGames = Object.entries(allGameMap)
     .filter(([game, logs]) => {
+      if (!weekGameSet.has(game)) return false; // only games played this week
       if (completedGames.has(game) || pausedGames.has(game)) return false;
       if (logs.some(l => CREDITS_RE.test(l.action))) return false;
       return true;
     })
     .slice(0, 5)
     .map(([game, logs]) => {
-      const wm = logs.reduce((s, l) => s + l.minutes, 0);
+      const wm = weekLogs.filter(l => l.game === game).reduce((s, l) => s + l.minutes, 0);
+      // Pass all sessions sorted most-recent-first so the AI has full history
+      const allSessions = [...logs]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .map(l => ({ date: l.timestamp.slice(0, 10), action: l.action, minutes: l.minutes }));
       return {
         title: game,
         label: wm < 30 ? 'Light progress' : 'On track',
-        sessions: logs.map(l => ({ date: l.timestamp.slice(0, 10), action: l.action, minutes: l.minutes })),
+        sessions: allSessions,
       };
     });
 
@@ -93,7 +99,7 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
       const lines = game.sessions.map(s => `  - ${s.date} (${s.minutes}m): ${s.action}`).join('\n');
       const resp = await openai.chat.completions.create({
         model: 'gpt-5.4',
-        max_completion_tokens: 120,
+        max_completion_tokens: 200,
         messages: [
           {
             role: 'system',

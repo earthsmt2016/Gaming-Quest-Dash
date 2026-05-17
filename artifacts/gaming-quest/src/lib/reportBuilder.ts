@@ -239,10 +239,9 @@ export type FocusItem = {
   sessions: { date: string; action: string; minutes: number }[];
 };
 
-function lastSessions(d: { entries: LogEntry[] }, n: number) {
+function lastSessions(d: { entries: LogEntry[] }) {
   return [...d.entries]
     .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .slice(0, n)
     .map(e => ({ date: formatDate(e.date), action: e.action, minutes: e.minutes }));
 }
 
@@ -268,7 +267,7 @@ export function nextWeekFocus(logs: LogEntry[], manualCompletions: Set<string> =
         title: game,
         priority: 'medium',
         label: 'Competitive — cap sessions so single-player time is protected',
-        sessions: lastSessions(d, 2),
+        sessions: lastSessions(d),
       });
       continue;
     }
@@ -279,7 +278,7 @@ export function nextWeekFocus(logs: LogEntry[], manualCompletions: Set<string> =
         title: game,
         priority: 'high',
         label: 'Boss fight reached — finish the game',
-        sessions: lastSessions(d, 3),
+        sessions: lastSessions(d),
       });
       continue;
     }
@@ -291,7 +290,7 @@ export function nextWeekFocus(logs: LogEntry[], manualCompletions: Set<string> =
         title: game,
         priority: 'high',
         label: isNew ? 'Recently started — build early momentum' : 'Active story run — keep going',
-        sessions: lastSessions(d, 3),
+        sessions: lastSessions(d),
       });
       continue;
     }
@@ -302,7 +301,7 @@ export function nextWeekFocus(logs: LogEntry[], manualCompletions: Set<string> =
         title: game,
         priority: 'high',
         label: 'Story unfinished — do story sessions before ranked play',
-        sessions: lastSessions(d, 3),
+        sessions: lastSessions(d),
       });
       continue;
     }
@@ -313,7 +312,7 @@ export function nextWeekFocus(logs: LogEntry[], manualCompletions: Set<string> =
         title: game,
         priority: 'low',
         label: `Not played recently — ${fmtMinutes(d.min)} invested, no completion yet`,
-        sessions: lastSessions(d, 2),
+        sessions: lastSessions(d),
       });
     }
   }
