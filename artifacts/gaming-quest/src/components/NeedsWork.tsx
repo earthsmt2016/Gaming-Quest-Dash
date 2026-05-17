@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
 import { NeedsWorkItem, badgeFor } from '../lib/logParser';
+import { YouTubeVideo, searchYouTubeGuides } from '../lib/api';
 
-function extractYouTubeId(url: string): string | null {
-  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([A-Za-z0-9_-]{11})/);
-  return m ? m[1] : null;
+function fmtViews(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M views`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K views`;
+  return `${n} views`;
+}
+
+function statusHint(item: NeedsWorkItem): string {
+  if (item.status === 'Needs attention') return 'beginner guide tips';
+  if (item.status === 'Light progress') return 'tips tricks guide';
+  if (item.status === 'On track') return 'advanced guide tips';
+  return 'guide walkthrough';
 }
 
 interface NeedsWorkProps {
@@ -23,205 +32,391 @@ export default function NeedsWork({
   onToggleCompletion, onTogglePaused, onSetGuide, onDeleteGuide, onOpenLibrary,
 }: NeedsWorkProps) {
   const [playerOpen, setPlayerOpen] = useState<string | null>(null);
-  const [inputGame, setInputGame] = useState<string | null>(null);
-  const [urlDraft, setUrlDraft] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [searchingFor, setSearchingFor] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, YouTubeVideo[]>>({});
+  const [searchErr, setSearchErr] = useState<Record<string, string>>({});
+  const [pasteGame, setPasteGame] = useState<string | null>(null);
+  const [pasteUrl, setPasteUrl] = useState('');
+  const [pasteSaving, setPasteSaving] = useState(false);
 
-  const handleSaveGuide = async (game: string) => {
-    const id = extractYouTubeId(urlDraft.trim());
-    if (!id) { alert('Paste a valid YouTube URL (e.g. https://youtube.com/watch?v=...)'); return; }
-    setSaving(true);
+  const handleFindGuides = async (item: NeedsWorkItem) => {
+    setSearchingFor(item.game);
+    setSearchErr(prev => { const n = { ...prev }; delete n[item.game]; return n; });
     try {
-      await onSetGuide(game, urlDraft.trim());
-      setInputGame(null);
-      setUrlDraft('');
-      setPlayerOpen(game);
+      const videos = await searchYouTubeGuides(item.game, statusHint(item));
+      setResults(prev => ({ ...prev, [item.game]: videos }));
+    } catch {
+      setSearchErr(prev => ({ ...prev, [item.game]: 'Could not reach YouTube. Try again.' }));
     } finally {
-      setSaving(false);
+      setSearchingFor(null);
     }
   };
 
-  const handleRemoveGuide = async (game: string) => {
+  const handlePickVideo = async (game: string, video: YouTubeVideo) => {
+    const url = `https://www.youtube.com/watch?v=${video.id}`;
+    await onSetGuide(game, url);
+    setResults(prev => { const n = { ...prev }; delete n[game]; return n; });
+    setPlayerOpen(game);
+  };
+
+  const handlePasteSave = async (game: string) => {
+    if (!pasteUrl.trim()) return;
+    const m = pasteUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/);
+    if (!m) { alert('Paste a valid YouTube URL'); return; }
+    setPasteSaving(true);
+    try {
+      await onSetGuide(game, pasteUrl.trim());
+      setPasteGame(null);
+      setPasteUrl('');
+      setPlayerOpen(game);
+    } finally {
+      setPasteSaving(false);
+    }
+  };
+
+  const handleRemove = async (game: string) => {
     await onDeleteGuide(game);
     setPlayerOpen(null);
+    setResults(prev => { const n = { ...prev }; delete n[game]; return n; });
   };
 
   return (
-    <article style={{
-      background: 'var(--paper)',
-      border: '1px solid var(--line)',
-      borderRadius: 'var(--radius)',
-      boxShadow: 'var(--shadow)',
-      padding: '16px',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '12px', marginBottom: '12px' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '17px' }}>What needs work next</h3>
-          <div className="mini">Based on last 28 days of activity</div>
+    <>
+      <style>{`
+        .nw-card {
+          border: 1px solid var(--soft-line);
+          border-radius: 12px;
+          background: #fffdfa;
+          padding: 12px;
+        }
+        .nw-card-hold { background: #faf8ff; opacity: 0.88; }
+        .nw-guide-section {
+          margin-top: 10px;
+          border-top: 1px solid var(--soft-line);
+          padding-top: 10px;
+        }
+        .nw-video-scroll {
+          display: flex;
+          gap: 10px;
+          overflow-x: auto;
+          padding-bottom: 6px;
+          scrollbar-width: thin;
+          margin-top: 8px;
+        }
+        .nw-video-card {
+          flex: 0 0 160px;
+          border: 1px solid var(--soft-line);
+          border-radius: 10px;
+          background: var(--paper);
+          cursor: pointer;
+          overflow: hidden;
+          transition: box-shadow 0.15s, transform 0.15s;
+        }
+        .nw-video-card:hover {
+          box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+          transform: translateY(-1px);
+        }
+        .nw-video-thumb {
+          width: 100%;
+          aspect-ratio: 16/9;
+          object-fit: cover;
+          display: block;
+        }
+        .nw-video-info {
+          padding: 7px 8px 8px;
+        }
+        .nw-video-title {
+          font-size: 12px;
+          font-weight: 600;
+          line-height: 1.3;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          margin-bottom: 4px;
+        }
+        .nw-video-meta {
+          font-size: 11px;
+          color: var(--muted);
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .nw-video-duration {
+          background: #111;
+          color: #fff;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 1px 5px;
+          border-radius: 4px;
+        }
+        .nw-embed {
+          margin-top: 10px;
+          border-radius: 10px;
+          overflow: hidden;
+          aspect-ratio: 16/9;
+        }
+        .nw-embed iframe {
+          display: block;
+          width: 100%;
+          height: 100%;
+          border: none;
+        }
+        .nw-spinner {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: var(--muted);
+          padding: 4px 0;
+        }
+        .nw-spinner-dot {
+          width: 8px; height: 8px;
+          border-radius: 50%;
+          background: var(--accent);
+          animation: nw-pulse 1s ease-in-out infinite;
+        }
+        .nw-spinner-dot:nth-child(2) { animation-delay: 0.2s; }
+        .nw-spinner-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes nw-pulse {
+          0%, 100% { opacity: 0.3; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1); }
+        }
+        .nw-paste-row {
+          display: flex; gap: 6px; align-items: center;
+          margin-top: 8px; flex-wrap: wrap;
+        }
+        .nw-paste-input {
+          flex: 1; min-width: 160px; font-size: 13px;
+          border: 1px solid var(--line); border-radius: 8px;
+          padding: 5px 10px; background: var(--paper); font-family: inherit;
+        }
+      `}</style>
+      <article style={{
+        background: 'var(--paper)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--radius)',
+        boxShadow: 'var(--shadow)',
+        padding: '16px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '12px', marginBottom: '12px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '17px' }}>What needs work next</h3>
+            <div className="mini">Based on last 28 days — click a thumbnail to add a guide</div>
+          </div>
+          <button
+            className="btn soft"
+            onClick={onOpenLibrary}
+            style={{ fontSize: '12px', padding: '4px 12px', flexShrink: 0, whiteSpace: 'nowrap' }}
+          >
+            All games ↗
+          </button>
         </div>
-        <button
-          className="btn soft"
-          onClick={onOpenLibrary}
-          style={{ fontSize: '12px', padding: '4px 12px', flexShrink: 0, whiteSpace: 'nowrap' }}
-          title="View all games and manage completion status"
-        >
-          All games ↗
-        </button>
-      </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {items.length === 0 ? (
-          <div style={{
-            border: '1px solid var(--soft-line)',
-            borderRadius: '12px',
-            background: '#fffdfa',
-            padding: '12px',
-          }}>Add more logs to generate suggestions.</div>
-        ) : items.map(item => {
-          const isManual = manualCompletions.has(item.game);
-          const isOnHold = paused.has(item.game);
-          const isCompleted = item.status === 'Completed or parked';
-          const isActive = !isCompleted && !isOnHold;
-          const guideUrl = guides[item.game];
-          const videoId = guideUrl ? extractYouTubeId(guideUrl) : null;
-          const isPlayerOpen = playerOpen === item.game;
-          const isInputOpen = inputGame === item.game;
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {items.length === 0 ? (
+            <div className="nw-card">Add more logs to generate suggestions.</div>
+          ) : items.map(item => {
+            const isManual = manualCompletions.has(item.game);
+            const isOnHold = paused.has(item.game);
+            const isCompleted = item.status === 'Completed or parked';
+            const isActive = !isCompleted && !isOnHold;
+            const guideUrl = guides[item.game];
+            const videoId = guideUrl?.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/)?.[1];
+            const isSearching = searchingFor === item.game;
+            const videoResults = results[item.game] || [];
+            const hasResults = videoResults.length > 0;
+            const isPlayerOpen = playerOpen === item.game;
+            const isPasting = pasteGame === item.game;
+            const err = searchErr[item.game];
 
-          return (
-            <div key={item.game} style={{
-              border: '1px solid var(--soft-line)',
-              borderRadius: '12px',
-              background: isOnHold ? '#faf8ff' : '#fffdfa',
-              padding: '12px',
-              opacity: isOnHold ? 0.85 : 1,
-            }}>
-              {/* Header row */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <strong>{item.game}</strong>
-                <span className={`badge ${badgeFor(item.status)}`}>{item.status}</span>
-              </div>
+            return (
+              <div key={item.game} className={`nw-card${isOnHold ? ' nw-card-hold' : ''}`}>
 
-              {/* Note + action buttons */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '8px', flexWrap: 'wrap' }}>
-                <div className="mini">{item.note}</div>
-                <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
-                  {isOnHold && (
-                    <button className="btn soft" onClick={() => onTogglePaused(item.game)}
-                      style={{ fontSize: '12px', padding: '3px 10px' }} title="Resume this game">
-                      Resume ▶
-                    </button>
-                  )}
-                  {isManual && (
-                    <button className="btn soft" onClick={() => onToggleCompletion(item.game)}
-                      style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }} title="Remove manual completion mark">
-                      Unmark
-                    </button>
-                  )}
-                  {isActive && (
-                    <>
-                      <button className="btn soft" onClick={() => onTogglePaused(item.game)}
-                        style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }} title="Put this game on hold">
-                        Put down
-                      </button>
-                      <button className="btn soft" onClick={() => onToggleCompletion(item.game)}
-                        style={{ fontSize: '12px', padding: '3px 10px' }} title="Mark this game as completed">
-                        Mark done ✓
-                      </button>
-                    </>
-                  )}
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <strong>{item.game}</strong>
+                  <span className={`badge ${badgeFor(item.status)}`}>{item.status}</span>
                 </div>
-              </div>
 
-              {/* YouTube guide section */}
-              <div style={{ marginTop: '10px', borderTop: '1px solid var(--soft-line)', paddingTop: '10px' }}>
-                {!isInputOpen && (
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {videoId ? (
+                {/* Note + action buttons */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '8px', flexWrap: 'wrap' }}>
+                  <div className="mini">{item.note}</div>
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
+                    {isOnHold && (
+                      <button className="btn soft" onClick={() => onTogglePaused(item.game)}
+                        style={{ fontSize: '12px', padding: '3px 10px' }}>
+                        Resume ▶
+                      </button>
+                    )}
+                    {isManual && (
+                      <button className="btn soft" onClick={() => onToggleCompletion(item.game)}
+                        style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }}>
+                        Unmark
+                      </button>
+                    )}
+                    {isActive && (
                       <>
-                        <button
-                          className="btn soft"
-                          onClick={() => setPlayerOpen(isPlayerOpen ? null : item.game)}
-                          style={{ fontSize: '12px', padding: '3px 10px', display: 'flex', alignItems: 'center', gap: '5px' }}
-                        >
+                        <button className="btn soft" onClick={() => onTogglePaused(item.game)}
+                          style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }}>
+                          Put down
+                        </button>
+                        <button className="btn soft" onClick={() => onToggleCompletion(item.game)}
+                          style={{ fontSize: '12px', padding: '3px 10px' }}>
+                          Mark done ✓
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Guide section */}
+                <div className="nw-guide-section">
+
+                  {/* Saved guide — show controls + player */}
+                  {videoId && !hasResults && !isPasting && (
+                    <>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button className="btn soft" onClick={() => setPlayerOpen(isPlayerOpen ? null : item.game)}
+                          style={{ fontSize: '12px', padding: '3px 10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                           <span style={{ fontSize: '14px' }}>▶</span>
                           {isPlayerOpen ? 'Hide guide' : 'Watch guide'}
                         </button>
-                        <button
-                          className="btn soft"
-                          onClick={() => { setInputGame(item.game); setUrlDraft(guideUrl); }}
+                        <button className="btn soft" onClick={() => handleFindGuides(item)}
                           style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }}
-                          title="Change the guide URL"
-                        >
-                          Change
+                          disabled={isSearching}>
+                          Change guide
                         </button>
-                        <button
-                          className="btn soft"
-                          onClick={() => handleRemoveGuide(item.game)}
-                          style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }}
-                          title="Remove guide"
-                        >
+                        <button className="btn soft" onClick={() => handleRemove(item.game)}
+                          style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }}>
                           ✕
                         </button>
-                      </>
-                    ) : (
-                      <button
-                        className="btn soft"
-                        onClick={() => { setInputGame(item.game); setUrlDraft(''); }}
-                        style={{ fontSize: '12px', padding: '3px 10px', color: 'var(--muted)' }}
-                        title="Attach a YouTube guide for this game"
-                      >
-                        + Add YouTube guide
+                      </div>
+                      {isPlayerOpen && (
+                        <div className="nw-embed">
+                          <iframe
+                            src={`https://www.youtube.com/embed/${videoId}`}
+                            title={`Guide for ${item.game}`}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* No guide yet — find or paste */}
+                  {!videoId && !hasResults && !isPasting && !isSearching && !err && (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button className="btn soft" onClick={() => handleFindGuides(item)}
+                        style={{ fontSize: '12px', padding: '3px 12px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span>🔍</span> Find YouTube guides
                       </button>
-                    )}
-                  </div>
-                )}
+                      <button onClick={() => { setPasteGame(item.game); setPasteUrl(''); }}
+                        style={{ fontSize: '12px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                        paste URL
+                      </button>
+                    </div>
+                  )}
 
-                {/* URL input */}
-                {isInputOpen && (
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <input
-                      type="url"
-                      placeholder="https://youtube.com/watch?v=..."
-                      value={urlDraft}
-                      onChange={e => setUrlDraft(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleSaveGuide(item.game); if (e.key === 'Escape') setInputGame(null); }}
-                      autoFocus
-                      style={{
-                        flex: 1, minWidth: '180px', fontSize: '13px',
-                        border: '1px solid var(--line)', borderRadius: '8px',
-                        padding: '5px 10px', background: 'var(--paper)', fontFamily: 'inherit',
-                      }}
-                    />
-                    <button className="btn primary" onClick={() => handleSaveGuide(item.game)}
-                      disabled={saving} style={{ fontSize: '12px', padding: '5px 12px' }}>
-                      {saving ? '…' : 'Save'}
-                    </button>
-                    <button className="btn soft" onClick={() => { setInputGame(null); setUrlDraft(''); }}
-                      style={{ fontSize: '12px', padding: '5px 10px' }}>
-                      Cancel
-                    </button>
-                  </div>
-                )}
+                  {/* Loading */}
+                  {isSearching && (
+                    <div className="nw-spinner">
+                      <div className="nw-spinner-dot" />
+                      <div className="nw-spinner-dot" />
+                      <div className="nw-spinner-dot" />
+                      <span>Finding guides for {item.game}…</span>
+                    </div>
+                  )}
 
-                {/* Embedded player */}
-                {isPlayerOpen && videoId && (
-                  <div style={{ marginTop: '10px', borderRadius: '10px', overflow: 'hidden', aspectRatio: '16/9' }}>
-                    <iframe
-                      src={`https://www.youtube.com/embed/${videoId}`}
-                      title={`Guide for ${item.game}`}
-                      width="100%"
-                      height="100%"
-                      style={{ display: 'block', border: 'none' }}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                )}
+                  {/* Error */}
+                  {err && !isSearching && (
+                    <div style={{ fontSize: '12px', color: '#c0392b', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span>{err}</span>
+                      <button className="btn soft" onClick={() => handleFindGuides(item)}
+                        style={{ fontSize: '11px', padding: '2px 8px' }}>
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Video results grid */}
+                  {hasResults && !isPasting && (
+                    <>
+                      <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Pick a guide to embed it</span>
+                        <button onClick={() => setResults(prev => { const n = { ...prev }; delete n[item.game]; return n; })}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '12px', padding: 0 }}>
+                          dismiss ✕
+                        </button>
+                      </div>
+                      <div className="nw-video-scroll">
+                        {videoResults.map(video => (
+                          <div
+                            key={video.id}
+                            className="nw-video-card"
+                            onClick={() => handlePickVideo(item.game, video)}
+                            title={video.title}
+                          >
+                            <div style={{ position: 'relative' }}>
+                              <img
+                                className="nw-video-thumb"
+                                src={video.thumbnail}
+                                alt={video.title}
+                                loading="lazy"
+                                onError={e => { (e.target as HTMLImageElement).src = `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`; }}
+                              />
+                              {video.duration && (
+                                <span className="nw-video-duration" style={{ position: 'absolute', bottom: '4px', right: '4px' }}>
+                                  {video.duration}
+                                </span>
+                              )}
+                            </div>
+                            <div className="nw-video-info">
+                              <div className="nw-video-title">{video.title}</div>
+                              {video.views > 0 && (
+                                <div className="nw-video-meta">{fmtViews(video.views)}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => { setPasteGame(item.game); setPasteUrl(''); setResults(prev => { const n = { ...prev }; delete n[item.game]; return n; }); }}
+                        style={{ marginTop: '6px', fontSize: '12px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                        paste a URL instead
+                      </button>
+                    </>
+                  )}
+
+                  {/* Paste URL fallback */}
+                  {isPasting && (
+                    <div className="nw-paste-row">
+                      <input
+                        className="nw-paste-input"
+                        type="url"
+                        placeholder="https://youtube.com/watch?v=..."
+                        value={pasteUrl}
+                        onChange={e => setPasteUrl(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handlePasteSave(item.game); if (e.key === 'Escape') setPasteGame(null); }}
+                        autoFocus
+                      />
+                      <button className="btn primary" onClick={() => handlePasteSave(item.game)}
+                        disabled={pasteSaving} style={{ fontSize: '12px', padding: '5px 12px' }}>
+                        {pasteSaving ? '…' : 'Save'}
+                      </button>
+                      <button className="btn soft" onClick={() => setPasteGame(null)}
+                        style={{ fontSize: '12px', padding: '5px 10px' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-    </article>
+            );
+          })}
+        </div>
+      </article>
+    </>
   );
 }

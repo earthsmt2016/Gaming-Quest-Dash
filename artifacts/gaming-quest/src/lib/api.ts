@@ -148,6 +148,22 @@ export async function deleteGuide(game: string): Promise<void> {
   await fetch(`${BASE}/guides/${encodeURIComponent(game)}`, { method: 'DELETE' });
 }
 
+export interface YouTubeVideo {
+  id: string;
+  title: string;
+  thumbnail: string;
+  duration: string;
+  views: number;
+}
+
+export async function searchYouTubeGuides(game: string, hint?: string): Promise<YouTubeVideo[]> {
+  const url = new URL(`${BASE}/youtube-guides/${encodeURIComponent(game)}`);
+  if (hint) url.searchParams.set('hint', hint);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error('YouTube search failed');
+  return res.json();
+}
+
 export async function fetchFocusInsights(
   games: FocusGame[]
 ): Promise<{ title: string; nextStep: string }[]> {

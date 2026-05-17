@@ -5,6 +5,7 @@ import focusInsightsRouter from "./focusInsights";
 import completionsRouter from "./completions";
 import pausesRouter from "./pauses";
 import guidesRouter from "./guides";
+import youtubeSearchRouter from "./youtubeSearch";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(focusInsightsRouter);
 router.use(completionsRouter);
 router.use(pausesRouter);
 router.use(guidesRouter);
+router.use(youtubeSearchRouter);
 
 export default router;
