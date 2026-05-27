@@ -166,6 +166,39 @@ export async function searchYouTubeGuides(game: string, hint?: string): Promise<
   return data as YouTubeVideo[];
 }
 
+// ─── Daily Plan ───────────────────────────────────────────────────────────────
+
+export interface DailyPlanGame {
+  title: string;
+  daysSinceLastPlayed: number;
+  minutesThisWeek: number;
+  avgSessionMinutes: number;
+  totalMinutesLogged: number;
+  priorityLabel: string;
+  recentSessions: { date: string; action: string; minutes: number }[];
+}
+
+export interface DailyPlanPick {
+  game: string;
+  minutes: number;
+  why: string;
+}
+
+export async function fetchDailyPlan(
+  availableMinutes: number,
+  dayOfWeek: string,
+  games: DailyPlanGame[]
+): Promise<DailyPlanPick[]> {
+  const res = await fetch(`${BASE}/daily-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ availableMinutes, dayOfWeek, games }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.picks ?? [];
+}
+
 export async function fetchFocusInsights(
   games: FocusGame[]
 ): Promise<{ title: string; nextStep: string }[]> {
