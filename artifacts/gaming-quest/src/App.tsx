@@ -24,6 +24,7 @@ import {
   SAMPLE_LOGS,
 } from './lib/logParser';
 import { buildPdfReport, printReport, nextWeekFocus } from './lib/reportBuilder';
+import { useReportOptions } from './hooks/useReportOptions';
 import {
   fetchLogs, saveLogs, clearLogs, fetchFocusInsights,
   fetchCompletions, toggleCompletion, fetchPaused, togglePaused,
@@ -56,6 +57,7 @@ function labelType(t: string): string {
 type LoadState = 'loading' | 'ready' | 'error';
 
 export default function App() {
+  const [reportOptions] = useReportOptions();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [saving, setSaving] = useState(false);
@@ -274,10 +276,10 @@ export default function App() {
       const focusItems = nextWeekFocus(wl, completions, paused);
       const rawInsights = await fetchFocusInsights(focusItems);
       const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
-      const html = buildPdfReport(start, end, wl, 'This Week', aiInsights, completions, paused);
+      const html = buildPdfReport(start, end, wl, 'This Week', aiInsights, completions, paused, reportOptions);
       printReport(html);
     } finally { setPdfGenerating(false); }
-  }, [logs, pdfGenerating, completions, paused]);
+  }, [logs, pdfGenerating, completions, paused, reportOptions]);
 
   const handleDownloadCustom = useCallback(async (fromStr: string, toStr: string) => {
     if (pdfGenerating) return;
@@ -289,10 +291,10 @@ export default function App() {
       const focusItems = nextWeekFocus(periodLogs, completions, paused);
       const rawInsights = await fetchFocusInsights(focusItems);
       const aiInsights = Object.fromEntries(rawInsights.map(i => [i.title, i.nextStep]));
-      const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights, completions, paused);
+      const html = buildPdfReport(from, to, periodLogs, undefined, aiInsights, completions, paused, reportOptions);
       printReport(html);
     } finally { setPdfGenerating(false); }
-  }, [logs, pdfGenerating, completions, paused]);
+  }, [logs, pdfGenerating, completions, paused, reportOptions]);
 
   useEffect(() => {
     document.body.style.overflow = sidebarOpen ? 'hidden' : '';
