@@ -1,53 +1,91 @@
 import React from 'react';
+import { Page } from '../App';
+
+const NAV: { id: Page; label: string; short: string }[] = [
+  { id: 'dashboard', label: 'Dashboard', short: 'Home' },
+  { id: 'log',       label: 'Quest Log',  short: 'Log' },
+  { id: 'games',     label: 'Games',      short: 'Games' },
+  { id: 'reports',   label: 'Reports',    short: 'Reports' },
+];
 
 interface TopBarProps {
+  activePage: Page;
+  onPageChange: (page: Page) => void;
   onHamburger: () => void;
-  onWeekReport: () => void;
   onDownloadWeek: () => void;
-  onOpenReports: () => void;
   pdfGenerating?: boolean;
 }
 
-export default function TopBar({ onHamburger, onWeekReport, onDownloadWeek, onOpenReports, pdfGenerating }: TopBarProps) {
+export default function TopBar({
+  activePage, onPageChange, onHamburger, onDownloadWeek, pdfGenerating,
+}: TopBarProps) {
   return (
     <>
       <style>{`
-        .topbar-title { font-size: 18px; margin: 0; line-height: 1.1; white-space: nowrap; }
-        .topbar-weekly-label { display: inline; }
-        .topbar-pdf-label { display: inline; }
-        .topbar-pdf-icon { display: none; }
-        .topbar-reports-label { display: inline; }
-
-        @media (max-width: 480px) {
-          .topbar-title { display: none; }
-          .topbar-weekly-label { display: none; }
-          .topbar-pdf-label { display: none; }
-          .topbar-pdf-icon { display: inline; }
-          .topbar-reports-label { display: none; }
+        .topbar-root {
+          position: sticky; top: 0; z-index: 10;
+          background: var(--paper);
+          border-bottom: 1px solid var(--line);
+          display: flex; align-items: center;
+          padding: 0 12px; gap: 6px; min-width: 0;
+          height: 52px;
         }
+        .topbar-brand {
+          display: flex; align-items: center; gap: 7px;
+          flex-shrink: 0; min-width: 0;
+        }
+        .topbar-title {
+          font-size: 16px; font-weight: 700;
+          margin: 0; white-space: nowrap;
+          line-height: 1.1;
+        }
+        .topbar-nav {
+          display: flex; align-items: center;
+          gap: 0; flex: 1; justify-content: center;
+          min-width: 0;
+        }
+        .topbar-nav-btn {
+          background: none; border: none; cursor: pointer;
+          font: inherit; font-size: 14px;
+          color: var(--muted);
+          padding: 0 12px;
+          height: 52px;
+          border-bottom: 2px solid transparent;
+          white-space: nowrap;
+          transition: color 0.12s;
+          display: flex; align-items: center;
+        }
+        .topbar-nav-btn:hover { color: var(--text); }
+        .topbar-nav-btn.active {
+          color: var(--accent);
+          font-weight: 700;
+          border-bottom-color: var(--accent);
+        }
+        .topbar-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+        .topbar-pdf-label { display: inline; }
+        .topbar-pdf-icon  { display: none; }
 
-        @media (max-width: 600px) and (min-width: 481px) {
-          .topbar-title { font-size: 15px; }
+        @media (max-width: 600px) {
+          .topbar-title { display: none; }
+          .topbar-nav-btn { padding: 0 8px; font-size: 13px; }
+          .topbar-pdf-label { display: none; }
+          .topbar-pdf-icon  { display: inline; }
+        }
+        @media (max-width: 400px) {
+          .topbar-nav-btn { padding: 0 6px; font-size: 12px; }
+        }
+        @media (min-width: 1100px) {
+          .hamburger-btn { display: none !important; }
         }
       `}</style>
-      <header style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
-        background: 'var(--paper)',
-        borderBottom: '1px solid var(--line)',
-        padding: '10px 14px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '8px',
-        minWidth: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+
+      <header className="topbar-root">
+        {/* Left: hamburger + brand */}
+        <div className="topbar-brand">
           <button
-            className="btn icon"
+            className="btn icon hamburger-btn"
             onClick={onHamburger}
-            aria-label="Open filters"
+            aria-label="Open import panel"
             style={{ flexShrink: 0 }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -56,53 +94,43 @@ export default function TopBar({ onHamburger, onWeekReport, onDownloadWeek, onOp
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" width="28" height="28" style={{ color: 'var(--accent)', flexShrink: 0 }}>
+          <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" width="26" height="26" style={{ color: 'var(--accent)', flexShrink: 0 }}>
             <path d="M12 20L32 8l20 12v24L32 56 12 44V20Z" stroke="currentColor" strokeWidth="4" />
             <path d="M24 30h16M32 22v16" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
           </svg>
           <h1 className="topbar-title">Quest Dashboard</h1>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
-          <button
-            className="btn soft"
-            onClick={onOpenReports}
-            style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
-            title="Saved reports & schedule"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
-            </svg>
-            <span className="topbar-reports-label">Reports</span>
-          </button>
-          <button className="btn soft" onClick={onWeekReport} style={{ padding: '0 14px' }}>
-            <span className="topbar-weekly-label">Weekly</span>
-            <span className="topbar-pdf-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <line x1="3" y1="9" x2="21" y2="9"/>
-                <line x1="9" y1="21" x2="9" y2="9"/>
-              </svg>
-            </span>
-          </button>
+        {/* Center: page nav */}
+        <nav className="topbar-nav" aria-label="Main navigation">
+          {NAV.map(item => (
+            <button
+              key={item.id}
+              className={`topbar-nav-btn${activePage === item.id ? ' active' : ''}`}
+              onClick={() => onPageChange(item.id)}
+            >
+              <span className="topbar-pdf-label">{item.label}</span>
+              <span className="topbar-pdf-icon">{item.short}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* Right: PDF action */}
+        <div className="topbar-actions">
           <button
             className="btn primary"
             onClick={onDownloadWeek}
             disabled={pdfGenerating}
-            style={{ padding: '0 14px', opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
+            style={{ padding: '0 12px', opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
+            title="Download this week as PDF"
           >
-            <span className="topbar-pdf-label">{pdfGenerating ? '⏳ Generating…' : '⎙ This week PDF'}</span>
+            <span className="topbar-pdf-label">{pdfGenerating ? '⏳ Generating…' : '⎙ This week'}</span>
             <span className="topbar-pdf-icon">
               {pdfGenerating ? '⏳' : (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 2v13M8 11l4 4 4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
                 </svg>
               )}
-              {pdfGenerating ? '' : 'PDF'}
             </span>
           </button>
         </div>

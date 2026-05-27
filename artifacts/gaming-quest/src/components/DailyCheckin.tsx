@@ -241,7 +241,12 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
         .dc-rec-why {
           font-size: 13px; color: var(--text); line-height: 1.5;
         }
-        .dc-rec-reason { font-size: 12px; color: var(--muted); line-height: 1.4; }
+        .dc-rec-reason { font-size: 13px; color: var(--text); line-height: 1.45; }
+        .dc-why-label {
+          font-size: 10px; color: var(--accent); font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.07em;
+          margin-top: 6px; margin-bottom: 2px;
+        }
         .dc-priority-label { font-size: 11px; color: var(--accent); font-weight: 600; margin-bottom: 3px; }
         .dc-copy-btn {
           flex-shrink: 0; background: none;
@@ -394,6 +399,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                           {i === 0 ? '① Start with' : i === 1 ? '② Then' : '③ Finish with'}
                         </div>
                         <div className="dc-rec-game">{pick.game}</div>
+                        <div className="dc-why-label">Why this session</div>
                         <div className="dc-rec-why">{pick.why}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', flexShrink: 0 }}>
@@ -457,6 +463,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                                 {rec.status}
                               </span>
                             </div>
+                            <div className="dc-why-label">Why this session</div>
                             <div className="dc-rec-reason">{rec.reason}</div>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', flexShrink: 0 }}>

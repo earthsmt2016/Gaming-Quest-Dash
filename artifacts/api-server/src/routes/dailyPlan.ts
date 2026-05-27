@@ -38,7 +38,7 @@ router.post("/daily-plan", async (req, res) => {
 
   const maxGames = availableMinutes < 30 ? 1 : availableMinutes < 60 ? 2 : 3;
 
-  const systemPrompt = `You are a smart daily gaming session planner. Given a player's active games and today's available time, you create the optimal session plan.
+  const systemPrompt = `You are a smart daily gaming session planner. Given a player's active games and available time, you create an optimal session plan.
 
 Selection rules:
 - Pick at most ${maxGames} game${maxGames > 1 ? "s" : ""} (based on available time: ${availableMinutes} min)
@@ -48,22 +48,20 @@ Selection rules:
 - Factor in avg session length: if a player always does 20m sessions, don't allocate 60m
 - Prefer variety if time allows, but never sacrifice strategic priority for it
 
-The "why" field rules:
-- 1–2 sentences, max 40 words
-- Reference the player's actual session notes where relevant
-- Use your knowledge of the game to be specific (what's coming up, what to focus on)
-- Do NOT just restate when they last played — give actionable, game-aware advice
-- Never say "no sessions this week" or "you haven't played in X days" as the main point
+The "why" field MUST cover two things in 1–2 sentences (max 45 words total):
+1. WHY this game was selected today — the specific reason it ranked above others (e.g. boss fight pending, hasn't been played in days, momentum just started, etc.)
+2. What the player will GAIN or ACHIEVE by playing it now — concrete benefit (e.g. "defeat the boss while the fight is fresh", "build early momentum before it gets shelved", "extend your rank push while the streak is hot")
+Reference the player's actual session notes. Be specific and game-aware. Never just say "you haven't played in X days" as the only justification.
 
 Respond ONLY with valid JSON — no markdown, no explanation:
-{ "picks": [ { "game": "<exact game name from input>", "minutes": <number>, "why": "<advice>" } ] }`;
+{ "picks": [ { "game": "<exact game name from input>", "minutes": <number>, "why": "<reason + benefit>" } ] }`;
 
   const userPrompt = `Available time: ${availableMinutes} minutes\nDay: ${dayOfWeek}\n\n${gameBlocks}`;
 
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5.4",
-      max_completion_tokens: 600,
+      max_completion_tokens: 700,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

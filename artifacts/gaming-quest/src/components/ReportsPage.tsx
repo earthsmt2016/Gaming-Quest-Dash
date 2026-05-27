@@ -55,12 +55,7 @@ function localHMToUtc(localTime: string): { hour: number; minute: number } {
   return { hour: d.getUTCHours(), minute: d.getUTCMinutes() };
 }
 
-interface ReportsPageProps {
-  open: boolean;
-  onClose: () => void;
-}
-
-export default function ReportsPage({ open, onClose }: ReportsPageProps) {
+export default function ReportsPage() {
   const [schedule, setSchedule] = useState<ReportSchedule>({ id: null, day_of_week: 0, hour: 17, minute: 0, enabled: false });
   const [scheduleTime, setScheduleTime] = useState('17:00');
   const [scheduleSaving, setScheduleSaving] = useState(false);
@@ -110,8 +105,8 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
   }, []);
 
   useEffect(() => {
-    if (open) loadAll();
-  }, [open, loadAll]);
+    loadAll();
+  }, []);
 
   const [generating, setGenerating] = useState(false);
 
@@ -173,29 +168,11 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
     }
   };
 
-  if (!open) return null;
-
   return (
     <>
       <style>{`
-        .rp-overlay {
-          position: fixed; inset: 0; z-index: 100;
-          background: rgba(28,24,20,.42);
-          display: flex; align-items: flex-start; justify-content: center;
-          padding: 20px 12px;
-          overflow-y: auto;
-        }
-        .rp-modal {
-          background: var(--paper);
-          border-radius: 16px;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.25);
-          width: 100%;
-          max-width: 760px;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-          margin: auto;
-        }
+        .rp-page { display: flex; flex-direction: column; gap: 0; }
+        .rp-modal { width: 100%; max-width: 760px; }
         .rp-header {
           display: flex; align-items: center; justify-content: space-between;
           padding: 18px 20px 14px;
@@ -296,8 +273,7 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
         }
       `}</style>
 
-      <div className="rp-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="rp-modal">
+      <div className="rp-modal">
           {/* Header */}
           <div className="rp-header">
             <div>
@@ -306,11 +282,6 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
                 {reports.length} report{reports.length === 1 ? '' : 's'} saved
               </div>
             </div>
-            <button
-              onClick={onClose}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: 'var(--muted)', lineHeight: 1, padding: '4px', flexShrink: 0 }}
-              aria-label="Close"
-            >×</button>
           </div>
 
           <div className="rp-body">
@@ -446,7 +417,6 @@ export default function ReportsPage({ open, onClose }: ReportsPageProps) {
               )}
             </section>
           </div>
-        </div>
       </div>
     </>
   );

@@ -356,16 +356,48 @@ export function computeRecommendations(
     const days = daysSince(pick.stats.lastDate);
 
     let status: NeedsWorkItem['status'] = 'On track';
-    let reason = `Played ${pick.stats.weekMin}m this week — keep the momentum going.`;
+    let reason = '';
+
+    const isBoss  = pick.priorityLabel.includes('Boss fight');
+    const isNew   = pick.priorityLabel.includes('Just started');
+    const isStory = pick.priorityLabel.includes('story run');
+    const isComp  = pick.priorityLabel.includes('Competitive');
 
     if (pick.stats.weekMin === 0) {
       status = 'Needs attention';
-      reason = days === 0
-        ? 'No session logged yet today — great time to start.'
-        : `No sessions in ${days} day${days === 1 ? '' : 's'} — worth revisiting.`;
+      if (isBoss) {
+        reason = `Boss fight stalled ${days} day${days === 1 ? '' : 's'} — get back in while the fight is fresh, before you lose context and have to re-learn the mechanics.`;
+      } else if (isNew) {
+        reason = `Just picked up — an early second session cements the habit. Leave it any longer and it risks becoming shelf dust.`;
+      } else if (isStory) {
+        reason = `Active story run with no sessions ${days === 0 ? 'today' : `in ${days} day${days === 1 ? '' : 's'}`} — jump back in to stay immersed and keep the narrative thread alive.`;
+      } else if (isComp) {
+        reason = `Competitive game neglected ${days === 0 ? 'today' : `for ${days} day${days === 1 ? '' : 's'}`} — mechanical skills rust quickly; even a short session maintains your level.`;
+      } else {
+        reason = days === 0
+          ? `No session yet today — a great time to log some time and extend your streak.`
+          : `${days} day${days === 1 ? '' : 's'} without a session — worth revisiting before momentum fully drops.`;
+      }
     } else if (pick.stats.weekMin < 30) {
       status = 'Light progress';
-      reason = `Only ${pick.stats.weekMin}m this week — a short push would make a real difference.`;
+      if (isBoss) {
+        reason = `Boss fight active — only ${pick.stats.weekMin}m this week. A focused push now keeps your boss-fight rhythm sharp and gets you closer to the win.`;
+      } else if (isStory) {
+        reason = `Story run at ${pick.stats.weekMin}m this week — a longer session now helps maintain immersion and move the plot forward meaningfully.`;
+      } else {
+        reason = `Only ${pick.stats.weekMin}m this week — a short focused push would make a real difference and keep this from falling behind.`;
+      }
+    } else {
+      // On track
+      if (isBoss) {
+        reason = `Boss fight in progress with ${pick.stats.weekMin}m this week — stay locked in and finish it while your skills and memory are at their sharpest.`;
+      } else if (isStory) {
+        reason = `Good story momentum at ${pick.stats.weekMin}m this week — keep pushing to reach the next chapter and maintain your narrative immersion.`;
+      } else if (isComp) {
+        reason = `Competitive streak active with ${pick.stats.weekMin}m this week — consistency is what separates ranked improvement from stalling.`;
+      } else {
+        reason = `${pick.stats.weekMin}m this week — solid momentum. Another session keeps the progress curve going upward.`;
+      }
     }
 
     const sessions = [...allLogs.filter(l => l.game === pick.game)]
