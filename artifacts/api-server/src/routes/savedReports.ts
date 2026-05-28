@@ -105,7 +105,10 @@ router.get('/saved-reports', async (_req, res) => {
     await ensureTables();
     const result = await pool.query(
       `SELECT id, title, period_from, period_to, trigger_type, generated_at,
-              jsonb_array_length(logs_json) AS log_count
+              jsonb_array_length(logs_json) AS log_count,
+              (SELECT COUNT(DISTINCT elem->>'game') FROM jsonb_array_elements(logs_json) AS elem)::int AS game_count,
+              (SELECT COALESCE(SUM((elem->>'minutes')::int), 0) FROM jsonb_array_elements(logs_json) AS elem)::int AS playtime_mins,
+              jsonb_object_length(ai_insights_json) AS insight_count
        FROM saved_reports ORDER BY generated_at DESC`
     );
     res.json(result.rows);

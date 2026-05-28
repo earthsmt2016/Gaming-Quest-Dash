@@ -779,29 +779,49 @@ export default function ReportsPage() {
                 <div key={r.id} className="rp-report-card">
                   <div className="rp-report-row" onClick={() => handleView(r.id)}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '2px' }}>{r.title}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                        {fmtDate(r.period_from)} – {fmtDate(r.period_to)} · {r.log_count} entr{r.log_count === 1 ? 'y' : 'ies'} · Saved {fmtDateTime(r.generated_at)}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: '14px' }}>{r.title}</span>
+                        <span className={r.trigger_type === 'scheduled' ? 'rp-badge-auto' : 'rp-badge-manual'}>
+                          {r.trigger_type === 'scheduled' ? 'Auto' : 'Manual'}
+                        </span>
+                      </div>
+                      {/* Stat chips */}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                        {[
+                          { icon: '⏱', val: fmtMins(r.playtime_mins), label: 'playtime' },
+                          { icon: '🎮', val: String(r.game_count), label: r.game_count === 1 ? 'game' : 'games' },
+                          { icon: '📋', val: String(r.log_count), label: r.log_count === 1 ? 'session' : 'sessions' },
+                          ...(r.insight_count > 0 ? [{ icon: '✨', val: String(r.insight_count), label: 'AI insight' + (r.insight_count !== 1 ? 's' : '') }] : []),
+                        ].map(({ icon, val, label }) => (
+                          <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', background: 'var(--paper-2)', border: '1px solid var(--line)', borderRadius: '20px', padding: '2px 8px', color: 'var(--text)', fontWeight: 500 }}>
+                            {icon} <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{val}</strong> <span style={{ color: 'var(--muted)' }}>{label}</span>
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                        Saved {fmtDateTime(r.generated_at)}
                       </div>
                     </div>
-                    <span className={r.trigger_type === 'scheduled' ? 'rp-badge-auto' : 'rp-badge-manual'}>
-                      {r.trigger_type === 'scheduled' ? 'Auto' : 'Manual'}
-                    </span>
-                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                      <button className="btn soft" onClick={e => { e.stopPropagation(); handleView(r.id); }}
-                        style={{ fontSize: '12px', padding: '4px 10px' }}>
-                        {expandedId === r.id ? '▲ Collapse' : '▼ View'}
-                      </button>
-                      <button className="btn soft" onClick={e => { e.stopPropagation(); handleDownloadPdf(r); }}
-                        disabled={pdfLoadingId === r.id} title="Download PDF"
-                        style={{ fontSize: '12px', padding: '4px 10px' }}>
-                        {pdfLoadingId === r.id ? '…' : '⬇ PDF'}
-                      </button>
-                      <button className="btn soft" onClick={e => { e.stopPropagation(); handleDelete(r.id, r.title); }}
-                        disabled={deletingId === r.id}
-                        style={{ fontSize: '12px', padding: '4px 10px', color: '#c0392b' }}>
-                        {deletingId === r.id ? '…' : 'Delete'}
-                      </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flexShrink: 0, alignItems: 'flex-end' }}>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <button className="btn soft" onClick={e => { e.stopPropagation(); handleView(r.id); }}
+                          style={{ fontSize: '12px', padding: '4px 10px' }}>
+                          {expandedId === r.id ? '▲ Collapse' : '▼ View'}
+                        </button>
+                        <button className="btn soft" onClick={e => { e.stopPropagation(); handleDownloadPdf(r); }}
+                          disabled={pdfLoadingId === r.id} title={`PDF · ${TEMPLATES.find(t => t.id === options.template)?.label ?? 'Classic'} · ${themeSummary}`}
+                          style={{ fontSize: '12px', padding: '4px 10px' }}>
+                          {pdfLoadingId === r.id ? '…' : '⬇ PDF'}
+                        </button>
+                        <button className="btn soft" onClick={e => { e.stopPropagation(); handleDelete(r.id, r.title); }}
+                          disabled={deletingId === r.id}
+                          style={{ fontSize: '12px', padding: '4px 10px', color: '#c0392b' }}>
+                          {deletingId === r.id ? '…' : 'Delete'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--muted)', textAlign: 'right' }}>
+                        PDF: {TEMPLATES.find(t => t.id === options.template)?.label ?? 'Classic'} · {themeSummary}
+                      </div>
                     </div>
                   </div>
 
