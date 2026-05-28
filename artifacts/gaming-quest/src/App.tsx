@@ -130,9 +130,9 @@ export default function App() {
   const recentLogs = useMemo(() =>
     [...logs].sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 5), [logs]);
 
-  // Dashboard — needs-attention preview (top 3)
+  // Dashboard — needs-attention preview (top 5)
   const needsAttentionPreview = useMemo(() =>
-    needsWorkItems.filter(i => ['Needs attention', 'Light progress'].includes(i.status)).slice(0, 3),
+    needsWorkItems.filter(i => ['Needs attention', 'Light progress'].includes(i.status)).slice(0, 5),
     [needsWorkItems]);
 
   const rangeLabel = useMemo(() => {
@@ -406,46 +406,48 @@ export default function App() {
                       streak={streak}
                     />
 
-                    {/* This week + Needs attention */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px' }}>
-                      <div className="dash-card">
-                        <div className="dash-section-label">This week</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                          {([
-                            ['Sessions', weekLogs.length],
-                            ['Playtime', fmtMins(weekPlaytime)],
-                            ['Games', weekGamesCount],
-                            ['Days played', `${weekDaysCount} / 7`],
-                          ] as [string, string | number][]).map(([k, v]) => (
-                            <div key={k} style={{ background: 'var(--paper-2)', borderRadius: '8px', padding: '10px 12px' }}>
-                              <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k}</div>
-                              <strong style={{ display: 'block', fontSize: '19px', marginTop: '2px' }}>{v}</strong>
-                            </div>
-                          ))}
-                        </div>
+                    {/* Needs attention — full width, prominent */}
+                    <div className="dash-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <div className="dash-section-label" style={{ margin: 0 }}>Needs attention</div>
+                        <button
+                          onClick={() => setActivePage('games')}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--accent)', fontWeight: 600, padding: 0 }}
+                        >
+                          See all →
+                        </button>
                       </div>
-
-                      <div className="dash-card">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                          <div className="dash-section-label" style={{ margin: 0 }}>Needs attention</div>
-                          <button
-                            onClick={() => setActivePage('games')}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--accent)', fontWeight: 600, padding: 0 }}
-                          >
-                            See all →
-                          </button>
+                      {needsAttentionPreview.length === 0 ? (
+                        <div style={{ fontSize: '13px', color: 'var(--muted)' }}>All games on track this week. 🎉</div>
+                      ) : needsAttentionPreview.map((item, i) => (
+                        <div key={item.game} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', borderBottom: i < needsAttentionPreview.length - 1 ? '1px solid var(--soft-line)' : 'none', gap: '10px' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '14px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.game}</div>
+                            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>{item.note}</div>
+                          </div>
+                          <span style={{
+                            fontSize: '11px', fontWeight: 700, flexShrink: 0,
+                            color: item.status === 'Needs attention' ? '#b71c1c' : '#bf360c',
+                            background: item.status === 'Needs attention' ? '#ffebee' : '#fbe9e7',
+                            borderRadius: '4px', padding: '3px 7px', marginTop: '2px',
+                          }}>{item.status}</span>
                         </div>
-                        {needsAttentionPreview.length === 0 ? (
-                          <div style={{ fontSize: '13px', color: 'var(--muted)' }}>All games on track this week.</div>
-                        ) : needsAttentionPreview.map(item => (
-                          <div key={item.game} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid var(--soft-line)' }}>
-                            <span style={{ fontSize: '13px', fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>{item.game}</span>
-                            <span style={{
-                              fontSize: '11px', fontWeight: 700, flexShrink: 0,
-                              color: item.status === 'Needs attention' ? '#b71c1c' : '#bf360c',
-                              background: item.status === 'Needs attention' ? '#ffebee' : '#fbe9e7',
-                              borderRadius: '4px', padding: '2px 6px',
-                            }}>{item.status}</span>
+                      ))}
+                    </div>
+
+                    {/* This week */}
+                    <div className="dash-card">
+                      <div className="dash-section-label">This week</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        {([
+                          ['Sessions', weekLogs.length],
+                          ['Playtime', fmtMins(weekPlaytime)],
+                          ['Games', weekGamesCount],
+                          ['Days played', `${weekDaysCount} / 7`],
+                        ] as [string, string | number][]).map(([k, v]) => (
+                          <div key={k} style={{ background: 'var(--paper-2)', borderRadius: '8px', padding: '10px 12px' }}>
+                            <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k}</div>
+                            <strong style={{ display: 'block', fontSize: '19px', marginTop: '2px' }}>{v}</strong>
                           </div>
                         ))}
                       </div>
