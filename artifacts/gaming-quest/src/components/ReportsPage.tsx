@@ -825,9 +825,34 @@ export default function ReportsPage() {
                           {deletingId === r.id ? '…' : 'Delete'}
                         </button>
                       </div>
-                      <div style={{ fontSize: '10px', color: 'var(--muted)', textAlign: 'right' }}>
-                        PDF: {TEMPLATES.find(t => t.id === options.template)?.label ?? 'Classic'} · {themeSummary}
-                      </div>
+                      {(() => {
+                        const ro = Object.keys(r.options_json ?? {}).length > 0
+                          ? { ...DEFAULT_OPTIONS, ...(r.options_json as Partial<ReportOptions>) }
+                          : options;
+                        const sections = [
+                          ro.showTable     && 'Log table',
+                          ro.showInsights  && 'AI insights',
+                          ro.showBreakdown && 'Breakdown',
+                          ro.showFocus     && 'Focus list',
+                        ].filter(Boolean) as string[];
+                        return (
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '10px', color: 'var(--muted)', marginBottom: '3px' }}>
+                              {TEMPLATES.find(t => t.id === ro.template)?.label ?? 'Classic'} · {getThemeSummary(ro)}
+                            </div>
+                            <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                              {sections.map(s => (
+                                <span key={s} style={{ fontSize: '10px', background: 'var(--accent-pale,#e6f2ee)', color: 'var(--accent,#1a6b4a)', border: '1px solid var(--accent-pale,#c3ddd5)', borderRadius: '10px', padding: '1px 6px', fontWeight: 500 }}>
+                                  {s}
+                                </span>
+                              ))}
+                              {sections.length === 0 && (
+                                <span style={{ fontSize: '10px', color: 'var(--muted)' }}>No sections</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
