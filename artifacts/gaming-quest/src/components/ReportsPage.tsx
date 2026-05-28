@@ -394,7 +394,7 @@ function ReportToolbar({ options, onChange }: ToolbarProps) {
 
 // ─── In-app ReportViewer ──────────────────────────────────────────────────────
 
-function ReportViewer({ report }: { report: SavedReportFull }) {
+function ReportViewer({ report, options }: { report: SavedReportFull; options: ReportOptions }) {
   const [showLog, setShowLog] = useState(false);
   const logs: Array<{ timestamp: string; game: string; action: string; minutes: number; type: string }> = report.logs_json ?? [];
   const insights = report.ai_insights_json ?? {};
@@ -491,7 +491,7 @@ function ReportViewer({ report }: { report: SavedReportFull }) {
       </div>
 
       {/* AI insights */}
-      {insightEntries.length > 0 && (
+      {options.showInsights && insightEntries.length > 0 && (
         <>
           <div className="rv-section-title">AI recommendations</div>
           {insightEntries.map(([game, step]) => (
@@ -502,44 +502,51 @@ function ReportViewer({ report }: { report: SavedReportFull }) {
           ))}
         </>
       )}
+      {options.showInsights && insightEntries.length === 0 && (
+        <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '8px', fontStyle: 'italic' }}>
+          No AI recommendations stored for this report.
+        </div>
+      )}
 
       {/* Session log (collapsible) */}
-      <div style={{ marginTop: '14px' }}>
-        <button
-          onClick={() => setShowLog(v => !v)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--accent)', fontWeight: 600, padding: 0 }}
-        >
-          {showLog ? '▲ Hide session log' : '▼ Show session log'} ({logs.length} entries)
-        </button>
-        {showLog && (
-          <div className="rv-table-wrap" style={{ marginTop: '8px' }}>
-            <table className="rv-table">
-              <thead>
-                <tr>{['Timestamp', 'Game', 'Action', 'Type', 'Time'].map(h => (
-                  <th key={h} className="rv-th">{h}</th>
-                ))}</tr>
-              </thead>
-              <tbody>
-                {[...logs]
-                  .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                  .map((l, i) => (
-                    <tr key={i} style={{ background: i % 2 === 0 ? '#fffdf8' : undefined }}>
-                      <td className="rv-td" style={{ whiteSpace: 'nowrap' }}>{fmtDateTime(l.timestamp)}</td>
-                      <td className="rv-td" style={{ fontWeight: 600 }}>{l.game}</td>
-                      <td className="rv-td">{l.action}</td>
-                      <td className="rv-td">
-                        <span className="rv-type-badge" style={TYPE_STYLES[l.type] ?? DEFAULT_BADGE}>
-                          {TYPE_LABELS[l.type] ?? l.type}
-                        </span>
-                      </td>
-                      <td className="rv-td" style={{ whiteSpace: 'nowrap' }}>{l.minutes}m</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {options.showTable && (
+        <div style={{ marginTop: '14px' }}>
+          <button
+            onClick={() => setShowLog(v => !v)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--accent)', fontWeight: 600, padding: 0 }}
+          >
+            {showLog ? '▲ Hide session log' : '▼ Show session log'} ({logs.length} entries)
+          </button>
+          {showLog && (
+            <div className="rv-table-wrap" style={{ marginTop: '8px' }}>
+              <table className="rv-table">
+                <thead>
+                  <tr>{['Timestamp', 'Game', 'Action', 'Type', 'Time'].map(h => (
+                    <th key={h} className="rv-th">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {[...logs]
+                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                    .map((l, i) => (
+                      <tr key={i} style={{ background: i % 2 === 0 ? '#fffdf8' : undefined }}>
+                        <td className="rv-td" style={{ whiteSpace: 'nowrap' }}>{fmtDateTime(l.timestamp)}</td>
+                        <td className="rv-td" style={{ fontWeight: 600 }}>{l.game}</td>
+                        <td className="rv-td">{l.action}</td>
+                        <td className="rv-td">
+                          <span className="rv-type-badge" style={TYPE_STYLES[l.type] ?? DEFAULT_BADGE}>
+                            {TYPE_LABELS[l.type] ?? l.type}
+                          </span>
+                        </td>
+                        <td className="rv-td" style={{ whiteSpace: 'nowrap' }}>{l.minutes}m</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -805,7 +812,7 @@ export default function ReportsPage() {
                           Loading report…
                         </div>
                       ) : (
-                        <ReportViewer report={fullReport} />
+                        <ReportViewer report={fullReport} options={options} />
                       )}
                     </div>
                   )}
