@@ -36,8 +36,10 @@ interface SidebarProps {
 function labelType(t: string): string {
   return t.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
-function nowDateLocal() { return new Date().toISOString().slice(0, 10); }
-function nowTimeLocal() { return new Date().toTimeString().slice(0, 5); }
+function nowDateTimeLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((res, rej) => {
@@ -199,8 +201,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null);
   const [qaOpen, setQaOpen] = useState(false);
-  const [qaDate, setQaDate] = useState(nowDateLocal);
-  const [qaTime, setQaTime] = useState(nowTimeLocal);
+  const [qaDateTime, setQaDateTime] = useState(nowDateTimeLocal);
   const [qaGame, setQaGame] = useState('');
   const [qaAction, setQaAction] = useState('');
   const [qaMinutes, setQaMinutes] = useState(30);
@@ -219,18 +220,17 @@ export default function Sidebar({
     if (result.action) setQaAction(result.action);
     if (result.type && ACTION_TYPES.some(t => t.value === result.type)) setQaType(result.type as ActionType);
     if (result.minutes > 0) setQaMinutes(result.minutes);
-    setQaDate(nowDateLocal());
-    setQaTime(nowTimeLocal());
+    setQaDateTime(nowDateTimeLocal());
   }, []);
 
   const handleQuickAdd = async () => {
     if (!qaGame.trim() || !qaAction.trim()) { setQaError('Game and action are required.'); return; }
-    const ts = `${qaDate} ${qaTime}`;
+    const ts = qaDateTime.replace('T', ' ');
     const rawLine = `${ts} | ${qaGame.trim()} | ${qaAction.trim()} | ${qaMinutes} | ${qaType}`;
     setQaAdding(true); setQaError('');
     try {
       await onQuickAdd(rawLine);
-      setQaAction(''); setQaDate(nowDateLocal()); setQaTime(nowTimeLocal());
+      setQaAction(''); setQaDateTime(nowDateTimeLocal());
       setQaGame(''); setQaMinutes(30); setQaType('progress'); setQaError('');
     } catch (e: any) {
       setQaError(e.message ?? 'Failed to save entry.');
@@ -292,16 +292,10 @@ export default function Sidebar({
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
-                  <span>Date</span>
-                  <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} style={qaInputStyle} />
-                </label>
-                <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
-                  <span>Time</span>
-                  <input type="time" value={qaTime} onChange={e => setQaTime(e.target.value)} style={qaInputStyle} />
-                </label>
-              </div>
+              <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
+                <span>Date &amp; time</span>
+                <input type="datetime-local" value={qaDateTime} onChange={e => setQaDateTime(e.target.value)} style={qaInputStyle} />
+              </label>
 
               <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
                 <span>Game</span>
