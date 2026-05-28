@@ -147,6 +147,12 @@ const HEADERS: { id: HeaderStyle; label: string; icon: string }[] = [
   { id: 'centered', label: 'Centered',  icon: '≡' },
 ];
 
+function getThemeSummary(options: ReportOptions): string {
+  return options.theme === 'custom'
+    ? `Custom (${options.customColor || '#e85d04'})`
+    : THEMES_META.find(t => t.id === options.theme)?.label ?? 'Forest';
+}
+
 interface ToolbarProps {
   options: ReportOptions;
   onChange: (patch: Partial<ReportOptions>) => void;
@@ -171,9 +177,7 @@ function ReportToolbar({ options, onChange }: ToolbarProps) {
       .replace(/#fde8d8/g, effectivePrimary + '22');
   }
 
-  const themeSummary = options.theme === 'custom'
-    ? `Custom (${options.customColor || '#e85d04'})`
-    : THEMES_META.find(t => t.id === options.theme)?.label ?? 'Forest';
+  const themeSummary = getThemeSummary(options);
 
   return (
     <>
