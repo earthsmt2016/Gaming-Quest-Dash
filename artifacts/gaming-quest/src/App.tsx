@@ -522,15 +522,6 @@ export default function App() {
                       </div>
                     </div>
                     <QuestTable entries={filtered} onEdit={setEditingEntry} onSave={handleSaveEdit} />
-                    <WeeklyReport
-                      weekLogs={weekLogs}
-                      summary={weeklySummary}
-                      onDownload={handleDownloadWeek}
-                      pdfGenerating={pdfGenerating}
-                      onSaveToLibrary={handleSaveWeekToLibrary}
-                      reportSaving={reportSaving}
-                    />
-                    <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
                   </>
                 )}
 
@@ -547,7 +538,12 @@ export default function App() {
                 )}
 
                 {/* ── Reports ── */}
-                {activePage === 'reports' && <ReportsPage />}
+                {activePage === 'reports' && (
+                  <>
+                    <ReportsPage />
+                    <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
+                  </>
+                )}
               </>
             )}
           </main>
