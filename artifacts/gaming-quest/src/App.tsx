@@ -28,6 +28,7 @@ import { useReportOptions } from './hooks/useReportOptions';
 import {
   fetchLogs, saveLogs, clearLogs, fetchFocusInsights,
   fetchCompletions, toggleCompletion, fetchPaused, togglePaused,
+  fetchPlatforms, setGamePlatform,
   updateLog, deleteLog, saveReport, patchReportInsights,
 } from './lib/api';
 
@@ -63,6 +64,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [completions, setCompletions] = useState<Set<string>>(new Set());
   const [paused, setPaused] = useState<Set<string>>(new Set());
+  const [platforms, setPlatforms] = useState<Record<string, string>>({});
   const [rawLogs, setRawLogs] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -78,11 +80,12 @@ export default function App() {
   const [toDate, setToDate] = useState('');
 
   useEffect(() => {
-    Promise.all([fetchLogs(), fetchCompletions(), fetchPaused()])
-      .then(([entries, comps, pausedGames]) => {
+    Promise.all([fetchLogs(), fetchCompletions(), fetchPaused(), fetchPlatforms()])
+      .then(([entries, comps, pausedGames, platformMap]) => {
         setLogs(entries);
         setCompletions(comps);
         setPaused(pausedGames);
+        setPlatforms(platformMap);
         setLoadState('ready');
       })
       .catch(() => setLoadState('error'));
@@ -219,6 +222,15 @@ export default function App() {
   const handleTogglePaused = useCallback(async (game: string) => {
     const nowPaused = await togglePaused(game);
     setPaused(prev => { const n = new Set(prev); if (nowPaused) n.add(game); else n.delete(game); return n; });
+  }, []);
+
+  const handleSetPlatform = useCallback(async (game: string, platform: string) => {
+    await setGamePlatform(game, platform);
+    setPlatforms(prev => {
+      const n = { ...prev };
+      if (platform) n[game] = platform; else delete n[game];
+      return n;
+    });
   }, []);
 
   const handleQuickAdd = useCallback(async (rawLine: string) => {
@@ -528,8 +540,10 @@ export default function App() {
                     logs={logs}
                     completions={completions}
                     paused={paused}
+                    platforms={platforms}
                     onToggleCompletion={handleToggleCompletion}
                     onTogglePaused={handleTogglePaused}
+                    onSetPlatform={handleSetPlatform}
                     onOpenLibrary={() => setLibraryOpen(true)}
                   />
                 )}

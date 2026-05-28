@@ -10,6 +10,7 @@ import youtubeSearchRouter from "./youtubeSearch";
 import savedReportsRouter from "./savedReports";
 import storageRouter from "./storage";
 import screenshotAnalysisRouter from "./screenshotAnalysis";
+import platformsRouter from "./platforms";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(youtubeSearchRouter);
 router.use(savedReportsRouter);
 router.use(storageRouter);
 router.use(screenshotAnalysisRouter);
+router.use(platformsRouter);
 
 export default router;

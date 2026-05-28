@@ -6,6 +6,16 @@ const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|ro
 type GameStatus = 'Needs attention' | 'Light progress' | 'On track' | 'Stalled' | 'On hold' | 'Completed';
 type FilterTab = 'active' | 'hold' | 'done' | 'all';
 
+export const PLATFORMS: { id: string; label: string; icon: string }[] = [
+  { id: 'mobile',       label: 'Mobile',        icon: '📱' },
+  { id: 'xbox',         label: 'Xbox',           icon: '🎮' },
+  { id: 'gamepass',     label: 'Game Pass',      icon: '☁️' },
+  { id: 'playstation',  label: 'PlayStation',    icon: '🎮' },
+  { id: 'switch',       label: 'Switch',         icon: '🕹️' },
+  { id: 'pc',           label: 'PC / Steam',     icon: '💻' },
+  { id: 'steamdeck',    label: 'Steam Deck',     icon: '🖥️' },
+];
+
 interface GameData {
   game: string;
   status: GameStatus;
@@ -111,14 +121,16 @@ interface GamesPageProps {
   logs: LogEntry[];
   completions: Set<string>;
   paused: Set<string>;
+  platforms: Record<string, string>;
   onToggleCompletion: (game: string) => void;
   onTogglePaused: (game: string) => void;
+  onSetPlatform: (game: string, platform: string) => void;
   onOpenLibrary: () => void;
 }
 
 export default function GamesPage({
-  logs, completions, paused,
-  onToggleCompletion, onTogglePaused, onOpenLibrary,
+  logs, completions, paused, platforms,
+  onToggleCompletion, onTogglePaused, onSetPlatform, onOpenLibrary,
 }: GamesPageProps) {
   const [activeTab, setActiveTab] = useState<FilterTab>('active');
 
@@ -220,6 +232,21 @@ export default function GamesPage({
           padding: 32px 0; text-align: center;
           color: var(--muted); font-size: 14px;
         }
+        .gp-platform-badge {
+          display: inline-flex; align-items: center; gap: 3px;
+          font-size: 11px; font-weight: 600;
+          background: var(--paper-2); border: 1px solid var(--line);
+          border-radius: 20px; padding: 2px 8px;
+          color: var(--text); white-space: nowrap;
+        }
+        .gp-platform-select {
+          font: inherit; font-size: 11px;
+          background: var(--paper-2); border: 1px solid var(--line);
+          border-radius: 20px; padding: 2px 6px;
+          color: var(--muted); cursor: pointer;
+          outline: none;
+        }
+        .gp-platform-select:hover { border-color: var(--accent); color: var(--text); }
       `}</style>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '12px', marginBottom: '12px' }}>
@@ -271,6 +298,34 @@ export default function GamesPage({
                   >
                     {g.status}
                   </span>
+                </div>
+
+                {/* Platform row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  {platforms[g.game] ? (
+                    <>
+                      <span className="gp-platform-badge">
+                        {PLATFORMS.find(p => p.id === platforms[g.game])?.icon}{' '}
+                        {PLATFORMS.find(p => p.id === platforms[g.game])?.label ?? platforms[g.game]}
+                      </span>
+                      <button
+                        onClick={() => onSetPlatform(g.game, '')}
+                        title="Clear platform"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--muted)', padding: '0 2px', lineHeight: 1 }}
+                      >✕</button>
+                    </>
+                  ) : (
+                    <select
+                      className="gp-platform-select"
+                      value=""
+                      onChange={e => { if (e.target.value) onSetPlatform(g.game, e.target.value); }}
+                    >
+                      <option value="">+ Platform</option>
+                      {PLATFORMS.map(p => (
+                        <option key={p.id} value={p.id}>{p.icon} {p.label}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {g.priorityLabel && (

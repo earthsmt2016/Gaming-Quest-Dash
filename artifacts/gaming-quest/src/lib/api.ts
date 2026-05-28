@@ -173,6 +173,24 @@ export async function togglePaused(game: string): Promise<boolean> {
   return (await res.json()).paused as boolean;
 }
 
+export async function fetchPlatforms(): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(`${BASE}/platforms`);
+    if (!res.ok) return {};
+    const rows: { game: string; platform: string }[] = await res.json();
+    return Object.fromEntries(rows.map(r => [r.game, r.platform]));
+  } catch { return {}; }
+}
+
+export async function setGamePlatform(game: string, platform: string): Promise<void> {
+  const res = await fetch(`${BASE}/platforms/${encodeURIComponent(game)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ platform }),
+  });
+  if (!res.ok) throw new Error('Failed to set platform');
+}
+
 export async function fetchGuides(): Promise<Record<string, string>> {
   try {
     const res = await fetch(`${BASE}/guides`);
