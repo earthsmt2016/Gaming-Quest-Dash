@@ -8,6 +8,7 @@ export interface LogEntry {
   action: string;
   minutes: number;
   type: ActionType;
+  screenshotPath?: string;
 }
 
 export const SAMPLE_LOGS = `2026-04-30 20:30 | Sonic Superstars | Bought the game and completed the first area. | 45 | purchase

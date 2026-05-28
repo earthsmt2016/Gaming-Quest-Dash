@@ -9,6 +9,7 @@ export interface ApiLogRow {
   action: string;
   minutes: number;
   type: string;
+  screenshotPath?: string | null;
   createdAt: string;
 }
 
@@ -16,7 +17,7 @@ function rowToEntry(row: ApiLogRow): LogEntry | null {
   const fakeLog = `${row.timestamp} | ${row.game} | ${row.action} | ${row.minutes} | ${row.type}`;
   const parsed = parseRaw(fakeLog);
   if (!parsed.length) return null;
-  return { ...parsed[0], id: String(row.id) };
+  return { ...parsed[0], id: String(row.id), screenshotPath: row.screenshotPath ?? undefined };
 }
 
 export async function fetchLogs(): Promise<LogEntry[]> {
@@ -33,6 +34,7 @@ export async function saveLogs(entries: LogEntry[]): Promise<LogEntry[]> {
     action: e.action,
     minutes: e.minutes,
     type: e.type,
+    screenshotPath: e.screenshotPath ?? null,
   }));
   const res = await fetch(`${BASE}/logs`, {
     method: 'POST',
@@ -59,6 +61,7 @@ export interface LogPatch {
   minutes?: number;
   type?: string;
   timestamp?: string;
+  screenshotPath?: string | null;
 }
 
 export async function updateLog(id: string, patch: LogPatch): Promise<LogEntry> {
@@ -83,6 +86,57 @@ export async function deleteLog(id: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete log entry');
 }
 
+// ─── Screenshot ───────────────────────────────────────────────────────────────
+
+export interface ScreenshotAnalysis {
+  game: string;
+  action: string;
+  type: string;
+  minutes: number;
+  confidence: number;
+}
+
+export async function analyzeScreenshot(
+  imageBase64: string,
+  mimeType: string,
+  existingGames?: string[],
+): Promise<ScreenshotAnalysis> {
+  const res = await fetch(`${BASE}/screenshot-analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64, mimeType, existingGames }),
+  });
+  if (!res.ok) throw new Error('Screenshot analysis failed');
+  return res.json();
+}
+
+export async function requestUploadUrl(file: File): Promise<{ uploadURL: string; objectPath: string }> {
+  const res = await fetch(`${BASE}/storage/uploads/request-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+  });
+  if (!res.ok) throw new Error('Failed to get upload URL');
+  return res.json();
+}
+
+export async function uploadFile(file: File): Promise<string> {
+  const { uploadURL, objectPath } = await requestUploadUrl(file);
+  const putRes = await fetch(uploadURL, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  if (!putRes.ok) throw new Error('Failed to upload file to storage');
+  return objectPath;
+}
+
+export function screenshotUrl(objectPath: string): string {
+  return `${BASE}/storage${objectPath}`;
+}
+
+// ─── Focus insights ───────────────────────────────────────────────────────────
+
 export interface FocusGame {
   title: string;
   label: string;
@@ -95,16 +149,13 @@ export async function fetchCompletions(): Promise<Set<string>> {
     if (!res.ok) return new Set();
     const data: string[] = await res.json();
     return new Set(data);
-  } catch {
-    return new Set();
-  }
+  } catch { return new Set(); }
 }
 
 export async function toggleCompletion(game: string): Promise<boolean> {
   const res = await fetch(`${BASE}/completions/${encodeURIComponent(game)}`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to toggle completion');
-  const data = await res.json();
-  return data.completed as boolean;
+  return (await res.json()).completed as boolean;
 }
 
 export async function fetchPaused(): Promise<Set<string>> {
@@ -113,16 +164,13 @@ export async function fetchPaused(): Promise<Set<string>> {
     if (!res.ok) return new Set();
     const data: string[] = await res.json();
     return new Set(data);
-  } catch {
-    return new Set();
-  }
+  } catch { return new Set(); }
 }
 
 export async function togglePaused(game: string): Promise<boolean> {
   const res = await fetch(`${BASE}/paused/${encodeURIComponent(game)}`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to toggle pause');
-  const data = await res.json();
-  return data.paused as boolean;
+  return (await res.json()).paused as boolean;
 }
 
 export async function fetchGuides(): Promise<Record<string, string>> {
@@ -131,9 +179,7 @@ export async function fetchGuides(): Promise<Record<string, string>> {
     if (!res.ok) return {};
     const rows: { game: string; url: string }[] = await res.json();
     return Object.fromEntries(rows.map(r => [r.game, r.url]));
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 }
 
 export async function setGuide(game: string, url: string): Promise<void> {
@@ -149,11 +195,7 @@ export async function deleteGuide(game: string): Promise<void> {
 }
 
 export interface YouTubeVideo {
-  id: string;
-  title: string;
-  thumbnail: string;
-  duration: string;
-  views: number;
+  id: string; title: string; thumbnail: string; duration: string; views: number;
 }
 
 export async function searchYouTubeGuides(game: string, hint?: string): Promise<YouTubeVideo[] | null> {
@@ -162,32 +204,22 @@ export async function searchYouTubeGuides(game: string, hint?: string): Promise<
   const res = await fetch(url.toString());
   if (!res.ok) return null;
   const data = await res.json();
-  if (data && data.unavailable) return null;
+  if (data?.unavailable) return null;
   return data as YouTubeVideo[];
 }
 
 // ─── Daily Plan ───────────────────────────────────────────────────────────────
 
 export interface DailyPlanGame {
-  title: string;
-  daysSinceLastPlayed: number;
-  minutesThisWeek: number;
-  avgSessionMinutes: number;
-  totalMinutesLogged: number;
-  priorityLabel: string;
+  title: string; daysSinceLastPlayed: number; minutesThisWeek: number;
+  avgSessionMinutes: number; totalMinutesLogged: number; priorityLabel: string;
   recentSessions: { date: string; action: string; minutes: number }[];
 }
 
-export interface DailyPlanPick {
-  game: string;
-  minutes: number;
-  why: string;
-}
+export interface DailyPlanPick { game: string; minutes: number; why: string; }
 
 export async function fetchDailyPlan(
-  availableMinutes: number,
-  dayOfWeek: string,
-  games: DailyPlanGame[]
+  availableMinutes: number, dayOfWeek: string, games: DailyPlanGame[]
 ): Promise<DailyPlanPick[]> {
   const res = await fetch(`${BASE}/daily-plan`, {
     method: 'POST',
@@ -195,8 +227,7 @@ export async function fetchDailyPlan(
     body: JSON.stringify({ availableMinutes, dayOfWeek, games }),
   });
   if (!res.ok) return [];
-  const data = await res.json();
-  return data.picks ?? [];
+  return (await res.json()).picks ?? [];
 }
 
 export async function fetchFocusInsights(
@@ -208,30 +239,13 @@ export async function fetchFocusInsights(
     body: JSON.stringify({ games }),
   });
   if (!res.ok) return [];
-  const data = await res.json();
-  return data.insights ?? [];
+  return (await res.json()).insights ?? [];
 }
 
 // ─── Saved Reports ────────────────────────────────────────────────────────────
 
-export interface ReportSchedule {
-  id: number | null;
-  day_of_week: number;
-  hour: number;
-  minute: number;
-  enabled: boolean;
-}
-
-export interface SavedReportMeta {
-  id: number;
-  title: string;
-  period_from: string;
-  period_to: string;
-  trigger_type: 'manual' | 'scheduled';
-  generated_at: string;
-  log_count: number;
-}
-
+export interface ReportSchedule { id: number | null; day_of_week: number; hour: number; minute: number; enabled: boolean; }
+export interface SavedReportMeta { id: number; title: string; period_from: string; period_to: string; trigger_type: 'manual' | 'scheduled'; generated_at: string; log_count: number; }
 export interface SavedReportFull extends SavedReportMeta {
   logs_json: Array<{ timestamp: string; game: string; action: string; minutes: number; type: string }>;
   ai_insights_json: Record<string, string>;
@@ -245,9 +259,7 @@ export async function fetchReportSchedule(): Promise<ReportSchedule> {
 
 export async function saveReportSchedule(s: Omit<ReportSchedule, 'id'>): Promise<ReportSchedule> {
   const res = await fetch(`${BASE}/report-schedule`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(s),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s),
   });
   if (!res.ok) throw new Error('Failed to save schedule');
   return res.json();
@@ -266,9 +278,7 @@ export async function fetchSavedReport(id: number): Promise<SavedReportFull> {
 }
 
 export interface SaveReportPayload {
-  title: string;
-  period_from: string;
-  period_to: string;
+  title: string; period_from: string; period_to: string;
   logs_json: Array<{ timestamp: string; game: string; action: string; minutes: number; type: string }>;
   ai_insights_json: Record<string, string>;
   trigger_type?: 'manual' | 'scheduled';
@@ -276,9 +286,7 @@ export interface SaveReportPayload {
 
 export async function saveReport(payload: SaveReportPayload): Promise<SavedReportMeta> {
   const res = await fetch(`${BASE}/saved-reports`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Failed to save report');
   return res.json();
@@ -291,9 +299,7 @@ export async function triggerReport(): Promise<void> {
 
 export async function patchReportInsights(id: number, ai_insights_json: Record<string, string>): Promise<void> {
   await fetch(`${BASE}/saved-reports/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ai_insights_json }),
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ai_insights_json }),
   });
 }
 

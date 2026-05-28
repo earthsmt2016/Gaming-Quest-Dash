@@ -8,6 +8,8 @@ import pausesRouter from "./pauses";
 import guidesRouter from "./guides";
 import youtubeSearchRouter from "./youtubeSearch";
 import savedReportsRouter from "./savedReports";
+import storageRouter from "./storage";
+import screenshotAnalysisRouter from "./screenshotAnalysis";
 
 const router: IRouter = Router();
 
@@ -20,5 +22,7 @@ router.use(pausesRouter);
 router.use(guidesRouter);
 router.use(youtubeSearchRouter);
 router.use(savedReportsRouter);
+router.use(storageRouter);
+router.use(screenshotAnalysisRouter);
 
 export default router;

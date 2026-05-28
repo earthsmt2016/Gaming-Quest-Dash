@@ -9,6 +9,7 @@ export const logEntriesTable = pgTable("log_entries", {
   action: text("action").notNull(),
   minutes: integer("minutes").notNull(),
   type: text("type").notNull(),
+  screenshotPath: text("screenshot_path"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
