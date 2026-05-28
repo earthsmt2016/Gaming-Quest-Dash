@@ -329,7 +329,7 @@ export default function Sidebar({
                   rows={2} style={{ ...qaInputStyle, resize: 'vertical' }} />
               </label>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 160px) minmax(0, 160px)', columnGap: '24px', rowGap: '12px' }}>
                 <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
                   <span>Minutes (0 = achievement)</span>
                   <input type="number" min={0} max={999} value={qaMinutes}
