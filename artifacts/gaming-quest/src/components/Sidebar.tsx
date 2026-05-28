@@ -202,6 +202,7 @@ export default function Sidebar({
   const sidebarRef = useRef<HTMLElement>(null);
   const [qaOpen, setQaOpen] = useState(false);
   const [qaDateTime, setQaDateTime] = useState(nowDateTimeLocal);
+  const [qaAdjustTime, setQaAdjustTime] = useState(false);
   const [qaGame, setQaGame] = useState('');
   const [qaAction, setQaAction] = useState('');
   const [qaMinutes, setQaMinutes] = useState(30);
@@ -225,13 +226,13 @@ export default function Sidebar({
 
   const handleQuickAdd = async () => {
     if (!qaGame.trim() || !qaAction.trim()) { setQaError('Game and action are required.'); return; }
-    const ts = qaDateTime.replace('T', ' ');
+    const ts = (qaAdjustTime ? qaDateTime : nowDateTimeLocal()).replace('T', ' ');
     const rawLine = `${ts} | ${qaGame.trim()} | ${qaAction.trim()} | ${qaMinutes} | ${qaType}`;
     setQaAdding(true); setQaError('');
     try {
       await onQuickAdd(rawLine);
       setQaAction(''); setQaDateTime(nowDateTimeLocal());
-      setQaGame(''); setQaMinutes(30); setQaType('progress'); setQaError('');
+      setQaGame(''); setQaMinutes(30); setQaType('progress'); setQaError(''); setQaAdjustTime(false);
     } catch (e: any) {
       setQaError(e.message ?? 'Failed to save entry.');
     } finally {
@@ -292,10 +293,24 @@ export default function Sidebar({
                 </div>
               )}
 
-              <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
-                <span>Date &amp; time</span>
-                <input type="datetime-local" value={qaDateTime} onChange={e => setQaDateTime(e.target.value)} style={qaInputStyle} />
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Logged at: now</span>
+                <button
+                  type="button"
+                  onClick={() => { setQaAdjustTime(v => !v); setQaDateTime(nowDateTimeLocal()); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--accent)', fontWeight: 600, padding: 0 }}
+                >
+                  {qaAdjustTime ? 'Use now' : 'Adjust time'}
+                </button>
+              </div>
+              {qaAdjustTime && (
+                <input
+                  type="datetime-local"
+                  value={qaDateTime}
+                  onChange={e => setQaDateTime(e.target.value)}
+                  style={qaInputStyle}
+                />
+              )}
 
               <label style={{ ...labelWrapStyle, fontSize: '13px' }}>
                 <span>Game</span>
