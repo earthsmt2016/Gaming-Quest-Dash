@@ -52,7 +52,7 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 160px) minmax(0, 160px)',
-        columnGap: '24px',
+        columnGap: '40px',
         rowGap: '12px',
         marginBottom: '12px',
       }}>
