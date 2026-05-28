@@ -394,9 +394,9 @@ export default function App() {
                     />
                     <DailyCheckin logs={logs} manualCompletions={completions} paused={paused} />
                     <StatsStrip
-                      entries={logs.length}
-                      playtime={allPlaytime}
-                      games={allGamesCount}
+                      entries={weekLogs.length}
+                      playtime={weekPlaytime}
+                      games={weekGamesCount}
                       needsWork={focusCount}
                       streak={streak}
                     />

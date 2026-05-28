@@ -39,9 +39,9 @@ export default function StatsStrip({ entries, playtime, games, needsWork, streak
     }}
       className="stats-grid"
     >
-      <StatCard label="Entries shown" value={String(entries)} sub="Newest first" />
-      <StatCard label="Playtime" value={`${playtime}m`} sub="Filtered total" />
-      <StatCard label="Games active" value={String(games)} sub="Distinct titles" />
+      <StatCard label="Sessions" value={String(entries)} sub="This week" />
+      <StatCard label="Playtime" value={`${playtime}m`} sub="This week" />
+      <StatCard label="Games active" value={String(games)} sub="This week" />
       <StatCard label="Needs work" value={String(needsWork)} sub="From weekly review" />
       <StatCard
         label="Play streak"

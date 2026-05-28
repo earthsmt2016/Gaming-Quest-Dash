@@ -292,6 +292,13 @@ export async function saveReport(payload: SaveReportPayload): Promise<SavedRepor
   return res.json();
 }
 
+export async function fetchReportPreview(): Promise<{ periodFrom: string; periodTo: string; isCurrentWeek: boolean } | null> {
+  const res = await fetch(`${BASE}/reports/generate-preview`);
+  if (res.status === 422) return null;
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function triggerReport(): Promise<{ periodFrom: string; periodTo: string }> {
   const res = await fetch(`${BASE}/reports/generate-now`, { method: 'POST' });
   if (!res.ok) {

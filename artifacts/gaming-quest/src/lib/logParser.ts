@@ -184,6 +184,7 @@ export interface NeedsWorkItem {
   status: 'Needs attention' | 'Light progress' | 'On track' | 'On hold' | 'Completed or parked';
   note: string;
   wm: number;
+  lastTouched: Date;
 }
 
 export function nextWork(
@@ -235,9 +236,12 @@ export function nextWork(
           ? 'Manually marked as completed.'
           : 'Game completed — credits rolled.';
       }
-      return { game, status, note, wm } as NeedsWorkItem;
+      return { game, status, note, wm, lastTouched: lat.date } as NeedsWorkItem;
     })
-    .sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.wm - b.wm)
+    .sort((a, b) =>
+      ORDER[a.status] - ORDER[b.status] ||
+      a.lastTouched.getTime() - b.lastTouched.getTime()
+    )
     .slice(0, 7);
 }
 

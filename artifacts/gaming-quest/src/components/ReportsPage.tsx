@@ -3,6 +3,7 @@ import {
   ReportSchedule, SavedReportMeta, SavedReportFull,
   fetchReportSchedule, saveReportSchedule,
   fetchSavedReports, fetchSavedReport, deleteReport, triggerReport,
+  fetchReportPreview,
 } from '../lib/api';
 import {
   buildPdfReport, printReport,
@@ -561,14 +562,20 @@ export default function ReportsPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [generatePreview, setGeneratePreview] = useState<{ periodFrom: string; periodTo: string; isCurrentWeek: boolean } | null | 'loading'>('loading');
 
   const loadAll = useCallback(async () => {
     setReportsLoading(true);
     try {
-      const [sched, reps] = await Promise.all([fetchReportSchedule(), fetchSavedReports()]);
+      const [sched, reps, preview] = await Promise.all([
+        fetchReportSchedule(),
+        fetchSavedReports(),
+        fetchReportPreview(),
+      ]);
       setSchedule(sched);
       setScheduleTime(utcHMToLocal(sched.hour, sched.minute));
       setReports(reps);
+      setGeneratePreview(preview);
     } catch { }
     finally { setReportsLoading(false); }
   }, []);
@@ -713,18 +720,26 @@ export default function ReportsPage() {
                 : 'Schedule disabled — toggle to enable'}
             </span>
           </div>
+          {!lastGenerated && generatePreview !== 'loading' && generatePreview && (
+            <div style={{ marginTop: '14px', padding: '9px 12px', borderRadius: '8px', background: generatePreview.isCurrentWeek ? 'var(--paper-2)' : '#fff8e1', border: `1px solid ${generatePreview.isCurrentWeek ? 'var(--line)' : '#ffe082'}` }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: generatePreview.isCurrentWeek ? 'var(--accent)' : '#e65100', marginBottom: '2px' }}>
+                {generatePreview.isCurrentWeek ? 'This week' : 'Most recent week'}
+              </div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
+                {fmtReportPeriod(generatePreview.periodFrom, generatePreview.periodTo)}
+              </div>
+              {!generatePreview.isCurrentWeek && (
+                <div style={{ fontSize: '11px', color: '#bf360c', marginTop: '2px' }}>No entries logged this week — using last active week</div>
+              )}
+            </div>
+          )}
           <button className="btn primary" onClick={handleGenerateNow} disabled={generating}
-            style={{ marginTop: '14px', fontSize: '14px', padding: '10px 20px', width: '100%' }}>
+            style={{ marginTop: '10px', fontSize: '14px', padding: '10px 20px', width: '100%' }}>
             {generating ? '⏳ Generating…' : '⚡ Generate now'}
           </button>
           {lastGenerated && (
             <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--accent)', fontWeight: 500 }}>
               ✓ Report generated for {fmtReportPeriod(lastGenerated.from, lastGenerated.to)}
-            </p>
-          )}
-          {!lastGenerated && (
-            <p className="mini" style={{ marginTop: '8px' }}>
-              Covers the current week, or the most recent week with entries if none logged yet.
             </p>
           )}
         </div>

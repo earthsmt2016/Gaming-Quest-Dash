@@ -1,8 +1,22 @@
 import { Router } from 'express';
 import { pool } from '@workspace/db';
-import { generateWeeklyReport } from '../scheduler';
+import { generateWeeklyReport, getReportPreviewPeriod } from '../scheduler';
 
 const router = Router();
+
+// GET /api/reports/generate-preview — returns the period that generate-now would use, without generating
+router.get('/reports/generate-preview', async (_req, res) => {
+  try {
+    const preview = await getReportPreviewPeriod();
+    if (!preview) {
+      res.status(422).json({ error: 'No log entries found.' });
+      return;
+    }
+    res.json(preview);
+  } catch (err) {
+    res.status(500).json({ error: 'Preview failed', detail: String(err) });
+  }
+});
 
 // POST /api/reports/generate-now — manual trigger; saves as 'manual' so it never blocks the auto-scheduler
 router.post('/reports/generate-now', async (_req, res) => {

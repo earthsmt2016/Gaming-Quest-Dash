@@ -156,7 +156,42 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
   };
 }
 
-export { generateWeeklyReport };
+async function getReportPreviewPeriod(): Promise<{ periodFrom: string; periodTo: string; isCurrentWeek: boolean } | null> {
+  const now = new Date();
+  const weekStart = monStart(now);
+  const weekEnd = sunEnd(now);
+
+  const logsResult = await pool.query(
+    `SELECT timestamp FROM log_entries ORDER BY timestamp`
+  );
+  const allLogs = logsResult.rows as { timestamp: string }[];
+
+  const hasCurrentWeek = allLogs.some(l => {
+    const d = new Date(l.timestamp);
+    return d >= weekStart && d <= weekEnd;
+  });
+
+  if (hasCurrentWeek) {
+    return {
+      periodFrom: weekStart.toISOString().slice(0, 10),
+      periodTo: weekEnd.toISOString().slice(0, 10),
+      isCurrentWeek: true,
+    };
+  }
+
+  if (!allLogs.length) return null;
+
+  const latest = new Date(allLogs[allLogs.length - 1].timestamp);
+  const fallbackStart = monStart(latest);
+  const fallbackEnd = sunEnd(latest);
+  return {
+    periodFrom: fallbackStart.toISOString().slice(0, 10),
+    periodTo: fallbackEnd.toISOString().slice(0, 10),
+    isCurrentWeek: false,
+  };
+}
+
+export { generateWeeklyReport, getReportPreviewPeriod };
 
 export function startScheduler(): void {
   console.log('Scheduler: started (checks every 60s)');
