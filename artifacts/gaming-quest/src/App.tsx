@@ -578,8 +578,11 @@ interface SidebarProps {
 
 function DesktopSidebar(props: SidebarProps) {
   const [qaOpen, setQaOpen] = React.useState(false);
-  const [qaDate, setQaDate] = React.useState(() => new Date().toISOString().slice(0, 10));
-  const [qaTime, setQaTime] = React.useState(() => new Date().toTimeString().slice(0, 5));
+  const [qaDateTime, setQaDateTime] = React.useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  });
+  const [qaAdjustTime, setQaAdjustTime] = React.useState(false);
   const [qaGame, setQaGame] = React.useState('');
   const [qaAction, setQaAction] = React.useState('');
   const [qaMinutes, setQaMinutes] = React.useState(30);
@@ -587,15 +590,20 @@ function DesktopSidebar(props: SidebarProps) {
   const [qaAdding, setQaAdding] = React.useState(false);
   const [qaError, setQaError] = React.useState('');
 
+  function nowLocal() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+
   const handleQuickAdd = async () => {
     if (!qaGame.trim() || !qaAction.trim()) { setQaError('Game and action are required.'); return; }
-    const rawLine = `${qaDate} ${qaTime} | ${qaGame.trim()} | ${qaAction.trim()} | ${qaMinutes} | ${qaType}`;
+    const ts = (qaAdjustTime ? qaDateTime : nowLocal()).replace('T', ' ');
+    const rawLine = `${ts} | ${qaGame.trim()} | ${qaAction.trim()} | ${qaMinutes} | ${qaType}`;
     setQaAdding(true); setQaError('');
     try {
       await props.onQuickAdd(rawLine);
-      setQaAction('');
-      setQaDate(new Date().toISOString().slice(0, 10));
-      setQaTime(new Date().toTimeString().slice(0, 5));
+      setQaAction(''); setQaGame(''); setQaMinutes(30); setQaType('progress');
+      setQaDateTime(nowLocal()); setQaAdjustTime(false); setQaError('');
     } catch (e: unknown) {
       setQaError(e instanceof Error ? e.message : 'Failed to save.');
     } finally { setQaAdding(false); }
@@ -650,16 +658,19 @@ function DesktopSidebar(props: SidebarProps) {
               {qaError && (
                 <div style={{ fontSize: '13px', color: '#c0392b', background: '#fff0f0', padding: '7px 10px', borderRadius: '6px' }}>{qaError}</div>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <label style={qaLabelStyle}>
-                  <span>Date</span>
-                  <input type="date" value={qaDate} onChange={e => setQaDate(e.target.value)} style={qaInputStyle} />
-                </label>
-                <label style={qaLabelStyle}>
-                  <span>Time</span>
-                  <input type="time" value={qaTime} onChange={e => setQaTime(e.target.value)} style={qaInputStyle} />
-                </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Logged at: now</span>
+                <button
+                  type="button"
+                  onClick={() => { setQaAdjustTime(v => !v); setQaDateTime(nowLocal()); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--accent)', fontWeight: 600, padding: 0 }}
+                >
+                  {qaAdjustTime ? 'Use now' : 'Adjust time'}
+                </button>
               </div>
+              {qaAdjustTime && (
+                <input type="datetime-local" value={qaDateTime} onChange={e => setQaDateTime(e.target.value)} style={qaInputStyle} />
+              )}
               <label style={qaLabelStyle}>
                 <span>Game</span>
                 <input type="text" placeholder="Game title" value={qaGame} onChange={e => setQaGame(e.target.value)} list="qa-games" style={qaInputStyle} />
@@ -669,7 +680,7 @@ function DesktopSidebar(props: SidebarProps) {
                 <span>Action / Notes</span>
                 <textarea placeholder="What happened?" value={qaAction} onChange={e => setQaAction(e.target.value)} rows={2} style={{ ...qaInputStyle, resize: 'vertical' }} />
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,160px) minmax(0,160px)', columnGap: '24px', rowGap: '12px' }}>
                 <label style={qaLabelStyle}>
                   <span>Minutes</span>
                   <input type="number" min={0} max={999} value={qaMinutes} onChange={e => setQaMinutes(Number(e.target.value))} style={qaInputStyle} />
