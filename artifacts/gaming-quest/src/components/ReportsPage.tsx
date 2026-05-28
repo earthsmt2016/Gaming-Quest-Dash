@@ -559,6 +559,7 @@ function ReportViewer({ report, options }: { report: SavedReportFull; options: R
 
 export default function ReportsPage() {
   const [options, patchOptions] = useReportOptions();
+  const themeSummary = getThemeSummary(options);
 
   const [schedule, setSchedule] = useState<ReportSchedule>({ id: null, day_of_week: 0, hour: 17, minute: 0, enabled: false });
   const [scheduleTime, setScheduleTime] = useState('17:00');
