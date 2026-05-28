@@ -598,7 +598,8 @@ export default function ReportsPage() {
       const to = new Date(r.period_to);
       const logs = (full.logs_json ?? []).map((l: any) => ({ ...l, date: new Date(l.timestamp) }));
       const insights = full.ai_insights_json ?? {};
-      const html = buildPdfReport(from, to, logs, r.title, insights, new Set(), new Set(), options);
+      const storedOpts = Object.keys(full.options_json ?? {}).length > 0 ? full.options_json : options;
+      const html = buildPdfReport(from, to, logs, r.title, insights, new Set(), new Set(), storedOpts as Partial<ReportOptions>);
       printReport(html);
     } finally { setPdfLoadingId(null); }
   }, [pdfLoadingId, options]);
@@ -610,7 +611,7 @@ export default function ReportsPage() {
     setGenerating(true);
     setLastGenerated(null);
     try {
-      const result = await triggerReport();
+      const result = await triggerReport(options as unknown as Record<string, unknown>);
       setLastGenerated({ from: result.periodFrom, to: result.periodTo });
       await loadAll();
     }
@@ -832,7 +833,7 @@ export default function ReportsPage() {
                           Loading report…
                         </div>
                       ) : (
-                        <ReportViewer report={fullReport} options={options} />
+                        <ReportViewer report={fullReport} options={Object.keys(fullReport.options_json ?? {}).length > 0 ? { ...DEFAULT_OPTIONS, ...(fullReport.options_json as Partial<ReportOptions>) } : options} />
                       )}
                     </div>
                   )}

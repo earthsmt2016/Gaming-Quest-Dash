@@ -249,6 +249,7 @@ export interface SavedReportMeta { id: number; title: string; period_from: strin
 export interface SavedReportFull extends SavedReportMeta {
   logs_json: Array<{ timestamp: string; game: string; action: string; minutes: number; type: string }>;
   ai_insights_json: Record<string, string>;
+  options_json: Record<string, unknown>;
 }
 
 export async function fetchReportSchedule(): Promise<ReportSchedule> {
@@ -299,8 +300,12 @@ export async function fetchReportPreview(): Promise<{ periodFrom: string; period
   return res.json();
 }
 
-export async function triggerReport(): Promise<{ periodFrom: string; periodTo: string }> {
-  const res = await fetch(`${BASE}/reports/generate-now`, { method: 'POST' });
+export async function triggerReport(options?: Record<string, unknown>): Promise<{ periodFrom: string; periodTo: string }> {
+  const res = await fetch(`${BASE}/reports/generate-now`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ options: options ?? {} }),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any).error || 'Generation failed');

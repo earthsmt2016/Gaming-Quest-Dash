@@ -22,7 +22,7 @@ function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'scheduled'): Promise<{ periodFrom: string; periodTo: string } | null> {
+async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'scheduled', reportOptions: Record<string, unknown> = {}): Promise<{ periodFrom: string; periodTo: string } | null> {
   const now = new Date();
   const weekStart = monStart(now);
   const weekEnd = sunEnd(now);
@@ -137,14 +137,15 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
   const title = `Week of ${fmtDate(weekStart)} – ${fmtDate(weekEnd)}`;
 
   await pool.query(
-    `INSERT INTO saved_reports (title, period_from, period_to, logs_json, ai_insights_json, trigger_type)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
+    `INSERT INTO saved_reports (title, period_from, period_to, logs_json, ai_insights_json, options_json, trigger_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
     [
       title,
       weekStart.toISOString().slice(0, 10),
       weekEnd.toISOString().slice(0, 10),
       JSON.stringify(weekLogs),
       JSON.stringify(aiInsights),
+      JSON.stringify(reportOptions),
       triggerType,
     ]
   );
