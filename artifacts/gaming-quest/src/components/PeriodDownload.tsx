@@ -51,11 +51,10 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
       <h3 style={{ margin: '0 0 10px', fontSize: '16px' }}>Save custom period report as PDF</h3>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        columnGap: '24px',
-        rowGap: '16px',
+        gridTemplateColumns: '1fr 1fr',
+        columnGap: '14px',
+        rowGap: '12px',
         marginBottom: '12px',
-        alignItems: 'end',
       }}>
         <label style={labelStyle}>
           <span>From</span>
@@ -65,18 +64,15 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
           <span>To</span>
           <input type="date" value={to} onChange={e => setTo(e.target.value)} style={inputStyle} />
         </label>
-        <label style={labelStyle}>
-          <span>&nbsp;</span>
-          <button
-            className="btn primary"
-            onClick={handleDownload}
-            disabled={pdfGenerating}
-            style={{ borderRadius: 'var(--radius-sm)', width: '100%', opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
-          >
-            {pdfGenerating ? '⏳ Generating…' : '⎙ Save as PDF'}
-          </button>
-        </label>
       </div>
+      <button
+        className="btn primary"
+        onClick={handleDownload}
+        disabled={pdfGenerating}
+        style={{ borderRadius: 'var(--radius-sm)', width: '100%', minHeight: '44px', marginBottom: '10px', opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
+      >
+        {pdfGenerating ? '⏳ Generating…' : '⎙ Save as PDF'}
+      </button>
       <p className="mini">Opens a print dialog — choose "Save as PDF" to export a clean, week-by-week report for the selected period.</p>
     </section>
   );
