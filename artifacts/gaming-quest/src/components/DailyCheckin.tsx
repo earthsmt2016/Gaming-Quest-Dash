@@ -5,10 +5,10 @@ import { fetchDailyPlan, DailyPlanGame, DailyPlanPick } from '../lib/api';
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
   { label: '30m', value: 30 },
-  { label: '45m', value: 45 },
   { label: '1h', value: 60 },
-  { label: '90m', value: 90 },
   { label: '2h', value: 120 },
+  { label: '3h', value: 180 },
+  { label: '4h', value: 240 },
 ];
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

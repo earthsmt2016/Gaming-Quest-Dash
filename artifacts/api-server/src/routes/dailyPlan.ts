@@ -36,22 +36,26 @@ router.post("/daily-plan", async (req, res) => {
     ].join("\n");
   }).join("\n\n");
 
-  const maxGames = availableMinutes < 30 ? 1 : availableMinutes < 60 ? 2 : 3;
+  const maxGames =
+    availableMinutes < 30  ? 1 :
+    availableMinutes < 60  ? 2 :
+    availableMinutes < 180 ? 3 :
+    availableMinutes < 360 ? 4 : 5;
 
   const systemPrompt = `You are a smart daily gaming session planner. Given a player's active games and available time, you create an optimal session plan.
 
 Selection rules:
 - Pick at most ${maxGames} game${maxGames > 1 ? "s" : ""} (based on available time: ${availableMinutes} min)
 - Minimum 15 minutes per game
-- Total allocated minutes should be close to but not exceed ${availableMinutes}
+- CRITICAL: The sum of all "minutes" values MUST be as close as possible to ${availableMinutes} — fill the time. Leaving more than 20 minutes unplanned is not acceptable.
+- Distribute time proportionally: if you pick 3 games for 180 minutes, each gets ~60 minutes; for 600 minutes, each gets ~120–200 minutes. Scale up from the player's avg session length to fill the available time — a player with a 30m avg can play a 120m session if they have 4 hours free.
 - Priority order: "Boss fight reached" > "Active story run" > "Just started" > long neglect > "Competitive"
-- Factor in avg session length: if a player always does 20m sessions, don't allocate 60m
 - Prefer variety if time allows, but never sacrifice strategic priority for it
 
 The "why" field MUST cover two things in 1–2 sentences (max 45 words total):
-1. WHY this game was selected today — the specific reason it ranked above others (e.g. boss fight pending, hasn't been played in days, momentum just started, etc.)
-2. What the player will GAIN or ACHIEVE by playing it now — concrete benefit (e.g. "defeat the boss while the fight is fresh", "build early momentum before it gets shelved", "extend your rank push while the streak is hot")
-Reference the player's actual session notes. Be specific and game-aware. Never just say "you haven't played in X days" as the only justification.
+1. WHY this game was selected today — the specific reason it ranked above others
+2. What the player will GAIN or ACHIEVE by playing it now — concrete benefit
+Reference the player's actual session notes. Be specific and game-aware.
 
 Respond ONLY with valid JSON — no markdown, no explanation:
 { "picks": [ { "game": "<exact game name from input>", "minutes": <number>, "why": "<reason + benefit>" } ] }`;
