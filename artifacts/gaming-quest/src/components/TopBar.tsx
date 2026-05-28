@@ -59,9 +59,13 @@ export default function TopBar({
           font-weight: 700;
           border-bottom-color: var(--accent);
         }
+        .topbar-nav-full { display: inline; }
+        .topbar-nav-short { display: none; }
         @media (max-width: 600px) {
           .topbar-title { display: none; }
           .topbar-nav-btn { padding: 0 8px; font-size: 13px; }
+          .topbar-nav-full { display: none; }
+          .topbar-nav-short { display: inline; }
         }
         @media (max-width: 400px) {
           .topbar-nav-btn { padding: 0 6px; font-size: 12px; }
@@ -101,8 +105,8 @@ export default function TopBar({
               className={`topbar-nav-btn${activePage === item.id ? ' active' : ''}`}
               onClick={() => onPageChange(item.id)}
             >
-              <span className="topbar-pdf-label">{item.label}</span>
-              <span className="topbar-pdf-icon">{item.short}</span>
+              <span className="topbar-nav-full">{item.label}</span>
+              <span className="topbar-nav-short">{item.short}</span>
             </button>
           ))}
         </nav>

@@ -40,15 +40,32 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
     }
   }
 
-  // Fetch ALL logs (used for AI context); filter to current week separately for the report snapshot
+  // Fetch ALL logs (used for AI context); filter to target week separately for the report snapshot
   const logsResult = await pool.query(
     `SELECT timestamp, game, action, minutes, type FROM log_entries ORDER BY timestamp`
   );
   const allLogs = logsResult.rows as { timestamp: string; game: string; action: string; minutes: number; type: string }[];
-  const weekLogs = allLogs.filter(l => {
+
+  let weekLogs = allLogs.filter(l => {
     const d = new Date(l.timestamp);
     return d >= weekStart && d <= weekEnd;
   });
+
+  // For manual triggers: if current week has no logs, fall back to most recent week with data
+  if (!weekLogs.length && triggerType === 'manual') {
+    if (!allLogs.length) {
+      console.log('Scheduler: no logs at all — skipping.');
+      return;
+    }
+    const latest = new Date(allLogs[allLogs.length - 1].timestamp);
+    weekStart.setTime(monStart(latest).getTime());
+    weekEnd.setTime(sunEnd(latest).getTime());
+    weekLogs = allLogs.filter(l => {
+      const d = new Date(l.timestamp);
+      return d >= weekStart && d <= weekEnd;
+    });
+    console.log(`Scheduler: no current-week logs; using most recent week (${fmtDate(weekStart)} – ${fmtDate(weekEnd)}) for manual report.`);
+  }
 
   if (!weekLogs.length) {
     console.log('Scheduler: no logs for current week — skipping.');
