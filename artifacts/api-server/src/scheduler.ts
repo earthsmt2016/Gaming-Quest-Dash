@@ -22,7 +22,7 @@ function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'scheduled'): Promise<void> {
+async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'scheduled'): Promise<{ periodFrom: string; periodTo: string } | null> {
   const now = new Date();
   const weekStart = monStart(now);
   const weekEnd = sunEnd(now);
@@ -36,7 +36,7 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
     );
     if (dup.rows.length > 0) {
       console.log('Scheduler: report already generated today, skipping.');
-      return;
+      return null;
     }
   }
 
@@ -55,7 +55,7 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
   if (!weekLogs.length && triggerType === 'manual') {
     if (!allLogs.length) {
       console.log('Scheduler: no logs at all — skipping.');
-      return;
+      return null;
     }
     const latest = new Date(allLogs[allLogs.length - 1].timestamp);
     weekStart.setTime(monStart(latest).getTime());
@@ -69,7 +69,7 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
 
   if (!weekLogs.length) {
     console.log('Scheduler: no logs for current week — skipping.');
-    return;
+    return null;
   }
 
   // Load completions + pauses for filtering
@@ -150,6 +150,10 @@ async function generateWeeklyReport(triggerType: 'scheduled' | 'manual' = 'sched
   );
 
   console.log(`Scheduler: ${triggerType === 'scheduled' ? 'auto-generated' : 'manually generated'} report "${title}"`);
+  return {
+    periodFrom: weekStart.toISOString().slice(0, 10),
+    periodTo: weekEnd.toISOString().slice(0, 10),
+  };
 }
 
 export { generateWeeklyReport };

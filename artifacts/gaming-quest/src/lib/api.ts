@@ -292,9 +292,13 @@ export async function saveReport(payload: SaveReportPayload): Promise<SavedRepor
   return res.json();
 }
 
-export async function triggerReport(): Promise<void> {
+export async function triggerReport(): Promise<{ periodFrom: string; periodTo: string }> {
   const res = await fetch(`${BASE}/reports/generate-now`, { method: 'POST' });
-  if (!res.ok) throw new Error('Generation failed');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any).error || 'Generation failed');
+  }
+  return res.json();
 }
 
 export async function patchReportInsights(id: number, ai_insights_json: Record<string, string>): Promise<void> {

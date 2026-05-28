@@ -7,8 +7,12 @@ const router = Router();
 // POST /api/reports/generate-now — manual trigger; saves as 'manual' so it never blocks the auto-scheduler
 router.post('/reports/generate-now', async (_req, res) => {
   try {
-    await generateWeeklyReport('manual');
-    res.json({ ok: true });
+    const result = await generateWeeklyReport('manual');
+    if (!result) {
+      res.status(422).json({ error: 'No log entries found to generate a report from.' });
+      return;
+    }
+    res.json({ ok: true, periodFrom: result.periodFrom, periodTo: result.periodTo });
   } catch (err) {
     res.status(500).json({ error: 'Generation failed', detail: String(err) });
   }

@@ -436,13 +436,25 @@ export default function ReportsPage() {
     } finally { setPdfLoadingId(null); }
   }, [pdfLoadingId, options]);
 
+  const [lastGenerated, setLastGenerated] = useState<{ from: string; to: string } | null>(null);
+
   const handleGenerateNow = async () => {
     if (generating) return;
     setGenerating(true);
-    try { await triggerReport(); await loadAll(); }
-    catch { alert('Could not generate report. Check that you have log entries this week.'); }
+    setLastGenerated(null);
+    try {
+      const result = await triggerReport();
+      setLastGenerated({ from: result.periodFrom, to: result.periodTo });
+      await loadAll();
+    }
+    catch (err: any) { alert(err?.message || 'Could not generate report. Check that you have log entries.'); }
     finally { setGenerating(false); }
   };
+
+  function fmtReportPeriod(from: string, to: string) {
+    const fmt = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${fmt(from)} – ${fmt(to)}`;
+  }
 
   const handleSaveSchedule = async () => {
     const { hour, minute } = localHMToUtc(scheduleTime);
@@ -552,6 +564,16 @@ export default function ReportsPage() {
             style={{ marginTop: '14px', fontSize: '14px', padding: '10px 20px', width: '100%' }}>
             {generating ? '⏳ Generating…' : '⚡ Generate now'}
           </button>
+          {lastGenerated && (
+            <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--accent)', fontWeight: 500 }}>
+              ✓ Report generated for {fmtReportPeriod(lastGenerated.from, lastGenerated.to)}
+            </p>
+          )}
+          {!lastGenerated && (
+            <p className="mini" style={{ marginTop: '8px' }}>
+              Covers the current week, or the most recent week with entries if none logged yet.
+            </p>
+          )}
         </div>
 
         {/* Reports list */}

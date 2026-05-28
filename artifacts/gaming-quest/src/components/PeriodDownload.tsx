@@ -29,6 +29,10 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
     minWidth: 0,
   };
 
+  function fmtDate(s: string) {
+    return new Date(s + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
   function handleDownload() {
     if (!from || !to) {
       alert('Please select both a From and To date for the custom period.');
@@ -65,6 +69,17 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
           <input type="date" value={to} onChange={e => setTo(e.target.value)} style={inputStyle} />
         </label>
       </div>
+      {(from || to) && (
+        <p style={{ margin: '0 0 10px', fontSize: '13px', color: from && to && from <= to ? 'var(--accent)' : 'var(--muted)', fontWeight: 500 }}>
+          {from && to && from <= to
+            ? `Report will cover: ${fmtDate(from)} – ${fmtDate(to)}`
+            : from && !to
+            ? `From: ${fmtDate(from)} — select a To date`
+            : !from && to
+            ? `To: ${fmtDate(to)} — select a From date`
+            : 'From date must be before To date'}
+        </p>
+      )}
       <button
         className="btn primary"
         onClick={handleDownload}
