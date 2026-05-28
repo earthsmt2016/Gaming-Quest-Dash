@@ -17,6 +17,8 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
     padding: '8px 10px',
     fontSize: '14px',
     width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
   };
 
   const labelStyle: React.CSSProperties = {
@@ -24,6 +26,7 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
     flexDirection: 'column',
     gap: '5px',
     fontSize: '13px',
+    minWidth: 0,
   };
 
   function handleDownload() {
@@ -48,8 +51,9 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
       <h3 style={{ margin: '0 0 10px', fontSize: '16px' }}>Save custom period report as PDF</h3>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-        gap: '18px',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        columnGap: '24px',
+        rowGap: '16px',
         marginBottom: '12px',
         alignItems: 'end',
       }}>

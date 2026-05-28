@@ -471,7 +471,9 @@ export default function ReportsPage() {
     <>
       <style>{`
         .rp-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px; }
-        .rp-schedule-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 18px; align-items: end; }
+        .rp-schedule-grid { display: grid; grid-template-columns: 1fr 1fr auto; column-gap: 24px; row-gap: 16px; align-items: end; }
+        .rp-schedule-grid > * { min-width: 0; }
+        .rp-schedule-grid input, .rp-schedule-grid select { width: 100%; box-sizing: border-box; }
         .rp-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
         .rp-input {
           border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
