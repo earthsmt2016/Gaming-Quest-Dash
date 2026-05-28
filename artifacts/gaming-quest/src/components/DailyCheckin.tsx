@@ -13,6 +13,15 @@ const QUICK_TIMES = [
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+const PICK_NUMERALS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧'];
+function pickLabel(i: number, total: number): string {
+  const num = PICK_NUMERALS[i] ?? `${i + 1}.`;
+  if (total === 1) return `${num} Play`;
+  if (i === 0) return `${num} Start with`;
+  if (i === total - 1) return `${num} Finish with`;
+  return `${num} Then`;
+}
+
 function fmtMins(m: number): string {
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
@@ -396,7 +405,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                     <div key={pick.game} className="dc-rec-card ai-card">
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="dc-rec-order">
-                          {i === 0 ? '① Start with' : i === 1 ? '② Then' : '③ Finish with'}
+                          {pickLabel(i, plan.picks.length)}
                         </div>
                         <div className="dc-rec-game">{pick.game}</div>
                         <div className="dc-why-label">Why this session</div>
@@ -452,7 +461,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                         <div key={rec.game} className="dc-rec-card">
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="dc-rec-order">
-                              {i === 0 ? '① Start with' : i === 1 ? '② Then' : '③ Finish with'}
+                              {pickLabel(i, plan.picks.length)}
                             </div>
                             {rec.priorityLabel && (
                               <div className="dc-priority-label">{rec.priorityLabel}</div>
