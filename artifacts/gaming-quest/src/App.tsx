@@ -479,6 +479,16 @@ export default function App() {
                         </div>
                       )}
                     </div>
+
+                    {/* Weekly report preview */}
+                    <WeeklyReport
+                      weekLogs={weekLogs}
+                      summary={weeklySummary}
+                      onDownload={handleDownloadWeek}
+                      pdfGenerating={pdfGenerating}
+                      onSaveToLibrary={handleSaveWeekToLibrary}
+                      reportSaving={reportSaving}
+                    />
                   </>
                 )}
 
