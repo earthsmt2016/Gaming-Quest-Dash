@@ -109,6 +109,14 @@ interface ToolbarProps {
 
 function ReportToolbar({ options, onChange }: ToolbarProps) {
   const [open, setOpen] = useState(true);
+  const currentTheme = THEMES_META.find(t => t.id === options.theme) ?? THEMES_META[0];
+
+  function colorPreview(html: string): string {
+    return html
+      .replace(/#1a6b4a/g, currentTheme.primary)
+      .replace(/#1a3d2b/g, currentTheme.dark)
+      .replace(/#e6f4ef/g, currentTheme.primary + '22');
+  }
   return (
     <>
       <style>{`
@@ -174,7 +182,7 @@ function ReportToolbar({ options, onChange }: ToolbarProps) {
                   >
                     <div
                       className="rt-template-preview"
-                      dangerouslySetInnerHTML={{ __html: t.preview }}
+                      dangerouslySetInnerHTML={{ __html: colorPreview(t.preview) }}
                     />
                     <div className="rt-template-info">
                       <div className="rt-template-name">{t.label}</div>
@@ -540,8 +548,8 @@ export default function ReportsPage() {
                 : 'Schedule disabled — toggle to enable'}
             </span>
           </div>
-          <button className="btn soft" onClick={handleGenerateNow} disabled={generating}
-            style={{ marginTop: '10px', fontSize: '13px', padding: '6px 14px' }}>
+          <button className="btn primary" onClick={handleGenerateNow} disabled={generating}
+            style={{ marginTop: '14px', fontSize: '14px', padding: '10px 20px', width: '100%' }}>
             {generating ? '⏳ Generating…' : '⚡ Generate now'}
           </button>
         </div>

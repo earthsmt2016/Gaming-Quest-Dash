@@ -337,8 +337,6 @@ export default function App() {
           activePage={activePage}
           onPageChange={setActivePage}
           onHamburger={() => setSidebarOpen(o => !o)}
-          onDownloadWeek={handleDownloadWeek}
-          pdfGenerating={pdfGenerating}
         />
 
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -393,9 +391,6 @@ export default function App() {
                   <>
                     <Hero
                       rangeLabel={rangeLabel}
-                      onScrollToReport={() => setActivePage('log')}
-                      onDownloadWeek={handleDownloadWeek}
-                      pdfGenerating={pdfGenerating}
                     />
                     <DailyCheckin logs={logs} manualCompletions={completions} paused={paused} />
                     <StatsStrip

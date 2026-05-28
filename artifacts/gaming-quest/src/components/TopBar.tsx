@@ -12,12 +12,10 @@ interface TopBarProps {
   activePage: Page;
   onPageChange: (page: Page) => void;
   onHamburger: () => void;
-  onDownloadWeek: () => void;
-  pdfGenerating?: boolean;
 }
 
 export default function TopBar({
-  activePage, onPageChange, onHamburger, onDownloadWeek, pdfGenerating,
+  activePage, onPageChange, onHamburger,
 }: TopBarProps) {
   return (
     <>
@@ -61,15 +59,9 @@ export default function TopBar({
           font-weight: 700;
           border-bottom-color: var(--accent);
         }
-        .topbar-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
-        .topbar-pdf-label { display: inline; }
-        .topbar-pdf-icon  { display: none; }
-
         @media (max-width: 600px) {
           .topbar-title { display: none; }
           .topbar-nav-btn { padding: 0 8px; font-size: 13px; }
-          .topbar-pdf-label { display: none; }
-          .topbar-pdf-icon  { display: inline; }
         }
         @media (max-width: 400px) {
           .topbar-nav-btn { padding: 0 6px; font-size: 12px; }
@@ -115,25 +107,6 @@ export default function TopBar({
           ))}
         </nav>
 
-        {/* Right: PDF action */}
-        <div className="topbar-actions">
-          <button
-            className="btn primary"
-            onClick={onDownloadWeek}
-            disabled={pdfGenerating}
-            style={{ padding: '0 12px', opacity: pdfGenerating ? 0.6 : 1, cursor: pdfGenerating ? 'not-allowed' : 'pointer' }}
-            title="Download this week as PDF"
-          >
-            <span className="topbar-pdf-label">{pdfGenerating ? '⏳ Generating…' : '⎙ This week'}</span>
-            <span className="topbar-pdf-icon">
-              {pdfGenerating ? '⏳' : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2v13M8 11l4 4 4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
-                </svg>
-              )}
-            </span>
-          </button>
-        </div>
       </header>
     </>
   );
