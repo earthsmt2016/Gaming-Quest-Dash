@@ -51,8 +51,8 @@ export default function PeriodDownload({ onDownload, pdfGenerating }: PeriodDown
       <h3 style={{ margin: '0 0 10px', fontSize: '16px' }}>Save custom period report as PDF</h3>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        columnGap: '14px',
+        gridTemplateColumns: 'minmax(0, 160px) minmax(0, 160px)',
+        columnGap: '24px',
         rowGap: '12px',
         marginBottom: '12px',
       }}>
