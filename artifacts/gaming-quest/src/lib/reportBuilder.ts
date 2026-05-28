@@ -2,12 +2,17 @@ import { LogEntry, formatDate, monStart, sunEnd } from './logParser';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ReportTemplate = 'classic' | 'magazine' | 'compact';
-export type ReportTheme    = 'green' | 'blue' | 'purple' | 'slate';
+export type ReportTemplate = 'classic' | 'magazine' | 'compact' | 'minimal' | 'custom';
+export type ReportTheme    = 'green' | 'blue' | 'purple' | 'slate' | 'crimson' | 'amber' | 'teal' | 'rose' | 'custom';
+export type FontChoice     = 'inter' | 'georgia' | 'mono';
+export type HeaderStyle    = 'banner' | 'siderule' | 'centered';
 
 export interface ReportOptions {
   template:     ReportTemplate;
   theme:        ReportTheme;
+  customColor:  string;
+  fontChoice:   FontChoice;
+  headerStyle:  HeaderStyle;
   showTable:    boolean;
   showInsights: boolean;
   showBreakdown:boolean;
@@ -15,6 +20,9 @@ export interface ReportOptions {
 }
 export const DEFAULT_OPTIONS: ReportOptions = {
   template: 'classic', theme: 'green',
+  customColor: '#e85d04',
+  fontChoice: 'inter',
+  headerStyle: 'banner',
   showTable: true, showInsights: true, showBreakdown: true, showFocus: true,
 };
 
@@ -22,11 +30,34 @@ export const DEFAULT_OPTIONS: ReportOptions = {
 
 interface ThemeColors { primary: string; dark: string; bg: string; bgLight: string; border: string; }
 const THEMES: Record<ReportTheme, ThemeColors> = {
-  green:  { primary: '#1a6b4a', dark: '#1a3d2b', bg: '#e6f4ef', bgLight: '#f0faf5', border: '#b7dfc8' },
-  blue:   { primary: '#1565c0', dark: '#0d2b5e', bg: '#e3f2fd', bgLight: '#f0f7ff', border: '#a3c8f5' },
-  purple: { primary: '#7b1fa2', dark: '#3a0d5c', bg: '#f3e5f5', bgLight: '#faf0fd', border: '#d7a8e8' },
-  slate:  { primary: '#455a64', dark: '#1c2830', bg: '#eceff1', bgLight: '#f5f7f8', border: '#b8c7cc' },
+  green:   { primary: '#1a6b4a', dark: '#1a3d2b', bg: '#e6f4ef', bgLight: '#f0faf5', border: '#b7dfc8' },
+  blue:    { primary: '#1565c0', dark: '#0d2b5e', bg: '#e3f2fd', bgLight: '#f0f7ff', border: '#a3c8f5' },
+  purple:  { primary: '#7b1fa2', dark: '#3a0d5c', bg: '#f3e5f5', bgLight: '#faf0fd', border: '#d7a8e8' },
+  slate:   { primary: '#455a64', dark: '#1c2830', bg: '#eceff1', bgLight: '#f5f7f8', border: '#b8c7cc' },
+  crimson: { primary: '#c62828', dark: '#7f0000', bg: '#fce4e4', bgLight: '#fff5f5', border: '#f0a0a0' },
+  amber:   { primary: '#e65100', dark: '#8d3200', bg: '#fbe9e7', bgLight: '#fff8f5', border: '#f4a87c' },
+  teal:    { primary: '#00796b', dark: '#004d40', bg: '#e0f2f1', bgLight: '#f0faf9', border: '#80cbc4' },
+  rose:    { primary: '#c2185b', dark: '#880e4f', bg: '#fce4ec', bgLight: '#fff5f8', border: '#f48fb1' },
+  custom:  { primary: '#1a6b4a', dark: '#1a3d2b', bg: '#e6f4ef', bgLight: '#f0faf5', border: '#b7dfc8' },
 };
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = (hex.startsWith('#') ? hex.slice(1) : hex).padEnd(6, '0');
+  return [parseInt(h.slice(0,2),16)||0, parseInt(h.slice(2,4),16)||0, parseInt(h.slice(4,6),16)||0];
+}
+
+function buildCustomTheme(hex: string): ThemeColors {
+  const [r, g, b] = hexToRgb(hex);
+  const mix = (f: number) => {
+    const n = (ch: number) => Math.round(255*(1-f) + ch*f).toString(16).padStart(2,'0');
+    return `#${n(r)}${n(g)}${n(b)}`;
+  };
+  const darken = (f: number) => {
+    const n = (ch: number) => Math.max(0, Math.min(255, Math.round(ch*f))).toString(16).padStart(2,'0');
+    return `#${n(r)}${n(g)}${n(b)}`;
+  };
+  return { primary: hex, dark: darken(0.52), bg: mix(0.12), bgLight: mix(0.05), border: mix(0.32) };
+}
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -756,6 +787,264 @@ function buildCompactReport(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MINIMAL TEMPLATE
+// ─────────────────────────────────────────────────────────────────────────────
+
+function minimalStyles(c: ThemeColors): string {
+  return `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', Arial, sans-serif; background: #fff; color: #111; font-size: 10.5pt; line-height: 1.65; padding: 40px 48px; max-width: 900px; margin: 0 auto; }
+.mn-eyebrow { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.18em; color: ${c.primary}; font-weight: 700; margin-bottom: 8px; }
+.mn-title { font-size: 28pt; font-weight: 800; color: #111; margin-bottom: 5px; line-height: 1.05; }
+.mn-date { font-size: 10pt; color: #666; margin-bottom: 18px; }
+.mn-rule { height: 2px; background: ${c.primary}; margin-bottom: 24px; }
+.mn-stats { display: flex; gap: 36px; margin-bottom: 30px; flex-wrap: wrap; }
+.mn-stat { border-top: 2px solid ${c.primary}; padding-top: 8px; }
+.mn-stat-val { font-size: 20pt; font-weight: 800; color: #111; line-height: 1; }
+.mn-stat-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.1em; color: #888; margin-top: 3px; }
+h2 { font-size: 8.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: ${c.primary}; margin: 28px 0 12px; padding-bottom: 6px; border-bottom: 1px solid #ddd; }
+.mn-summary { font-size: 10.5pt; color: #222; line-height: 1.85; }
+.mn-week-head { font-size: 10.5pt; font-weight: 700; color: #111; margin: 24px 0 6px; }
+.mn-narrative { font-size: 9.5pt; color: #444; line-height: 1.75; margin-bottom: 10px; padding: 0 0 0 12px; border-left: 2px solid ${c.primary}; }
+table { width:100%; border-collapse:collapse; margin-bottom:6px; table-layout:fixed; word-break:break-word; }
+thead tr { background: transparent; }
+th { text-align:left; font-size:7.5pt; font-weight:700; padding:7px 8px; border-bottom:2px solid #111; color:#111; text-transform:uppercase; letter-spacing:0.06em; }
+td { font-size:9pt; padding:7px 8px; line-height:1.5; vertical-align:top; border-bottom:1px solid #ebebeb; }
+.type-badge { display:inline-block; font-size:7.5pt; font-weight:600; padding:2px 6px; border-radius:3px; white-space:nowrap; }
+.mn-week-total { font-size:9.5pt; font-weight:700; margin:5px 0 18px; color:#444; }
+.mn-bullets { list-style:none; padding:0; display:flex; flex-direction:column; gap:4px; }
+.mn-bullets li { font-size:9.5pt; padding:7px 10px 7px 12px; border-left:2px solid ${c.border}; }
+.mn-bullets li strong { color:#111; }
+.mn-focus { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.mn-focus-item { display:flex; gap:12px; align-items:flex-start; padding:9px 12px; border-left:3px solid; }
+.mn-priority { font-size:7pt; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; margin-top:3px; flex-shrink:0; min-width:52px; }
+.mn-ftitle { font-size:10pt; font-weight:700; margin-bottom:2px; }
+.mn-flabel { font-size:9pt; color:#444; }
+.mn-insight { font-size:9.5pt; color:#222; font-weight:500; }
+@media print {
+  @page { size:A4 portrait; margin:14mm 16mm; }
+  body { padding:0; margin:0; max-width:none; font-size:9.5pt; }
+  thead { display:table-header-group; }
+  tr { break-inside:avoid; }
+  .mn-narrative, .mn-focus-item, .mn-bullets li { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+}`;
+}
+
+function buildMinimalReport(
+  title: string, from: Date, to: Date, asc: LogEntry[],
+  total: number, gameCount: number, weeks: WeekSection[],
+  execSummary: string, breakdownBullets: string[],
+  focusItems: FocusItem[], aiInsights: Record<string, string>,
+  opts: ReportOptions, c: ThemeColors,
+): string {
+  const weekSections = weeks.map((w, i) => {
+    const wTotal = w.logs.reduce((s, l) => s + l.minutes, 0);
+    const totalLabel = (i === weeks.length - 1 && w.isCurrentWeek)
+      ? `${w.label} total so far: ${fmtMinutes(wTotal)}`
+      : `${w.label} total: ${fmtMinutes(wTotal)}`;
+    const tableHtml = opts.showTable ? `<table>${TABLE_COLS}${TABLE_HEAD}
+      <tbody>${w.logs.map(logRow).join('')}</tbody></table>` : '';
+    return `<div class="mn-week-head">${esc(w.label)}: ${esc(formatDate(w.start))} – ${esc(formatDate(w.end))}</div>
+      <div class="mn-narrative">${weekNarrative(w)}</div>
+      ${tableHtml}
+      <div class="mn-week-total">${esc(totalLabel)}</div>`;
+  }).join('');
+
+  const breakdownHtml = opts.showBreakdown && breakdownBullets.length
+    ? `<h2>Game Breakdown</h2>
+       <ul class="mn-bullets">${breakdownBullets.map(b => {
+         const [head, ...rest] = b.split(' — ');
+         return `<li><strong>${esc(head)}</strong>${rest.length ? ' — ' + esc(rest.join(' — ')) : ''}</li>`;
+       }).join('')}</ul>` : '';
+
+  const focusHtml = opts.showFocus && focusItems.length
+    ? `<h2>Next Period: Focus Priority</h2>
+       <div class="mn-focus">${focusItems.map(item => {
+         const col = PRIORITY_COLOR[item.priority];
+         const insight = opts.showInsights ? aiInsights?.[item.title] : null;
+         return `<div class="mn-focus-item" style="border-color:${col};background:${PRIORITY_BG[item.priority]}">
+           <div class="mn-priority" style="color:${col}">${item.priority.toUpperCase()}</div>
+           <div>
+             <div class="mn-ftitle">${esc(item.title)}</div>
+             ${insight ? `<div class="mn-insight">${esc(insight)}</div>` : `<div class="mn-flabel">${esc(item.label)}</div>`}
+           </div>
+         </div>`;
+       }).join('')}</div>` : '';
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${esc(title)}</title>
+    <style>${minimalStyles(c)}</style>
+  </head><body>
+    <div class="mn-eyebrow">Gaming Quest Dashboard</div>
+    <div class="mn-title">${esc(title)}</div>
+    <div class="mn-date">${esc(formatDate(from))} – ${esc(formatDate(to))}</div>
+    <div class="mn-rule"></div>
+    <div class="mn-stats">
+      ${[['Total Playtime', fmtMinutes(total)], ['Games Played', String(gameCount)],
+         ['Sessions', String(asc.length)], ['Weeks', String(weeks.length)]]
+        .map(([k, v]) => `<div class="mn-stat"><div class="mn-stat-val">${v}</div><div class="mn-stat-label">${k}</div></div>`).join('')}
+    </div>
+    <h2>Summary</h2>
+    <div class="mn-summary">${esc(execSummary)}</div>
+    ${weekSections}
+    ${breakdownHtml}
+    ${focusHtml}
+  </body></html>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOM TEMPLATE
+// ─────────────────────────────────────────────────────────────────────────────
+
+function customFontStack(f: FontChoice): string {
+  if (f === 'georgia') return "Georgia, 'Times New Roman', serif";
+  if (f === 'mono') return "'Courier New', Courier, monospace";
+  return "'Inter', Arial, sans-serif";
+}
+function customFontImport(f: FontChoice): string {
+  return f === 'inter'
+    ? "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');"
+    : '';
+}
+
+function customStyles(c: ThemeColors, opts: ReportOptions): string {
+  const font = customFontStack(opts.fontChoice);
+  const mono = opts.fontChoice === 'mono';
+  return `
+${customFontImport(opts.fontChoice)}
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:${font}; background:#fff; color:#111; font-size:${mono?'9.5':'10.5'}pt; line-height:1.6; max-width:900px; margin:0 auto; padding:${opts.headerStyle==='banner'?'0':'36px 44px'}; }
+/* Banner header */
+.cu-banner { background:linear-gradient(140deg,${c.dark} 0%,${c.primary} 100%); color:white; padding:36px 44px 28px; }
+.cu-centered-wrap { text-align:center; padding:32px 44px 0; border-bottom:3px solid ${c.primary}; }
+.cu-siderule-wrap { padding:28px 44px 0; border-left:6px solid ${c.primary}; margin:0 0 0 44px; }
+.cu-eyebrow { font-size:7.5pt; text-transform:uppercase; letter-spacing:0.16em; opacity:.7; margin-bottom:8px; font-weight:700; }
+.cu-title { font-size:${mono?'20':'26'}pt; font-weight:800; line-height:1.1; margin-bottom:5px; }
+.cu-date { font-size:10pt; opacity:.8; margin-bottom:22px; }
+.cu-stats { display:flex; gap:${opts.headerStyle==='banner'?'12px':'28px'}; flex-wrap:wrap; ${opts.headerStyle==='centered'?'justify-content:center;':''} margin-bottom:${opts.headerStyle==='banner'?'0':'20px'}; }
+.cu-stat { ${opts.headerStyle==='banner'?`background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:12px 16px;`:`border-top:2px solid ${c.primary};padding-top:7px;`} }
+.cu-stat-val { font-size:${opts.headerStyle==='banner'?'20':'18'}pt; font-weight:800; line-height:1; ${opts.headerStyle!=='banner'?'color:#111;':''} }
+.cu-stat-lbl { font-size:7.5pt; text-transform:uppercase; letter-spacing:.08em; opacity:.75; margin-top:3px; ${opts.headerStyle!=='banner'?'color:#888;':''} }
+.cu-body { padding:${opts.headerStyle==='banner'?'28px 44px 44px':opts.headerStyle==='centered'?'24px 44px 44px':'24px 44px 44px 50px'}; }
+h2 { font-size:${mono?'8.5':'9'}pt; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:${c.primary}; margin:24px 0 10px; padding-bottom:5px; border-bottom:1px solid #ddd; ${mono?'font-family:'+font+';':''} }
+.cu-summary { font-size:${mono?'9':'10'}pt; color:#222; line-height:1.8; }
+.cu-week-head { font-size:10pt; font-weight:700; color:${c.dark}; margin:20px 0 5px; }
+.cu-narrative { font-size:9.5pt; color:#444; line-height:1.7; margin-bottom:9px; padding:8px 12px; background:${c.bgLight}; border-left:3px solid ${c.primary}; border-radius:0 4px 4px 0; }
+table { width:100%; border-collapse:collapse; margin-bottom:6px; table-layout:fixed; word-break:break-word; }
+thead tr { background:${c.bg}; }
+th { text-align:left; font-size:8pt; font-weight:700; padding:7px 9px; border-bottom:2px solid ${c.border}; color:#444; text-transform:uppercase; letter-spacing:.05em; }
+td { font-size:9pt; padding:7px 9px; line-height:1.5; vertical-align:top; border-bottom:1px solid #eee; }
+tr:nth-child(even) td { background:#fafafa; }
+.type-badge { display:inline-block; font-size:7.5pt; font-weight:600; padding:2px 6px; border-radius:4px; white-space:nowrap; }
+.cu-week-total { font-size:9.5pt; font-weight:700; margin:5px 0 16px; color:#333; }
+.cu-bullets { list-style:none; padding:0; display:flex; flex-direction:column; gap:4px; }
+.cu-bullets li { font-size:9.5pt; padding:7px 10px 7px 12px; background:${c.bgLight}; border-left:3px solid ${c.border}; border-radius:0 4px 4px 0; }
+.cu-bullets li strong { color:${c.dark}; }
+.cu-focus { display:flex; flex-direction:column; gap:7px; }
+.cu-focus-item { padding:11px 14px; border-radius:5px; border-left:4px solid; }
+.cu-fp { font-size:7.5pt; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-bottom:3px; }
+.cu-ft { font-size:10.5pt; font-weight:700; margin-bottom:3px; }
+.cu-fl { font-size:9pt; color:#444; }
+.cu-fi { font-size:10pt; font-weight:500; color:#111; }
+@media print {
+  @page { size:A4 portrait; margin:${opts.headerStyle==='banner'?'0 0 10mm':'12mm 14mm'}; }
+  body { padding:0; margin:0; max-width:none; font-size:9pt; }
+  .cu-banner { -webkit-print-color-adjust:exact; print-color-adjust:exact; padding:24px 32px 20px; }
+  .cu-stat { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .cu-body { padding:${opts.headerStyle==='banner'?'20px 32px 32px':opts.headerStyle==='centered'?'16px 32px 32px':'16px 32px 32px 38px'}; }
+  thead { display:table-header-group; }
+  tr { break-inside:avoid; }
+  .cu-narrative, .cu-focus-item, .cu-bullets li { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+}`;
+}
+
+function buildCustomReport(
+  title: string, from: Date, to: Date, asc: LogEntry[],
+  total: number, gameCount: number, weeks: WeekSection[],
+  execSummary: string, breakdownBullets: string[],
+  focusItems: FocusItem[], aiInsights: Record<string, string>,
+  opts: ReportOptions, c: ThemeColors,
+): string {
+  const stats = [['Total Playtime', fmtMinutes(total)], ['Games Played', String(gameCount)],
+                 ['Sessions', String(asc.length)], ['Weeks', String(weeks.length)]];
+  const statsHtml = stats.map(([k,v]) =>
+    `<div class="cu-stat"><div class="cu-stat-val">${v}</div><div class="cu-stat-lbl">${k}</div></div>`
+  ).join('');
+
+  let headerHtml: string;
+  if (opts.headerStyle === 'banner') {
+    headerHtml = `<div class="cu-banner">
+      <div class="cu-eyebrow">Gaming Quest Dashboard</div>
+      <div class="cu-title">${esc(title)}</div>
+      <div class="cu-date">${esc(formatDate(from))} – ${esc(formatDate(to))}</div>
+      <div class="cu-stats">${statsHtml}</div>
+    </div>`;
+  } else if (opts.headerStyle === 'centered') {
+    headerHtml = `<div class="cu-centered-wrap">
+      <div class="cu-eyebrow">Gaming Quest Dashboard</div>
+      <div class="cu-title">${esc(title)}</div>
+      <div class="cu-date">${esc(formatDate(from))} – ${esc(formatDate(to))}</div>
+      <div class="cu-stats">${statsHtml}</div>
+    </div>`;
+  } else {
+    headerHtml = `<div class="cu-siderule-wrap">
+      <div class="cu-eyebrow" style="color:${c.primary}">Gaming Quest Dashboard</div>
+      <div class="cu-title" style="color:${c.dark}">${esc(title)}</div>
+      <div class="cu-date" style="color:#555;opacity:1">${esc(formatDate(from))} – ${esc(formatDate(to))}</div>
+      <div class="cu-stats">${statsHtml}</div>
+    </div>`;
+  }
+
+  const weekSections = weeks.map((w, i) => {
+    const wTotal = w.logs.reduce((s, l) => s + l.minutes, 0);
+    const totalLabel = (i === weeks.length - 1 && w.isCurrentWeek)
+      ? `${w.label} total so far: ${fmtMinutes(wTotal)}`
+      : `${w.label} total: ${fmtMinutes(wTotal)}`;
+    const tableHtml = opts.showTable ? `<table>${TABLE_COLS}${TABLE_HEAD}
+      <tbody>${w.logs.map(logRow).join('')}</tbody></table>` : '';
+    return `<div class="cu-week-head">${esc(w.label)}: ${esc(formatDate(w.start))} – ${esc(formatDate(w.end))}</div>
+      <div class="cu-narrative">${weekNarrative(w)}</div>
+      ${tableHtml}
+      <div class="cu-week-total">${esc(totalLabel)}</div>`;
+  }).join('');
+
+  const breakdownHtml = opts.showBreakdown && breakdownBullets.length
+    ? `<h2>Game Breakdown</h2>
+       <ul class="cu-bullets">${breakdownBullets.map(b => {
+         const [head, ...rest] = b.split(' — ');
+         return `<li><strong>${esc(head)}</strong>${rest.length ? ' — ' + esc(rest.join(' — ')) : ''}</li>`;
+       }).join('')}</ul>` : '';
+
+  const focusHtml = opts.showFocus && focusItems.length
+    ? `<h2>Next Period: Focus Priority</h2>
+       <div class="cu-focus">${focusItems.map(item => {
+         const insight = opts.showInsights ? aiInsights?.[item.title] : null;
+         return `<div class="cu-focus-item" style="background:${PRIORITY_BG[item.priority]};border-color:${PRIORITY_COLOR[item.priority]}">
+           <div class="cu-fp" style="color:${PRIORITY_COLOR[item.priority]}">${item.priority.toUpperCase()} PRIORITY</div>
+           <div class="cu-ft">${esc(item.title)}</div>
+           ${insight ? `<div class="cu-fi">${esc(insight)}</div>` : `<div class="cu-fl">${esc(item.label)}</div>`}
+         </div>`;
+       }).join('')}</div>` : '';
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${esc(title)}</title>
+    <style>${customStyles(c, opts)}</style>
+  </head><body>
+    ${headerHtml}
+    <div class="cu-body">
+      <h2>Summary</h2>
+      <div class="cu-summary">${esc(execSummary)}</div>
+      ${weekSections}
+      ${breakdownHtml}
+      ${focusHtml}
+    </div>
+  </body></html>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -768,7 +1057,7 @@ export function buildPdfReport(
   options?: Partial<ReportOptions>,
 ): string {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  const c = THEMES[opts.theme];
+  const c = opts.theme === 'custom' ? buildCustomTheme(opts.customColor || DEFAULT_OPTIONS.customColor) : THEMES[opts.theme];
   const asc = [...logs].sort((a, b) => a.date.getTime() - b.date.getTime());
   const total = asc.reduce((s, l) => s + l.minutes, 0);
   const gameCount = new Set(asc.map(l => l.game)).size;
@@ -784,6 +1073,8 @@ export function buildPdfReport(
   switch (opts.template) {
     case 'magazine': return buildMagazineReport(...args);
     case 'compact':  return buildCompactReport(...args);
+    case 'minimal':  return buildMinimalReport(...args);
+    case 'custom':   return buildCustomReport(...args);
     default:         return buildClassicReport(...args);
   }
 }

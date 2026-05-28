@@ -6,7 +6,7 @@ import {
 } from '../lib/api';
 import {
   buildPdfReport, printReport,
-  ReportTemplate, ReportTheme, ReportOptions, DEFAULT_OPTIONS,
+  ReportTemplate, ReportTheme, FontChoice, HeaderStyle, ReportOptions, DEFAULT_OPTIONS,
 } from '../lib/reportBuilder';
 import { useReportOptions } from '../hooks/useReportOptions';
 
@@ -91,15 +91,59 @@ const TEMPLATES: { id: ReportTemplate; label: string; desc: string; preview: str
       <div style="display:flex;gap:5px;background:#e6f4ef;padding:3px 4px;border-radius:2px;margin-bottom:3px">
         ${[1,2,3].map(() => `<div><strong style="font-size:8px">14h</strong><div style="font-size:6px;color:#666">PLAY</div></div>`).join('')}
       </div>
-      ${[1,2,3,4].map(() => `<div style="height:2px;background:#eee;border-radius:1px;margin-bottom:2px;width:${75+Math.random()*20|0}%"></div>`).join('')}
+      ${[1,2,3,4].map((_,i) => `<div style="height:2px;background:#eee;border-radius:1px;margin-bottom:2px;width:${[82,68,90,74][i]}%"></div>`).join('')}
+    </div>` },
+  { id: 'minimal',  label: 'Minimal',  desc: 'Clean & editorial',
+    preview: `<div style="padding:7px 8px;font-size:9px;line-height:1.4;background:white">
+      <div style="font-size:6px;text-transform:uppercase;letter-spacing:0.12em;color:#1a6b4a;margin-bottom:2px;font-weight:700">GAMING QUEST</div>
+      <div style="font-size:12px;font-weight:800;color:#111;margin-bottom:2px;line-height:1.1">Report Title</div>
+      <div style="height:2px;background:#1a6b4a;margin-bottom:5px"></div>
+      <div style="display:flex;gap:8px;margin-bottom:6px">
+        ${[1,2,3].map(() => `<div style="border-top:1.5px solid #1a6b4a;padding-top:3px"><div style="font-size:9px;font-weight:800">14h</div><div style="font-size:6px;color:#888">PLAY</div></div>`).join('')}
+      </div>
+      ${[1,2,3].map((_,i) => `<div style="height:2px;background:#e8e8e8;border-radius:1px;margin-bottom:2px;width:${[88,72,80][i]}%"></div>`).join('')}
+    </div>` },
+  { id: 'custom',   label: 'Custom',   desc: 'Your own design',
+    preview: `<div style="padding:0;font-size:9px;overflow:hidden;border-radius:5px;background:white">
+      <div style="background:linear-gradient(135deg,#e85d04,#f4a261);color:white;padding:6px 7px">
+        <div style="font-size:7px;opacity:0.75;margin-bottom:2px;text-transform:uppercase;letter-spacing:0.1em">YOUR DESIGN</div>
+        <div style="font-weight:800;font-size:10px;margin-bottom:3px">Report Title</div>
+        <div style="display:flex;gap:4px">
+          ${[1,2,3].map(() => `<div style="background:rgba(255,255,255,0.2);padding:2px 4px;border-radius:2px;font-size:7px;font-weight:700">14h</div>`).join('')}
+        </div>
+      </div>
+      <div style="padding:5px 7px">
+        <div style="height:3px;background:#f0f0f0;border-radius:1px;margin-bottom:2px;width:92%"></div>
+        <div style="height:3px;background:#f0f0f0;border-radius:1px;margin-bottom:2px;width:74%"></div>
+        <div style="display:flex;gap:4px;margin-top:3px">
+          <div style="height:12px;background:#fde8d8;border-radius:2px;flex:1"></div>
+          <div style="height:12px;background:#fde8d8;border-radius:2px;flex:1"></div>
+        </div>
+      </div>
     </div>` },
 ];
 
 const THEMES_META: { id: ReportTheme; label: string; primary: string; dark: string }[] = [
-  { id: 'green',  label: 'Forest',  primary: '#1a6b4a', dark: '#1a3d2b' },
-  { id: 'blue',   label: 'Ocean',   primary: '#1565c0', dark: '#0d2b5e' },
-  { id: 'purple', label: 'Dusk',    primary: '#7b1fa2', dark: '#3a0d5c' },
-  { id: 'slate',  label: 'Slate',   primary: '#455a64', dark: '#1c2830' },
+  { id: 'green',   label: 'Forest',  primary: '#1a6b4a', dark: '#1a3d2b' },
+  { id: 'blue',    label: 'Ocean',   primary: '#1565c0', dark: '#0d2b5e' },
+  { id: 'purple',  label: 'Dusk',    primary: '#7b1fa2', dark: '#3a0d5c' },
+  { id: 'slate',   label: 'Slate',   primary: '#455a64', dark: '#1c2830' },
+  { id: 'crimson', label: 'Crimson', primary: '#c62828', dark: '#7f0000' },
+  { id: 'amber',   label: 'Amber',   primary: '#e65100', dark: '#8d3200' },
+  { id: 'teal',    label: 'Teal',    primary: '#00796b', dark: '#004d40' },
+  { id: 'rose',    label: 'Rose',    primary: '#c2185b', dark: '#880e4f' },
+  { id: 'custom',  label: 'Custom',  primary: '',        dark: ''        },
+];
+
+const FONTS: { id: FontChoice; label: string; sample: string }[] = [
+  { id: 'inter',   label: 'Inter',  sample: 'Aa' },
+  { id: 'georgia', label: 'Serif',  sample: 'Aa' },
+  { id: 'mono',    label: 'Mono',   sample: 'Aa' },
+];
+const HEADERS: { id: HeaderStyle; label: string; icon: string }[] = [
+  { id: 'banner',   label: 'Banner',    icon: '▬' },
+  { id: 'siderule', label: 'Side rule', icon: '▌' },
+  { id: 'centered', label: 'Centered',  icon: '≡' },
 ];
 
 interface ToolbarProps {
@@ -109,14 +153,27 @@ interface ToolbarProps {
 
 function ReportToolbar({ options, onChange }: ToolbarProps) {
   const [open, setOpen] = useState(true);
-  const currentTheme = THEMES_META.find(t => t.id === options.theme) ?? THEMES_META[0];
+  const effectivePrimary = options.theme === 'custom'
+    ? (options.customColor || '#e85d04')
+    : (THEMES_META.find(t => t.id === options.theme)?.primary ?? '#1a6b4a');
+  const effectiveDark = options.theme === 'custom'
+    ? (options.customColor || '#e85d04')
+    : (THEMES_META.find(t => t.id === options.theme)?.dark ?? '#1a3d2b');
 
   function colorPreview(html: string): string {
     return html
-      .replace(/#1a6b4a/g, currentTheme.primary)
-      .replace(/#1a3d2b/g, currentTheme.dark)
-      .replace(/#e6f4ef/g, currentTheme.primary + '22');
+      .replace(/#1a6b4a/g, effectivePrimary)
+      .replace(/#1a3d2b/g, effectiveDark)
+      .replace(/#e6f4ef/g, effectivePrimary + '22')
+      .replace(/#e85d04/g, effectivePrimary)
+      .replace(/#f4a261/g, effectiveDark + 'cc')
+      .replace(/#fde8d8/g, effectivePrimary + '22');
   }
+
+  const themeSummary = options.theme === 'custom'
+    ? `Custom (${options.customColor || '#e85d04'})`
+    : THEMES_META.find(t => t.id === options.theme)?.label ?? 'Forest';
+
   return (
     <>
       <style>{`
@@ -126,27 +183,34 @@ function ReportToolbar({ options, onChange }: ToolbarProps) {
         .rt-body { padding: 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 18px; }
         .rt-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 8px; }
         .rt-template-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        @media (min-width: 500px) { .rt-template-grid { grid-template-columns: repeat(5, 1fr); } }
         .rt-template-card {
           border: 2px solid var(--line); border-radius: 8px; cursor: pointer;
           overflow: hidden; transition: border-color 0.12s, box-shadow 0.12s;
-          background: #f8f7f2;
+          background: #f8f7f2; text-align: left; padding: 0;
         }
         .rt-template-card:hover { border-color: var(--accent); }
         .rt-template-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(26,107,74,0.18); }
         .rt-template-preview { height: 80px; overflow: hidden; border-bottom: 1px solid var(--line); }
-        .rt-template-info { padding: 7px 8px; }
-        .rt-template-name { font-size: 13px; font-weight: 700; }
-        .rt-template-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
-        .rt-theme-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .rt-template-info { padding: 5px 6px; }
+        .rt-template-name { font-size: 11px; font-weight: 700; }
+        .rt-template-desc { font-size: 10px; color: var(--muted); margin-top: 1px; }
+        .rt-theme-row { display: flex; gap: 6px; flex-wrap: wrap; }
         .rt-theme-btn {
           display: flex; align-items: center; gap: 6px;
-          padding: 6px 12px; border-radius: 20px;
+          padding: 5px 11px; border-radius: 20px;
           border: 2px solid var(--line); cursor: pointer; background: var(--paper);
-          font: inherit; font-size: 13px; transition: all 0.12s;
+          font: inherit; font-size: 12px; transition: all 0.12s;
         }
         .rt-theme-btn:hover { border-color: var(--accent); }
         .rt-theme-btn.selected { border-color: var(--accent); background: var(--paper-2); font-weight: 600; }
-        .rt-swatch { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+        .rt-swatch { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.12); }
+        .rt-custom-color { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; }
+        .rt-color-input { width: 36px; height: 36px; border-radius: 6px; border: 1px solid var(--line); padding: 2px; cursor: pointer; background: none; }
+        .rt-color-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+        .rt-color-preset { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: border-color 0.1s, transform 0.1s; flex-shrink: 0; }
+        .rt-color-preset:hover { transform: scale(1.15); }
+        .rt-color-preset.active { border-color: var(--text); }
         .rt-toggles { display: flex; flex-wrap: wrap; gap: 8px; }
         .rt-toggle-btn {
           display: flex; align-items: center; gap: 6px;
@@ -157,19 +221,30 @@ function ReportToolbar({ options, onChange }: ToolbarProps) {
         .rt-toggle-btn:hover { border-color: var(--accent); }
         .rt-toggle-btn.on { background: var(--accent); border-color: var(--accent); color: white; }
         .rt-check { font-size: 11px; }
+        .rt-builder { background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+        .rt-builder-row { display: flex; gap: 6px; flex-wrap: wrap; }
+        .rt-builder-btn {
+          padding: 5px 12px; border-radius: 6px; border: 1.5px solid var(--line);
+          cursor: pointer; background: var(--paper); font: inherit; font-size: 12px;
+          transition: all 0.12s; display: flex; align-items: center; gap: 5px;
+        }
+        .rt-builder-btn:hover { border-color: var(--accent); }
+        .rt-builder-btn.on { background: var(--accent); border-color: var(--accent); color: white; font-weight: 600; }
+        .rt-builder-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 5px; }
       `}</style>
       <div className="rt-card">
         <div className="rt-header" onClick={() => setOpen(v => !v)}>
           <div>
             <span style={{ fontWeight: 700, fontSize: '14px' }}>⚙ PDF Settings</span>
             <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--muted)' }}>
-              {TEMPLATES.find(t => t.id === options.template)?.label} · {THEMES_META.find(t => t.id === options.theme)?.label}
+              {TEMPLATES.find(t => t.id === options.template)?.label} · {themeSummary}
             </span>
           </div>
           <span style={{ color: 'var(--muted)', fontSize: '18px', lineHeight: 1 }}>{open ? '−' : '+'}</span>
         </div>
         {open && (
           <div className="rt-body">
+
             {/* Template */}
             <div>
               <div className="rt-section-label">Template</div>
@@ -180,10 +255,7 @@ function ReportToolbar({ options, onChange }: ToolbarProps) {
                     className={`rt-template-card${options.template === t.id ? ' selected' : ''}`}
                     onClick={() => onChange({ template: t.id })}
                   >
-                    <div
-                      className="rt-template-preview"
-                      dangerouslySetInnerHTML={{ __html: colorPreview(t.preview) }}
-                    />
+                    <div className="rt-template-preview" dangerouslySetInnerHTML={{ __html: colorPreview(t.preview) }} />
                     <div className="rt-template-info">
                       <div className="rt-template-name">{t.label}</div>
                       <div className="rt-template-desc">{t.desc}</div>
@@ -193,11 +265,51 @@ function ReportToolbar({ options, onChange }: ToolbarProps) {
               </div>
             </div>
 
-            {/* Theme */}
+            {/* Custom template builder — only shown when Custom is selected */}
+            {options.template === 'custom' && (
+              <div className="rt-builder">
+                <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '-4px' }}>
+                  Configure your custom template:
+                </div>
+                <div>
+                  <div className="rt-builder-label">Font</div>
+                  <div className="rt-builder-row">
+                    {FONTS.map(f => (
+                      <button
+                        key={f.id}
+                        className={`rt-builder-btn${options.fontChoice === f.id ? ' on' : ''}`}
+                        onClick={() => onChange({ fontChoice: f.id })}
+                        style={{ fontFamily: f.id === 'georgia' ? 'Georgia, serif' : f.id === 'mono' ? 'monospace' : 'inherit' }}
+                      >
+                        <span style={{ fontFamily: f.id === 'georgia' ? 'Georgia, serif' : f.id === 'mono' ? "'Courier New', monospace" : 'inherit', fontSize: '13px' }}>{f.sample}</span>
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="rt-builder-label">Header Style</div>
+                  <div className="rt-builder-row">
+                    {HEADERS.map(h => (
+                      <button
+                        key={h.id}
+                        className={`rt-builder-btn${options.headerStyle === h.id ? ' on' : ''}`}
+                        onClick={() => onChange({ headerStyle: h.id })}
+                      >
+                        <span style={{ fontSize: '14px' }}>{h.icon}</span>
+                        {h.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Colour Theme */}
             <div>
               <div className="rt-section-label">Colour Theme</div>
               <div className="rt-theme-row">
-                {THEMES_META.map(th => (
+                {THEMES_META.filter(t => t.id !== 'custom').map(th => (
                   <button
                     key={th.id}
                     className={`rt-theme-btn${options.theme === th.id ? ' selected' : ''}`}
@@ -207,7 +319,48 @@ function ReportToolbar({ options, onChange }: ToolbarProps) {
                     {th.label}
                   </button>
                 ))}
+                <button
+                  className={`rt-theme-btn${options.theme === 'custom' ? ' selected' : ''}`}
+                  onClick={() => onChange({ theme: 'custom' })}
+                >
+                  <span className="rt-swatch" style={{
+                    background: options.theme === 'custom' ? (options.customColor || '#e85d04') : 'conic-gradient(red,yellow,green,blue,red)',
+                    border: '1px solid rgba(0,0,0,0.15)'
+                  }} />
+                  Custom
+                </button>
               </div>
+              {/* Custom colour picker — only when Custom theme is selected */}
+              {options.theme === 'custom' && (
+                <div className="rt-custom-color">
+                  <input
+                    type="color"
+                    value={options.customColor || '#e85d04'}
+                    onChange={e => onChange({ customColor: e.target.value })}
+                    className="rt-color-input"
+                    title="Pick your accent colour"
+                  />
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '5px' }}>
+                      Pick any colour
+                    </div>
+                    <div className="rt-color-presets">
+                      {['#e85d04','#d62839','#8338ec','#0077b6','#2d6a4f','#e9c46a','#e76f51','#118ab2'].map(hex => (
+                        <button
+                          key={hex}
+                          className={`rt-color-preset${(options.customColor || '#e85d04') === hex ? ' active' : ''}`}
+                          style={{ background: hex }}
+                          onClick={() => onChange({ customColor: hex })}
+                          title={hex}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: 'auto', fontFamily: 'monospace' }}>
+                    {options.customColor || '#e85d04'}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Sections */}
