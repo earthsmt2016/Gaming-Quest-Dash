@@ -287,7 +287,7 @@ function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
 
               {/* Video grid */}
               {embedVideos.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: searchResults || searching ? '14px' : 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: searchResults || searching ? '14px' : 0 }}>
                   {embedVideos.map((v, i) => (
                     <div key={v.id || i} style={{ opacity: removingId === v.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
                       <VideoThumb
@@ -327,7 +327,7 @@ function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
                   <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '8px' }}>
                     Pick a video to add:
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {searchResults.map(v => {
                       const alreadyAdded = alreadyAddedIds.has(v.id);
                       return (
