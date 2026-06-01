@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Quest, QuestLog, QuestGuide,
+  Quest, QuestLog, QuestGuide, QuestVideoLink, YouTubeVideo,
   fetchSuggestedQuests, fetchActiveQuests, fetchQuestLogs,
   generateQuests, acceptQuest, rejectQuest,
   updateQuestProgress, completeQuest, fetchQuestGuide,
+  searchYouTubeGuides, addVideoToGuide, removeVideoFromGuide,
 } from '../lib/api';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -50,12 +51,120 @@ function XPBadge({ xp }: { xp: number }) {
   );
 }
 
+// ─── YouTube Video Thumbnail Card ─────────────────────────────────────────────
+
+function VideoThumb({
+  video, playing, onPlay, onRemove,
+}: {
+  video: QuestVideoLink;
+  playing: boolean;
+  onPlay: () => void;
+  onRemove: () => void;
+}) {
+  const hasId = !!video.id;
+  const thumb = video.thumbnail || (hasId ? `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg` : '');
+
+  if (!hasId) {
+    return (
+      <a
+        href={video.url || '#'}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '9px 12px', borderRadius: '6px',
+          background: '#ff0000', color: '#fff', fontWeight: 600, fontSize: '13px',
+          textDecoration: 'none',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+          <path d="M21.8 8s-.2-1.4-.8-2c-.7-.8-1.6-.8-1.9-.8C16.6 5 12 5 12 5s-4.6 0-7.1.2c-.4 0-1.2 0-1.9.8-.6.6-.8 2-.8 2S2 9.6 2 11.2v1.5c0 1.6.2 3.2.2 3.2s.2 1.4.8 2c.7.8 1.7.7 2.1.8C6.4 19 12 19 12 19s4.6 0 7.1-.2c.4 0 1.2 0 1.9-.8.6-.6.8-2 .8-2s.2-1.6.2-3.2v-1.5C22 9.6 21.8 8 21.8 8z" opacity=".85"/>
+          <polygon points="10 15 15 12 10 9 10 15" fill="white"/>
+        </svg>
+        {video.title}
+      </a>
+    );
+  }
+
+  if (playing) {
+    return (
+      <div style={{ borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&rel=0`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          style={{ width: '100%', height: '200px', border: 'none', display: 'block' }}
+          title={video.title}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ borderRadius: '8px', overflow: 'hidden', position: 'relative', cursor: 'pointer', background: '#000' }}>
+      {thumb && (
+        <img
+          src={thumb}
+          alt={video.title}
+          onClick={onPlay}
+          style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block', opacity: 0.9 }}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      )}
+      {/* Play overlay */}
+      <button
+        onClick={onPlay}
+        aria-label={`Play ${video.title}`}
+        style={{
+          position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.25)',
+          border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <div style={{
+          width: 44, height: 44, background: 'rgba(255,0,0,0.9)', borderRadius: '50%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><polygon points="8 5 19 12 8 19 8 5"/></svg>
+        </div>
+      </button>
+      {/* Remove button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        aria-label="Remove video"
+        style={{
+          position: 'absolute', top: 6, right: 6, width: 22, height: 22,
+          background: 'rgba(0,0,0,0.65)', color: '#fff', border: 'none',
+          borderRadius: '50%', cursor: 'pointer', fontSize: '14px', lineHeight: 1,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >×</button>
+      {/* Title bar */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+        color: '#fff', fontSize: '11px', padding: '12px 6px 5px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 4,
+        pointerEvents: 'none',
+      }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{video.title}</span>
+        {video.duration && <span style={{ flexShrink: 0, opacity: 0.8, fontSize: '10px' }}>{video.duration}</span>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Guide Modal ─────────────────────────────────────────────────────────────
 
 function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
   const [guide, setGuide] = useState<QuestGuide | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<YouTubeVideo[] | null>(null);
+  const [searchError, setSearchError] = useState('');
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -65,21 +174,59 @@ function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
       .finally(() => setLoading(false));
   }, [quest.id]);
 
+  const handleSearch = async () => {
+    setSearching(true);
+    setSearchError('');
+    setSearchResults(null);
+    try {
+      const results = await searchYouTubeGuides(quest.game, quest.title);
+      if (!results || results.length === 0) { setSearchError('No results found — try a different quest guide.'); }
+      else setSearchResults(results);
+    } catch { setSearchError('YouTube search unavailable right now.'); }
+    finally { setSearching(false); }
+  };
+
+  const handleAddVideo = async (video: YouTubeVideo) => {
+    if (!guide || addingId) return;
+    setAddingId(video.id);
+    try {
+      const updated = await addVideoToGuide(quest.id, { id: video.id, title: video.title, thumbnail: video.thumbnail, duration: video.duration });
+      setGuide(updated);
+      setSearchResults(null);
+    } catch { /* ignore */ }
+    finally { setAddingId(null); }
+  };
+
+  const handleRemoveVideo = async (videoId: string) => {
+    if (!guide || removingId) return;
+    setRemovingId(videoId);
+    if (playingId === videoId) setPlayingId(null);
+    try {
+      const updated = await removeVideoFromGuide(quest.id, videoId);
+      setGuide(updated);
+    } catch { /* ignore */ }
+    finally { setRemovingId(null); }
+  };
+
+  const embedVideos = guide?.youtube_links ?? [];
+  const alreadyAddedIds = new Set(embedVideos.map(v => v.id).filter(Boolean));
+
   return (
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(28,24,20,.5)',
+        position: 'fixed', inset: 0, background: 'rgba(28,24,20,.55)',
         zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'var(--paper)', borderRadius: 'var(--radius)', boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-          padding: '24px', maxWidth: '520px', width: '100%', maxHeight: '82vh', overflowY: 'auto',
+          background: 'var(--paper)', borderRadius: 'var(--radius)', boxShadow: '0 8px 40px rgba(0,0,0,0.22)',
+          padding: '24px', maxWidth: '560px', width: '100%', maxHeight: '88vh', overflowY: 'auto',
         }}
       >
+        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', gap: '12px' }}>
           <div>
             <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
@@ -105,8 +252,10 @@ function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
             {error}
           </div>
         )}
+
         {guide && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Steps */}
             <div>
               <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '10px' }}>Steps</div>
               <ol style={{ margin: 0, padding: '0 0 0 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -116,6 +265,7 @@ function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
               </ol>
             </div>
 
+            {/* Tips */}
             {guide.tips && (
               <div style={{ background: 'var(--paper-2)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '6px' }}>💡 Tips</div>
@@ -123,33 +273,108 @@ function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
               </div>
             )}
 
-            {guide.youtube_links && guide.youtube_links.length > 0 && (
-              <div>
-                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '8px' }}>🎬 Video Guides</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {guide.youtube_links.map((link, i) => (
-                    <a
-                      key={i}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        padding: '9px 12px', borderRadius: 'var(--radius-sm)',
-                        background: '#ff0000', color: '#fff', fontWeight: 600, fontSize: '13px',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
-                        <path d="M21.8 8s-.2-1.4-.8-2c-.7-.8-1.6-.8-1.9-.8C16.6 5 12 5 12 5s-4.6 0-7.1.2c-.4 0-1.2 0-1.9.8-.6.6-.8 2-.8 2S2 9.6 2 11.2v1.5c0 1.6.2 3.2.2 3.2s.2 1.4.8 2c.7.8 1.7.7 2.1.8C6.4 19 12 19 12 19s4.6 0 7.1-.2c.4 0 1.2 0 1.9-.8.6-.6.8-2 .8-2s.2-1.6.2-3.2v-1.5C22 9.6 21.8 8 21.8 8z" opacity=".85"/>
-                        <polygon points="10 15 15 12 10 9 10 15" fill="white"/>
-                      </svg>
-                      {link.title}
-                    </a>
+            {/* Video section */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>🎬 Video Guides</div>
+                {!searchResults && !searching && (
+                  <button
+                    onClick={handleSearch}
+                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '20px', border: '1px solid var(--line)', background: 'var(--paper-2)', cursor: 'pointer', color: 'var(--muted)', fontWeight: 600 }}
+                  >🔍 Find more</button>
+                )}
+              </div>
+
+              {/* Video grid */}
+              {embedVideos.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: searchResults || searching ? '14px' : 0 }}>
+                  {embedVideos.map((v, i) => (
+                    <div key={v.id || i} style={{ opacity: removingId === v.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+                      <VideoThumb
+                        video={v}
+                        playing={!!v.id && playingId === v.id}
+                        onPlay={() => v.id && setPlayingId(playingId === v.id ? null : v.id)}
+                        onRemove={() => v.id && handleRemoveVideo(v.id)}
+                      />
+                    </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+
+              {embedVideos.length === 0 && !searching && !searchResults && (
+                <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '13px', background: 'var(--paper-2)', borderRadius: '8px' }}>
+                  No videos yet — click "Find more" to search YouTube for guides.
+                </div>
+              )}
+
+              {/* Search state */}
+              {searching && (
+                <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: '13px' }}>
+                  🔍 Searching YouTube…
+                </div>
+              )}
+
+              {/* Search error */}
+              {searchError && (
+                <div style={{ fontSize: '13px', color: 'var(--muted)', padding: '8px 0' }}>
+                  {searchError} <button onClick={() => setSearchError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '12px' }}>dismiss</button>
+                </div>
+              )}
+
+              {/* Search results picker */}
+              {searchResults && searchResults.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '8px' }}>
+                    Pick a video to add:
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {searchResults.map(v => {
+                      const alreadyAdded = alreadyAddedIds.has(v.id);
+                      return (
+                        <div
+                          key={v.id}
+                          style={{ borderRadius: '8px', overflow: 'hidden', position: 'relative', background: '#000', opacity: alreadyAdded ? 0.5 : 1 }}
+                        >
+                          <img
+                            src={v.thumbnail}
+                            alt={v.title}
+                            style={{ width: '100%', height: '100px', objectFit: 'cover', display: 'block' }}
+                          />
+                          <div style={{
+                            position: 'absolute', bottom: 0, left: 0, right: 0,
+                            background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
+                            color: '#fff', fontSize: '10px', padding: '10px 6px 4px',
+                          }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.title}</div>
+                            {v.duration && <div style={{ opacity: 0.7 }}>{v.duration}</div>}
+                          </div>
+                          {!alreadyAdded && (
+                            <button
+                              onClick={() => handleAddVideo(v)}
+                              disabled={addingId === v.id}
+                              aria-label={`Add ${v.title}`}
+                              style={{
+                                position: 'absolute', top: 5, right: 5, width: 24, height: 24,
+                                background: 'var(--accent)', color: '#fff', border: 'none',
+                                borderRadius: '50%', cursor: 'pointer', fontSize: '16px', lineHeight: 1,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                            >{addingId === v.id ? '…' : '+'}</button>
+                          )}
+                          {alreadyAdded && (
+                            <div style={{ position: 'absolute', top: 5, right: 5, background: 'rgba(0,0,0,0.6)', color: '#aaa', borderRadius: '50%', width: 24, height: 24, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✓</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setSearchResults(null)}
+                    style={{ marginTop: '10px', fontSize: '12px', padding: '5px 12px', borderRadius: '20px', border: '1px solid var(--line)', background: 'var(--paper-2)', cursor: 'pointer', color: 'var(--muted)' }}
+                  >Done</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

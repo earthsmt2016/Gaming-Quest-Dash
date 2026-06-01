@@ -374,6 +374,67 @@ router.post("/quests/:id/complete", async (req, res) => {
   }
 });
 
+// ─── Internal: search YouTube InnerTube for a single video ─────────────────
+const INNERTUBE_URL = 'https://www.youtube.com/youtubei/v1/search?prettyPrint=false';
+const INNERTUBE_CTX = { context: { client: { clientName: 'WEB', clientVersion: '2.20240101', hl: 'en', gl: 'US' } } };
+
+interface VideoResult { id: string; title: string; thumbnail: string; duration: string; }
+
+async function searchYouTubeVideo(query: string): Promise<VideoResult | null> {
+  try {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 7000);
+    let resp: Response;
+    try {
+      resp = await fetch(INNERTUBE_URL, {
+        method: 'POST', signal: abort.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'X-Youtube-Client-Name': '1', 'X-Youtube-Client-Version': '2.20240101',
+        },
+        body: JSON.stringify({ ...INNERTUBE_CTX, query }),
+      });
+    } finally { clearTimeout(timer); }
+
+    if (!resp.ok) return null;
+    const data = await resp.json() as Record<string, unknown>;
+
+    // Extract first videoRenderer
+    function findFirst(obj: unknown): Record<string, unknown> | null {
+      if (!obj || typeof obj !== 'object') return null;
+      if (Array.isArray(obj)) { for (const item of obj) { const r = findFirst(item); if (r) return r; } return null; }
+      const o = obj as Record<string, unknown>;
+      if ('videoRenderer' in o) return o['videoRenderer'] as Record<string, unknown>;
+      for (const v of Object.values(o)) { const r = findFirst(v); if (r) return r; }
+      return null;
+    }
+    function getText(runs: unknown): string {
+      if (!Array.isArray(runs)) return '';
+      return (runs as { text?: string }[]).map(r => r.text ?? '').join('');
+    }
+    function findKey(obj: unknown, key: string): unknown {
+      if (!obj || typeof obj !== 'object') return undefined;
+      if (key in (obj as Record<string, unknown>)) return (obj as Record<string, unknown>)[key];
+      for (const v of Object.values(obj as Record<string, unknown>)) { const r = findKey(v, key); if (r !== undefined) return r; }
+      return undefined;
+    }
+
+    const v = findFirst(data);
+    if (!v) return null;
+    const videoId = v['videoId'] as string;
+    if (!videoId) return null;
+    const title = getText((findKey(v['title'], 'runs') ?? []) as { text?: string }[])
+      || (findKey(v['title'], 'simpleText') as string) || query;
+    const thumbs = (findKey(v['thumbnail'], 'thumbnails') ?? []) as { url: string }[];
+    const thumbnail = thumbs.find(t => t.url.includes('mqdefault'))?.url
+      || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+    const duration = (findKey(v['lengthText'], 'simpleText') as string)
+      || getText((findKey(v['lengthText'], 'runs') ?? []) as { text?: string }[]) || '';
+    return { id: videoId, title, thumbnail, duration };
+  } catch { return null; }
+}
+
 // ─── GET /api/quests/:id/guide ─────────────────────────────────────────────
 router.get("/quests/:id/guide", async (req, res) => {
   try {
@@ -396,16 +457,16 @@ router.get("/quests/:id/guide", async (req, res) => {
 
 Rules:
 - 4–6 numbered steps, each 1–2 sentences
-- Include 2–3 practical tips at the end
-- Suggest 2 YouTube search queries as video guide links
+- Include 2–3 practical tips
+- Suggest 2–3 YouTube search queries to find relevant video guides (be specific to the game + quest)
 - Be specific to the game's actual mechanics
 
 Respond ONLY with valid JSON (no markdown):
 {
   "steps": ["<step 1>", "<step 2>", ...],
-  "youtube_links": [
-    { "title": "<video title>", "url": "https://www.youtube.com/results?search_query=<encoded+query>" },
-    { "title": "<video title>", "url": "https://www.youtube.com/results?search_query=<encoded+query>" }
+  "video_queries": [
+    { "title": "<descriptive title>", "query": "<youtube search query>" },
+    { "title": "<descriptive title>", "query": "<youtube search query>" }
   ],
   "tips": "<2-3 practical tips as a short paragraph>"
 }`;
@@ -423,35 +484,101 @@ Respond ONLY with valid JSON (no markdown):
     });
 
     const raw = response.choices[0]?.message?.content?.trim() ?? "";
-    let guideData: {
-      steps: string[];
-      youtube_links: Array<{ title: string; url: string }>;
-      tips: string;
-    } = {
+    let parsed: { steps: string[]; video_queries: Array<{ title: string; query: string }>; tips: string } = {
       steps: ["Review your recent progress.", "Focus on the main objective step by step.", "Use in-game hints if stuck."],
-      youtube_links: [
-        { title: `${quest.game} ${quest.title} guide`, url: `https://www.youtube.com/results?search_query=${encodeURIComponent(quest.game + " " + quest.title)}` },
-        { title: `${quest.game} tips and tricks`, url: `https://www.youtube.com/results?search_query=${encodeURIComponent(quest.game + " tips")}` },
+      video_queries: [
+        { title: `${quest.game} ${quest.title} guide`, query: `${quest.game} ${quest.title} walkthrough` },
+        { title: `${quest.game} tips and tricks`, query: `${quest.game} tips tricks guide` },
       ],
       tips: "Take your time and enjoy the journey.",
     };
 
     try {
       const jsonStr = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-      guideData = JSON.parse(jsonStr);
+      parsed = JSON.parse(jsonStr);
     } catch {
       console.error("quests guide: failed to parse AI JSON");
     }
 
+    // Resolve each search query to a real YouTube video via InnerTube (best-effort)
+    const videoResults = await Promise.all(
+      (parsed.video_queries ?? []).map(async (vq) => {
+        const result = await searchYouTubeVideo(vq.query);
+        if (result) return result;
+        // Fallback: return search URL entry
+        return {
+          id: '', title: vq.title,
+          thumbnail: '',
+          duration: '',
+          url: `https://www.youtube.com/results?search_query=${encodeURIComponent(vq.query)}`,
+        };
+      })
+    );
+
+    // Filter out any blanks, keep valid video entries
+    const youtube_links = videoResults.filter(v => v.id || (v as any).url);
+
     const r = await pool.query(
       `INSERT INTO quest_guides (quest_id, steps, youtube_links, tips)
        VALUES ($1, $2, $3, $4) RETURNING *`,
-      [id, JSON.stringify(guideData.steps), JSON.stringify(guideData.youtube_links), guideData.tips]
+      [id, JSON.stringify(parsed.steps), JSON.stringify(youtube_links), parsed.tips]
     );
     res.json(r.rows[0]);
   } catch (err) {
     console.error("quests guide error:", err);
     res.status(500).json({ error: "Failed to generate guide", detail: String(err) });
+  }
+});
+
+// ─── POST /api/quests/:id/guide/videos ─────────────────────────────────────
+router.post("/quests/:id/guide/videos", async (req, res) => {
+  try {
+    await ensureTables();
+    const id = parseInt(req.params.id, 10);
+    const video = req.body as { id: string; title: string; thumbnail?: string; duration?: string };
+    if (!video.id || !video.title) { res.status(400).json({ error: "id and title are required" }); return; }
+
+    const guideRes = await pool.query(
+      `SELECT * FROM quest_guides WHERE quest_id=$1 ORDER BY generated_at DESC LIMIT 1`, [id]
+    );
+    if (!guideRes.rows.length) { res.status(404).json({ error: "Guide not found — open the guide first to generate it" }); return; }
+
+    const guide = guideRes.rows[0];
+    const links: any[] = Array.isArray(guide.youtube_links) ? guide.youtube_links : [];
+    const filtered = links.filter((l: any) => l.id !== video.id);
+    filtered.push({ id: video.id, title: video.title, thumbnail: video.thumbnail || `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`, duration: video.duration || '' });
+
+    const r = await pool.query(
+      `UPDATE quest_guides SET youtube_links=$1 WHERE id=$2 RETURNING *`,
+      [JSON.stringify(filtered), guide.id]
+    );
+    res.json(r.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to add video", detail: String(err) });
+  }
+});
+
+// ─── DELETE /api/quests/:id/guide/videos/:videoId ──────────────────────────
+router.delete("/quests/:id/guide/videos/:videoId", async (req, res) => {
+  try {
+    await ensureTables();
+    const id = parseInt(req.params.id, 10);
+    const videoId = req.params.videoId;
+
+    const guideRes = await pool.query(
+      `SELECT * FROM quest_guides WHERE quest_id=$1 ORDER BY generated_at DESC LIMIT 1`, [id]
+    );
+    if (!guideRes.rows.length) { res.status(404).json({ error: "Guide not found" }); return; }
+
+    const guide = guideRes.rows[0];
+    const links = (Array.isArray(guide.youtube_links) ? guide.youtube_links : []).filter((l: any) => l.id !== videoId);
+    const r = await pool.query(
+      `UPDATE quest_guides SET youtube_links=$1 WHERE id=$2 RETURNING *`,
+      [JSON.stringify(links), guide.id]
+    );
+    res.json(r.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to remove video", detail: String(err) });
   }
 });
 

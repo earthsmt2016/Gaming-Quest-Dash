@@ -373,11 +373,19 @@ export interface QuestLog {
   completed_at: string;
 }
 
+export interface QuestVideoLink {
+  id?: string;
+  title: string;
+  thumbnail?: string;
+  duration?: string;
+  url?: string;
+}
+
 export interface QuestGuide {
   id: number;
   quest_id: number;
   steps: string[];
-  youtube_links: Array<{ title: string; url: string }>;
+  youtube_links: QuestVideoLink[];
   tips: string | null;
   generated_at: string;
 }
@@ -448,5 +456,23 @@ export async function completeQuest(id: number, time_taken_minutes?: number): Pr
 export async function fetchQuestGuide(id: number): Promise<QuestGuide> {
   const res = await fetch(`${BASE}/quests/${id}/guide`);
   if (!res.ok) throw new Error('Failed to fetch guide');
+  return res.json();
+}
+
+export async function addVideoToGuide(questId: number, video: { id: string; title: string; thumbnail?: string; duration?: string }): Promise<QuestGuide> {
+  const res = await fetch(`${BASE}/quests/${questId}/guide/videos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(video),
+  });
+  if (!res.ok) throw new Error('Failed to add video');
+  return res.json();
+}
+
+export async function removeVideoFromGuide(questId: number, videoId: string): Promise<QuestGuide> {
+  const res = await fetch(`${BASE}/quests/${questId}/guide/videos/${encodeURIComponent(videoId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to remove video');
   return res.json();
 }
