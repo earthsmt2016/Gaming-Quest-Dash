@@ -9,6 +9,7 @@ import GamesPage from './components/GamesPage';
 import DailyCheckin from './components/DailyCheckin';
 import ReportsPage from './components/ReportsPage';
 import QuestsPage from './components/QuestsPage';
+import ActiveQuestsWidget from './components/ActiveQuestsWidget';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
 import {
@@ -413,6 +414,9 @@ export default function App() {
                       needsWork={focusCount}
                       streak={streak}
                     />
+
+                    {/* Active Quests widget */}
+                    <ActiveQuestsWidget onNavigate={() => setActivePage('quests')} />
 
                     {/* Needs attention — full width, prominent */}
                     <div className="dash-card">
