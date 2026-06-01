@@ -419,15 +419,17 @@ router.post("/quests/generate", async (req, res) => {
 
       for (const g of games) {
         const existing = await pool.query(
-          `SELECT COUNT(*)::int AS cnt FROM quests WHERE game=$1 AND status='suggested'`,
+          `SELECT id FROM quests WHERE game=$1 AND status='suggested'`,
           [g]
         );
-        const existingCount = existing.rows[0].cnt;
-        if (existingCount < 1) {
+        const oldIds: number[] = existing.rows.map((r: any) => r.id);
+        if (oldIds.length < 1) {
           await generateForGame(g, 1, difficulty);
         } else {
-          await pool.query(`DELETE FROM quests WHERE game=$1 AND status='suggested'`, [g]);
+          // Generate new quests first, then remove the old ones by ID so there's
+          // never a moment where the user sees an empty list or gets a 404 on accept.
           await generateForGame(g, 2, difficulty);
+          await pool.query(`DELETE FROM quests WHERE id = ANY($1)`, [oldIds]);
         }
       }
 
