@@ -236,13 +236,23 @@ export interface DailyPlanGame {
 
 export interface DailyPlanPick { game: string; minutes: number; why: string; }
 
+export interface ActiveQuestContext {
+  game: string;
+  title: string;
+  estimated_minutes: number;
+  difficulty: string;
+}
+
 export async function fetchDailyPlan(
-  availableMinutes: number, dayOfWeek: string, games: DailyPlanGame[]
+  availableMinutes: number,
+  dayOfWeek: string,
+  games: DailyPlanGame[],
+  activeQuests?: ActiveQuestContext[]
 ): Promise<DailyPlanPick[]> {
   const res = await fetch(`${BASE}/daily-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ availableMinutes, dayOfWeek, games }),
+    body: JSON.stringify({ availableMinutes, dayOfWeek, games, activeQuests }),
   });
   if (!res.ok) return [];
   return (await res.json()).picks ?? [];

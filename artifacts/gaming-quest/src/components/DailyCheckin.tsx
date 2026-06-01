@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LogEntry, computeRecommendations, badgeFor } from '../lib/logParser';
-import { fetchDailyPlan, fetchQuestRecommendations, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
+import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
 
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
@@ -126,8 +126,16 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
     const activeGames = buildActiveGames(logs, manualCompletions, paused);
     const dayOfWeek = DAYS[new Date().getDay()];
 
+    // Fetch active quests to give the AI quest context (non-blocking parallel)
+    const activeQuestsPromise = fetchActiveQuests().catch(() => [] as Quest[]);
+
     try {
-      const picks = await fetchDailyPlan(mins, dayOfWeek, activeGames);
+      const rawActiveQuests = await activeQuestsPromise;
+      const activeQuestData = rawActiveQuests.map(q => ({
+        game: q.game, title: q.title,
+        estimated_minutes: q.estimated_minutes, difficulty: q.difficulty,
+      }));
+      const picks = await fetchDailyPlan(mins, dayOfWeek, activeGames, activeQuestData);
       if (picks.length > 0) {
         setPlan({ status: 'ai', mins, picks });
       } else {
@@ -387,9 +395,8 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
 
             {/* ── Quest Recommendations ── */}
             {(plan.status === 'ai' || plan.status === 'fallback') && questRecs && (() => {
-              const planGames = new Set((plan.picks as any[]).map(p => p.game));
-              const fitting = questRecs.fitting.filter(q => planGames.has(q.game));
-              const partial = questRecs.partial.filter(q => planGames.has(q.game));
+              const fitting = questRecs.fitting;
+              const partial = questRecs.partial;
               if (fitting.length === 0 && partial.length === 0) return null;
               return (
                 <div style={{ marginTop: '4px', padding: '12px 14px', background: '#f3e5f5', border: '1px solid #ce93d8', borderRadius: '10px' }}>
