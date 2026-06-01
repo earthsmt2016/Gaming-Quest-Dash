@@ -62,7 +62,7 @@ async function ensureTables() {
 ensureTables().catch(err => console.error("quests ensureTables:", err));
 
 // ─── Internal: generate quests for a single game ───────────────────────────
-async function generateForGame(game: string, count: number = 2): Promise<void> {
+async function generateForGame(game: string, count: number = 2): Promise<any[]> {
   // Fetch recent session data for this game
   const logResult = await pool.query(`
     SELECT timestamp, action, minutes, type
@@ -136,16 +136,19 @@ Respond ONLY with valid JSON (no markdown):
     quests = Array.isArray(parsed.quests) ? parsed.quests.slice(0, count) : [];
   } catch {
     console.error(`quests generate (${game}): failed to parse AI JSON`);
-    return;
+    return [];
   }
 
+  const inserted = [];
   for (const q of quests) {
-    await pool.query(
+    const r = await pool.query(
       `INSERT INTO quests (game, title, description, type, difficulty, xp_reward, estimated_minutes, target, status, ai_generated)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'suggested', true)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'suggested', true) RETURNING *`,
       [game, q.title, q.description, q.type, q.difficulty, q.xp_reward, q.estimated_minutes, q.target ?? 100]
     );
+    inserted.push(r.rows[0]);
   }
+  return inserted;
 }
 
 // ─── POST /api/quests/generate ─────────────────────────────────────────────
@@ -201,25 +204,34 @@ router.get("/quests/suggested", async (_req, res) => {
   try {
     await ensureTables();
 
-    // Enforce ≥1 per known game invariant: check which games lack suggested quests
-    const gamesWithSuggested = await pool.query(
-      `SELECT DISTINCT game FROM quests WHERE status='suggested'`
-    );
-    const coveredGames = new Set(gamesWithSuggested.rows.map((r: any) => r.game));
-
-    const allGames = await pool.query(
-      `SELECT DISTINCT game FROM log_entries ORDER BY game LIMIT 8`
-    );
-    const uncoveredGames = allGames.rows
+    // Enforce ≥1 per known game invariant: synchronously generate for uncovered games
+    const [gamesWithSuggestedRes, allGamesRes] = await Promise.all([
+      pool.query(`SELECT DISTINCT game FROM quests WHERE status='suggested'`),
+      pool.query(`SELECT DISTINCT game FROM log_entries ORDER BY game LIMIT 8`),
+    ]);
+    const coveredGames = new Set(gamesWithSuggestedRes.rows.map((r: any) => r.game));
+    const uncoveredGames = allGamesRes.rows
       .map((r: any) => r.game)
       .filter((g: string) => !coveredGames.has(g))
-      .slice(0, 3); // limit to 3 to keep latency reasonable
+      .slice(0, 4); // at most 4 uncovered to keep latency reasonable
 
-    // Fire-and-forget background generation for uncovered games
+    // Await generation for all uncovered games before responding
     if (uncoveredGames.length > 0) {
-      Promise.all(uncoveredGames.map((g: string) => generateForGame(g, 1))).catch(err =>
-        console.error("quests auto-generate error:", err)
+      await Promise.all(uncoveredGames.map((g: string) => generateForGame(g, 1)));
+    }
+
+    // Check total count — if still < 3, generate more for known games
+    const countRes = await pool.query(`SELECT COUNT(*)::int AS cnt FROM quests WHERE status='suggested'`);
+    if ((countRes.rows[0].cnt as number) < 3 && allGamesRes.rows.length > 0) {
+      const coveredNow = new Set(
+        (await pool.query(`SELECT DISTINCT game FROM quests WHERE status='suggested'`)).rows.map((r: any) => r.game)
       );
+      // Pick games already covered and generate more quests for them
+      const toBoost = allGamesRes.rows
+        .map((r: any) => r.game)
+        .filter((g: string) => coveredNow.has(g))
+        .slice(0, 2);
+      await Promise.all(toBoost.map((g: string) => generateForGame(g, 1)));
     }
 
     const result = await pool.query(
@@ -285,12 +297,16 @@ router.post("/quests/:id/reject", async (req, res) => {
 
     await pool.query(`UPDATE quests SET status='rejected' WHERE id=$1`, [id]);
 
-    // Generate replacement for the same game
-    generateForGame(quest.game, 1).catch(err =>
-      console.error(`quests reject replacement (${quest.game}):`, err)
-    );
+    // Synchronously generate a replacement quest for the same game
+    let replacement: any = null;
+    try {
+      const newQuests = await generateForGame(quest.game, 1);
+      replacement = newQuests[0] ?? null;
+    } catch (err) {
+      console.error(`quests reject replacement (${quest.game}):`, err);
+    }
 
-    res.json({ rejected: true, game: quest.game });
+    res.json({ rejected: true, game: quest.game, replacement });
   } catch (err) {
     res.status(500).json({ error: "Failed to reject quest", detail: String(err) });
   }
@@ -305,7 +321,11 @@ router.patch("/quests/:id/progress", async (req, res) => {
     if (progress === undefined || progress === null) {
       res.status(400).json({ error: "progress is required" }); return;
     }
-    const clamped = Math.min(100, Math.max(0, Math.round(progress)));
+    // Clamp against the quest's own target (not hardcoded 100)
+    const questRow = await pool.query(`SELECT target FROM quests WHERE id=$1 AND status='active'`, [id]);
+    if (!questRow.rows.length) { res.status(404).json({ error: "Quest not found or not active" }); return; }
+    const target = questRow.rows[0].target ?? 100;
+    const clamped = Math.min(target, Math.max(0, Math.round(progress)));
     const r = await pool.query(
       `UPDATE quests SET progress=$1 WHERE id=$2 AND status='active' RETURNING *`,
       [clamped, id]

@@ -288,7 +288,7 @@ function QuestCard({
       </div>
 
       {expanded && (
-        <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', background: 'var(--paper-2)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', background: 'var(--paper-2)', display: 'flex', flexDirection: 'column', gap: '14px' }} onClick={e => e.stopPropagation()}>
           {quest.status === 'active' && onProgress && (
             <div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
@@ -479,10 +479,17 @@ export default function QuestsPage() {
   };
 
   const handleReject = async (quest: Quest) => {
-    await rejectQuest(quest.id);
+    // Optimistic: remove dismissed quest immediately so UX is instant
     setSuggested(prev => prev.filter(q => q.id !== quest.id));
-    // Backend fires replacement generation in background; reload after brief delay
-    setTimeout(() => reload(), 3000);
+    try {
+      const { replacement } = await rejectQuest(quest.id);
+      // Append replacement once AI generation completes
+      if (replacement) {
+        setSuggested(prev => [...prev, replacement]);
+      }
+    } catch (err) {
+      console.error("Failed to reject quest:", err);
+    }
   };
 
   const handleProgress = async (quest: Quest, value: number) => {

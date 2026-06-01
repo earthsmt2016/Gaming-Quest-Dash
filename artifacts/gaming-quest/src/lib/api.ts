@@ -419,7 +419,7 @@ export async function acceptQuest(id: number): Promise<Quest> {
   return res.json();
 }
 
-export async function rejectQuest(id: number): Promise<{ rejected: boolean; game: string }> {
+export async function rejectQuest(id: number): Promise<{ rejected: boolean; game: string; replacement: Quest | null }> {
   const res = await fetch(`${BASE}/quests/${id}/reject`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to reject quest');
   return res.json();
