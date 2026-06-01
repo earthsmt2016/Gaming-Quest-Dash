@@ -263,7 +263,7 @@ export async function fetchFocusInsights(
 // ─── Saved Reports ────────────────────────────────────────────────────────────
 
 export interface ReportSchedule { id: number | null; day_of_week: number; hour: number; minute: number; enabled: boolean; }
-export interface SavedReportMeta { id: number; title: string; period_from: string; period_to: string; trigger_type: 'manual' | 'scheduled'; generated_at: string; log_count: number; game_count: number; playtime_mins: number; insight_count: number; }
+export interface SavedReportMeta { id: number; title: string; period_from: string; period_to: string; trigger_type: 'manual' | 'scheduled'; generated_at: string; log_count: number; game_count: number; playtime_mins: number; insight_count: number; options_json?: Record<string, unknown> | null; }
 export interface SavedReportFull extends SavedReportMeta {
   logs_json: Array<{ timestamp: string; game: string; action: string; minutes: number; type: string }>;
   ai_insights_json: Record<string, string>;

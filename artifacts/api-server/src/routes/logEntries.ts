@@ -19,7 +19,7 @@ router.get("/logs", async (_req, res) => {
 router.post("/logs", async (req, res) => {
   try {
     const body = req.body as unknown[];
-    if (!Array.isArray(body) || body.length === 0) return res.json([]);
+    if (!Array.isArray(body) || body.length === 0) { res.json([]); return; }
 
     const values = body.map((item: any) => {
       if (
