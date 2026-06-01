@@ -11,6 +11,15 @@ env = { "CI" = "true" }
 [workflows]
 runButton = "Project"
 
+[[workflows.workflow]]
+name = "Project"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=8080 BASE_PATH=/ node artifacts/api-server/dist/index.mjs"
+waitForPort = 8080
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
@@ -21,19 +30,7 @@ timeoutMs = 20000
 
 [[ports]]
 localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
 externalPort = 80
-
-[[ports]]
-localPort = 8082
-externalPort = 3002
-
-[[ports]]
-localPort = 23811
-externalPort = 3000
 
 [nix]
 channel = "stable-25_05"
