@@ -2,3 +2,4 @@
 - [AI Companion Chat](companion-chat.md) — ai_conversations table; POST /companion/chat injects full context per request (profile, quests, sessions); history trimmed to 100 rows; gpt-5.4 model; CompanionChat.tsx on dashboard below ActiveQuestsWidget
 - [JSX IIFE pattern](jsx-iife-pattern.md) — `{(() => { return ...; })()}` — no trailing `)` before the closing `}`, the IIFE call `()` already closes it
 - [Express route restart](express-route-pickup.md) — api-server uses nodemon/tsx but new routes registered at module load require a workflow restart to be picked up; HMR is frontend-only
+- [Expo port configuration](expo-port-config.md) — Expo workflows fail DIDNT_OPEN_A_PORT if localPort isn't in .replit [[ports]]; must use a mapped port like 8082.

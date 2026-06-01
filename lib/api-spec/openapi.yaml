@@ -10,6 +10,10 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: logs
+    description: Gaming session log operations
+  - name: quests
+    description: Quest operations
 paths:
   /healthz:
     get:
@@ -24,6 +28,155 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /logs:
+    get:
+      operationId: getLogs
+      tags: [logs]
+      summary: Get all session logs
+      responses:
+        "200":
+          description: List of log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogEntry"
+    post:
+      operationId: createLogs
+      tags: [logs]
+      summary: Create session log entries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/NewLogEntry"
+      responses:
+        "200":
+          description: Created log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogEntry"
+
+  /logs/{id}:
+    delete:
+      operationId: deleteLog
+      tags: [logs]
+      summary: Delete a log entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /quests/active:
+    get:
+      operationId: getActiveQuests
+      tags: [quests]
+      summary: Get active quests
+      responses:
+        "200":
+          description: List of active quests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Quest"
+
+  /quests/suggested:
+    get:
+      operationId: getSuggestedQuests
+      tags: [quests]
+      summary: Get suggested quests
+      responses:
+        "200":
+          description: List of suggested quests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Quest"
+
+  /quests/{id}/progress:
+    patch:
+      operationId: updateQuestProgress
+      tags: [quests]
+      summary: Update quest progress
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestProgressUpdate"
+      responses:
+        "200":
+          description: Updated quest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quest"
+
+  /quests/{id}/accept:
+    post:
+      operationId: acceptQuest
+      tags: [quests]
+      summary: Accept a quest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Accepted quest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quest"
+
+  /quests/{id}/reject:
+    post:
+      operationId: rejectQuest
+      tags: [quests]
+      summary: Reject a quest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rejected quest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quest"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +187,120 @@ components:
       required:
         - status
 
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        timestamp:
+          type: string
+        game:
+          type: string
+        action:
+          type: string
+        minutes:
+          type: integer
+        type:
+          type: string
+        screenshotPath:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          nullable: true
+      required:
+        - id
+        - timestamp
+        - game
+        - action
+        - minutes
+        - type
+
+    NewLogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+        game:
+          type: string
+        action:
+          type: string
+        minutes:
+          type: integer
+        type:
+          type: string
+        screenshotPath:
+          type: string
+          nullable: true
+      required:
+        - timestamp
+        - game
+        - action
+        - minutes
+        - type
+
+    OkResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required:
+        - ok
+
+    Quest:
+      type: object
+      properties:
+        id:
+          type: integer
+        game:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        difficulty:
+          type: string
+        xp_reward:
+          type: integer
+        estimated_minutes:
+          type: integer
+        status:
+          type: string
+        progress:
+          type: integer
+        target:
+          type: integer
+        ai_generated:
+          type: boolean
+          nullable: true
+        created_at:
+          type: string
+          nullable: true
+        accepted_at:
+          type: string
+          nullable: true
+        completed_at:
+          type: string
+          nullable: true
+      required:
+        - id
+        - game
+        - title
+        - description
+        - type
+        - difficulty
+        - xp_reward
+        - estimated_minutes
+        - status
+        - progress
+        - target
+
+    QuestProgressUpdate:
+      type: object
+      properties:
+        amount:
+          type: integer
+      required:
+        - amount
