@@ -341,3 +341,116 @@ export async function deleteReport(id: number): Promise<void> {
   const res = await fetch(`${BASE}/saved-reports/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete report');
 }
+
+// ─── Quests ───────────────────────────────────────────────────────────────────
+
+export interface Quest {
+  id: number;
+  title: string;
+  description: string;
+  game: string;
+  category: 'challenge' | 'exploration' | 'grind' | 'skill';
+  difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
+  xp_reward: number;
+  status: 'pending' | 'active' | 'completed' | 'rejected';
+  objectives: string[];
+  generated_at: string;
+  accepted_at: string | null;
+  completed_at: string | null;
+  logs?: QuestLog[];
+}
+
+export interface QuestLog {
+  id: number;
+  quest_id: number;
+  note: string;
+  progress_pct: number;
+  logged_at: string;
+}
+
+export interface QuestGuide {
+  id: number;
+  quest_id: number;
+  title: string;
+  steps: string[];
+  youtube_url: string | null;
+  generated_at: string;
+}
+
+export interface QuestStats {
+  active_count: number;
+  completed_count: number;
+  pending_count: number;
+  total_xp: number;
+}
+
+export async function fetchSuggestedQuests(): Promise<Quest[]> {
+  const res = await fetch(`${BASE}/quests/suggested`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchActiveQuests(): Promise<Quest[]> {
+  const res = await fetch(`${BASE}/quests/active`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchCompletedQuests(): Promise<Quest[]> {
+  const res = await fetch(`${BASE}/quests/completed`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchQuestStats(): Promise<QuestStats> {
+  const res = await fetch(`${BASE}/quests/stats`);
+  if (!res.ok) return { active_count: 0, completed_count: 0, pending_count: 0, total_xp: 0 };
+  return res.json();
+}
+
+export async function generateQuests(games?: string[]): Promise<{ quests: Quest[]; count: number }> {
+  const res = await fetch(`${BASE}/quests/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ games }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any).error || 'Generation failed');
+  }
+  return res.json();
+}
+
+export async function acceptQuest(id: number): Promise<Quest> {
+  const res = await fetch(`${BASE}/quests/${id}/accept`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to accept quest');
+  return res.json();
+}
+
+export async function rejectQuest(id: number): Promise<Quest> {
+  const res = await fetch(`${BASE}/quests/${id}/reject`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to reject quest');
+  return res.json();
+}
+
+export async function logQuestProgress(id: number, note: string, progress_pct: number): Promise<QuestLog> {
+  const res = await fetch(`${BASE}/quests/${id}/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note, progress_pct }),
+  });
+  if (!res.ok) throw new Error('Failed to log progress');
+  return res.json();
+}
+
+export async function completeQuest(id: number): Promise<Quest> {
+  const res = await fetch(`${BASE}/quests/${id}/complete`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to complete quest');
+  return res.json();
+}
+
+export async function fetchQuestGuide(id: number): Promise<QuestGuide> {
+  const res = await fetch(`${BASE}/quests/${id}/guide`);
+  if (!res.ok) throw new Error('Failed to fetch guide');
+  return res.json();
+}

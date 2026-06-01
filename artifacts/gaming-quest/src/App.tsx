@@ -8,6 +8,7 @@ import WeeklyReport from './components/WeeklyReport';
 import GamesPage from './components/GamesPage';
 import DailyCheckin from './components/DailyCheckin';
 import ReportsPage from './components/ReportsPage';
+import QuestsPage from './components/QuestsPage';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
 import {
@@ -32,7 +33,7 @@ import {
   updateLog, deleteLog, saveReport, patchReportInsights,
 } from './lib/api';
 
-export type Page = 'dashboard' | 'log' | 'games' | 'reports';
+export type Page = 'dashboard' | 'log' | 'games' | 'quests' | 'reports';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -547,6 +548,9 @@ export default function App() {
                     onOpenLibrary={() => setLibraryOpen(true)}
                   />
                 )}
+
+                {/* ── Quests ── */}
+                {activePage === 'quests' && <QuestsPage />}
 
                 {/* ── Reports ── */}
                 {activePage === 'reports' && (

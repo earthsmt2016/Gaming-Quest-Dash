@@ -5,6 +5,7 @@ const NAV: { id: Page; label: string; short: string }[] = [
   { id: 'dashboard', label: 'Dashboard', short: 'Home' },
   { id: 'log',       label: 'Quest Log',  short: 'Log' },
   { id: 'games',     label: 'Games',      short: 'Games' },
+  { id: 'quests',    label: 'Quests',     short: 'Quests' },
   { id: 'reports',   label: 'Reports',    short: 'Reports' },
 ];
 

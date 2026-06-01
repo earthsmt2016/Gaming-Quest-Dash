@@ -11,6 +11,7 @@ import savedReportsRouter from "./savedReports";
 import storageRouter from "./storage";
 import screenshotAnalysisRouter from "./screenshotAnalysis";
 import platformsRouter from "./platforms";
+import questsRouter from "./quests";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(savedReportsRouter);
 router.use(storageRouter);
 router.use(screenshotAnalysisRouter);
 router.use(platformsRouter);
+router.use(questsRouter);
 
 export default router;
