@@ -166,10 +166,10 @@ router.post("/quests/generate", async (req, res) => {
       );
       res.json({ quests: result.rows, count: result.rows.length });
     } else {
-      // Generate for top games (up to 4 most recently played)
+      // Generate for all known games
       const gamesResult = await pool.query(`
         SELECT DISTINCT game FROM log_entries
-        ORDER BY game LIMIT 4
+        ORDER BY game
       `);
       const games = gamesResult.rows.map((r: any) => r.game);
 
@@ -204,34 +204,34 @@ router.get("/quests/suggested", async (_req, res) => {
   try {
     await ensureTables();
 
-    // Enforce ≥1 per known game invariant: synchronously generate for uncovered games
+    // Enforce ≥1 per known game invariant: ALL distinct games, no cap
     const [gamesWithSuggestedRes, allGamesRes] = await Promise.all([
       pool.query(`SELECT DISTINCT game FROM quests WHERE status='suggested'`),
-      pool.query(`SELECT DISTINCT game FROM log_entries ORDER BY game LIMIT 8`),
+      pool.query(`SELECT DISTINCT game FROM log_entries ORDER BY game`),
     ]);
     const coveredGames = new Set(gamesWithSuggestedRes.rows.map((r: any) => r.game));
     const uncoveredGames = allGamesRes.rows
       .map((r: any) => r.game)
-      .filter((g: string) => !coveredGames.has(g))
-      .slice(0, 4); // at most 4 uncovered to keep latency reasonable
+      .filter((g: string) => !coveredGames.has(g));
 
-    // Await generation for all uncovered games before responding
+    // Await generation for ALL uncovered games before responding
     if (uncoveredGames.length > 0) {
       await Promise.all(uncoveredGames.map((g: string) => generateForGame(g, 1)));
     }
 
-    // Check total count — if still < 3, generate more for known games
+    // Ensure total ≥ 3: top up from known games if needed
     const countRes = await pool.query(`SELECT COUNT(*)::int AS cnt FROM quests WHERE status='suggested'`);
     if ((countRes.rows[0].cnt as number) < 3 && allGamesRes.rows.length > 0) {
       const coveredNow = new Set(
         (await pool.query(`SELECT DISTINCT game FROM quests WHERE status='suggested'`)).rows.map((r: any) => r.game)
       );
-      // Pick games already covered and generate more quests for them
       const toBoost = allGamesRes.rows
         .map((r: any) => r.game)
         .filter((g: string) => coveredNow.has(g))
-        .slice(0, 2);
-      await Promise.all(toBoost.map((g: string) => generateForGame(g, 1)));
+        .slice(0, 3 - (countRes.rows[0].cnt as number));
+      if (toBoost.length > 0) {
+        await Promise.all(toBoost.map((g: string) => generateForGame(g, 1)));
+      }
     }
 
     const result = await pool.query(
@@ -359,6 +359,13 @@ router.post("/quests/:id/complete", async (req, res) => {
       `INSERT INTO quest_logs (quest_id, game, title, xp_earned, time_taken_minutes, difficulty)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [id, quest.game, quest.title, quest.xp_reward, time_taken_minutes, quest.difficulty]
+    );
+
+    // Feed existing reporting system: insert a normalized log_entries row
+    await pool.query(
+      `INSERT INTO log_entries (timestamp, game, action, minutes, type)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [new Date().toISOString(), quest.game, `[Quest] ${quest.title}`, time_taken_minutes, quest.type]
     );
 
     res.json({ quest: { ...quest, status: 'completed' }, log: logResult.rows[0] });
