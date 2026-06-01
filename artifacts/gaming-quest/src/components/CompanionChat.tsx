@@ -179,7 +179,7 @@ export default function CompanionChat() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(true);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -190,8 +190,8 @@ export default function CompanionChat() {
   }, []);
 
   useEffect(() => {
-    if (open) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (open && messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }
   }, [messages, open]);
 
@@ -283,7 +283,7 @@ export default function CompanionChat() {
         {open && (
           <>
             {/* Messages */}
-            <div style={{
+            <div ref={messagesRef} style={{
               height: isEmpty ? 'auto' : '360px', overflowY: 'auto', padding: '14px 16px',
               display: 'flex', flexDirection: 'column', gap: '12px',
               background: 'var(--paper-2)',
@@ -361,7 +361,6 @@ export default function CompanionChat() {
                 </div>
               )}
 
-              <div ref={bottomRef} />
             </div>
 
             {/* Input */}
