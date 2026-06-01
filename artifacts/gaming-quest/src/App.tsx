@@ -408,6 +408,10 @@ export default function App() {
                       rangeLabel={rangeLabel}
                     />
                     <DailyCheckin logs={logs} manualCompletions={completions} paused={paused} />
+
+                    {/* AI Companion Chat */}
+                    <CompanionChat />
+
                     <StatsStrip
                       entries={weekLogs.length}
                       playtime={weekPlaytime}
@@ -418,9 +422,6 @@ export default function App() {
 
                     {/* Active Quests widget */}
                     <ActiveQuestsWidget onNavigate={() => setActivePage('quests')} />
-
-                    {/* AI Companion Chat */}
-                    <CompanionChat />
 
                     {/* Needs attention — full width, prominent */}
                     <div className="dash-card">
