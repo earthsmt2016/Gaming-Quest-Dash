@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { LogEntry, computeRecommendations, badgeFor } from '../lib/logParser';
-import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
+import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, fetchSubQuest, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
 
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
@@ -109,6 +109,17 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   const [plan, setPlan] = useState<PlanState>({ status: 'idle' });
   const [copied, setCopied] = useState<string | null>(null);
   const [questRecs, setQuestRecs] = useState<{ fitting: Quest[]; partial: Quest[] } | null>(null);
+  const [subQuests, setSubQuests] = useState<Record<number, { loading: boolean; title?: string; goal?: string }>>({});
+
+  const handleSubQuest = useCallback(async (questId: number, mins: number) => {
+    setSubQuests(prev => ({ ...prev, [questId]: { loading: true } }));
+    try {
+      const result = await fetchSubQuest(questId, mins);
+      setSubQuests(prev => ({ ...prev, [questId]: { loading: false, title: result.title, goal: result.goal } }));
+    } catch {
+      setSubQuests(prev => ({ ...prev, [questId]: { loading: false } }));
+    }
+  }, []);
 
   const handleSubmit = async () => {
     let mins: number;
@@ -422,20 +433,54 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                     </div>
                   )}
                   {partial.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Make partial progress on:</div>
-                      {partial.map(q => (
-                        <div key={q.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: '#fff', borderRadius: '8px', padding: '10px 12px', border: '1px solid #e1bee7' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, marginBottom: '2px' }}>{q.game}</div>
-                            <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Needs more time — make partial progress:</div>
+                      {partial.map(q => {
+                        const sq = subQuests[q.id];
+                        const sessionMins = (plan as any).mins as number;
+                        return (
+                          <div key={q.id} style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e1bee7', overflow: 'hidden' }}>
+                            {/* Quest header */}
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, marginBottom: '2px' }}>{q.game}</div>
+                                <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
+                              </div>
+                              <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                                <div style={{ fontSize: '15px', fontWeight: 700, color: '#e65100' }}>{fmtMins(q.estimated_minutes)}</div>
+                                <div style={{ fontSize: '10px', fontWeight: 700, color: '#e65100' }}>needed</div>
+                              </div>
+                            </div>
+                            {/* Sub-quest area */}
+                            {!sq && (
+                              <div style={{ borderTop: '1px dashed #e1bee7', padding: '8px 12px' }}>
+                                <button
+                                  onClick={() => handleSubQuest(q.id, sessionMins)}
+                                  style={{
+                                    background: 'none', border: '1px solid #ab47bc', borderRadius: '20px',
+                                    padding: '4px 12px', cursor: 'pointer', fontSize: '11px', fontWeight: 700,
+                                    color: '#7b1fa2', fontFamily: 'inherit',
+                                  }}
+                                >✨ Make it fit in {fmtMins(sessionMins)}</button>
+                              </div>
+                            )}
+                            {sq?.loading && (
+                              <div style={{ borderTop: '1px dashed #e1bee7', padding: '8px 12px', fontSize: '11px', color: '#ab47bc' }}>
+                                Generating mini-goal…
+                              </div>
+                            )}
+                            {sq && !sq.loading && sq.title && (
+                              <div style={{ borderTop: '1px solid #ce93d8', padding: '10px 12px', background: '#f3e5f5' }}>
+                                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7b1fa2', marginBottom: '4px' }}>
+                                  ⚡ {fmtMins(sessionMins)} sub-quest
+                                </div>
+                                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '3px' }}>{sq.title}</div>
+                                <div style={{ fontSize: '12px', color: '#4a148c', lineHeight: 1.4 }}>{sq.goal}</div>
+                              </div>
+                            )}
                           </div>
-                          <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                            <div style={{ fontSize: '15px', fontWeight: 700, color: '#e65100' }}>{fmtMins(q.estimated_minutes)}</div>
-                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#e65100' }}>needed</div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

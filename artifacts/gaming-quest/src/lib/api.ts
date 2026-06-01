@@ -258,6 +258,19 @@ export async function fetchDailyPlan(
   return (await res.json()).picks ?? [];
 }
 
+export async function fetchSubQuest(
+  questId: number,
+  availableMinutes: number
+): Promise<{ title: string; goal: string; minutes: number }> {
+  const res = await fetch(`${BASE}/quests/${questId}/sub-quest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ availableMinutes }),
+  });
+  if (!res.ok) throw new Error('sub-quest failed');
+  return res.json();
+}
+
 export async function fetchFocusInsights(
   games: FocusGame[]
 ): Promise<{ title: string; nextStep: string }[]> {

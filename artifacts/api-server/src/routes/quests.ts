@@ -564,6 +564,58 @@ router.post("/quests/:id/feedback", async (req, res) => {
   }
 });
 
+// ─── POST /api/quests/:id/sub-quest ────────────────────────────────────────
+router.post("/quests/:id/sub-quest", async (req, res) => {
+  try {
+    await ensureTables();
+    const id = parseInt(req.params.id, 10);
+    const { availableMinutes } = req.body as { availableMinutes: number };
+    if (!availableMinutes || availableMinutes < 1) {
+      res.status(400).json({ error: "availableMinutes required" }); return;
+    }
+    const questResult = await pool.query(`SELECT * FROM quests WHERE id=$1`, [id]);
+    if (!questResult.rows.length) { res.status(404).json({ error: "Quest not found" }); return; }
+    const quest = questResult.rows[0];
+
+    const systemPrompt = `You are a gaming quest designer. Given a quest that needs more time than the player has, create a concrete mini-goal they can fully accomplish in their available session time. It must be a meaningful step toward the full quest — not vague filler.
+
+Respond ONLY with valid JSON, no markdown:
+{ "title": "<action title, max 8 words>", "goal": "<exactly what to do and what counts as done, max 30 words>" }`;
+
+    const userPrompt = `Game: ${quest.game}
+Full quest: "${quest.title}"
+Description: ${quest.description ?? 'N/A'}
+Full quest needs: ${quest.estimated_minutes} minutes
+Available today: ${availableMinutes} minutes
+
+Generate a mini-goal achievable in ${availableMinutes} minutes that makes real progress toward this quest.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.4",
+      max_completion_tokens: 120,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content?.trim() ?? "";
+    let result: { title: string; goal: string } = { title: "", goal: "" };
+    try {
+      const jsonStr = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+      result = JSON.parse(jsonStr);
+    } catch {
+      console.error("sub-quest: failed to parse AI JSON:", raw);
+      res.status(500).json({ error: "Failed to parse AI response" }); return;
+    }
+
+    res.json({ title: result.title, goal: result.goal, minutes: availableMinutes });
+  } catch (err) {
+    console.error("sub-quest error:", err);
+    res.status(500).json({ error: "Sub-quest generation failed", detail: String(err) });
+  }
+});
+
 // ─── POST /api/quests/:id/accept ───────────────────────────────────────────
 router.post("/quests/:id/accept", async (req, res) => {
   try {
