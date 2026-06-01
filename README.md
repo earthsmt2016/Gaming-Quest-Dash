@@ -66,18 +66,18 @@ pnpm --filter gaming-quest dev
 
 ```
 Gaming-Quest-Dash/
-├── artifacts/
+├── artifacts/                 # Built applications (frontend, API server, sandbox)
 │   ├── gaming-quest/          # Main React frontend
 │   ├── api-server/            # Backend API
-│   └── mockup-sandbox/
+│   └── mockup-sandbox/        # Testing/playground area
 ├── lib/                       # Shared packages
-│   ├── api-*/                 # Type-safe API contracts
-│   └── db/                    # Database layer
-├── scripts/                   # Utility scripts
-├── attached_assets/           # Static assets
-├── tsconfig*.json
-├── pnpm-workspace.yaml
-└── .replit                    # Replit configuration
+│   ├── api-*/                 # Type-safe API contracts and clients
+│   └── db/                    # Database layer (Drizzle ORM)
+├── scripts/                   # Utility scripts (post-merge hooks, etc.)
+├── attached_assets/           # Static assets and resources
+├── tsconfig*.json             # TypeScript configuration
+├── pnpm-workspace.yaml        # Workspace and dependency management
+└── .replit                    # Replit-specific configuration
 ```
 
 ## 📝 Development
@@ -88,14 +88,14 @@ Gaming-Quest-Dash/
 
 ## Deployment
 
-Optimized for **Replit**. See `replit.md` for specific deployment instructions.
+Optimized for **Replit** but fully compatible with local development using Node.js and pnpm on any machine (including Windows).
 
 ## Contributing
 
-1. Create a feature branch
+1. Create an issue branch (feature branches are reserved for major work)
 2. Make your changes
 3. Submit a Pull Request
 
 ## License
 
-This project is private. All rights reserved.
+This is a private repository. All rights reserved.
