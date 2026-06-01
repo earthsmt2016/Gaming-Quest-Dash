@@ -1,0 +1,1 @@
+- [Quest AI personalization](quest-ai-personalization.md) — profile is singleton (id=1 in user_profile); reasoning stored per quest; profile rebuilds are fire-and-forget after feedback/completion

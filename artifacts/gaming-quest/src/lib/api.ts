@@ -357,9 +357,21 @@ export interface Quest {
   progress: number;
   target: number;
   ai_generated: boolean;
+  reasoning?: string | null;
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
+}
+
+export interface UserProfile {
+  id: number;
+  preferred_difficulty: string;
+  preferred_types: string[];
+  avoided_types: string[];
+  avg_session_minutes: number;
+  completion_rates: Record<string, { completed: number; rejected: number }>;
+  personality_summary: string | null;
+  updated_at: string;
 }
 
 export interface QuestLog {
@@ -475,4 +487,29 @@ export async function removeVideoFromGuide(questId: number, videoId: string): Pr
   });
   if (!res.ok) throw new Error('Failed to remove video');
   return res.json();
+}
+
+export async function submitQuestFeedback(id: number, rating: 1 | -1, comment?: string): Promise<void> {
+  const res = await fetch(`${BASE}/quests/${id}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating, comment }),
+  });
+  if (!res.ok) throw new Error('Failed to save feedback');
+}
+
+export async function fetchUserProfile(): Promise<UserProfile | null> {
+  try {
+    const res = await fetch(`${BASE}/quests/profile`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+export async function rebuildUserProfile(): Promise<UserProfile | null> {
+  try {
+    const res = await fetch(`${BASE}/quests/profile/rebuild`, { method: 'POST' });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
 }

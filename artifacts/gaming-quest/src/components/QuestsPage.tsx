@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Quest, QuestLog, QuestGuide, QuestVideoLink, YouTubeVideo,
+  Quest, QuestLog, QuestGuide, QuestVideoLink, YouTubeVideo, UserProfile,
   fetchSuggestedQuests, fetchActiveQuests, fetchQuestLogs,
   generateQuests, acceptQuest, rejectQuest,
   updateQuestProgress, completeQuest, fetchQuestGuide,
   searchYouTubeGuides, addVideoToGuide, removeVideoFromGuide,
+  submitQuestFeedback, fetchUserProfile,
 } from '../lib/api';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -448,7 +449,7 @@ function CompleteModal({ quest, onClose, onCompleted }: {
 // ─── Quest Card ──────────────────────────────────────────────────────────────
 
 function QuestCard({
-  quest, onAccept, onReject, onProgress, onComplete, onGuide,
+  quest, onAccept, onReject, onProgress, onComplete, onGuide, onFeedback,
 }: {
   quest: Quest;
   onAccept?: () => void;
@@ -456,10 +457,23 @@ function QuestCard({
   onProgress?: (v: number) => void;
   onComplete?: () => void;
   onGuide?: () => void;
+  onFeedback?: (rating: 1 | -1) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [localProgress, setLocalProgress] = useState(quest.progress);
   const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<1 | -1 | null>(null);
+  const [feedbackSent, setFeedbackSent] = useState(false);
+
+  const handleFeedback = async (rating: 1 | -1) => {
+    if (feedbackSent) return;
+    setFeedback(rating);
+    setFeedbackSent(true);
+    try {
+      await submitQuestFeedback(quest.id, rating);
+      onFeedback?.(rating);
+    } catch { setFeedbackSent(false); }
+  };
 
   const pct = Math.round((localProgress / (quest.target || 100)) * 100);
 
@@ -543,6 +557,63 @@ function QuestCard({
               </div>
             </div>
           )}
+
+          {/* AI Reasoning */}
+          {quest.reasoning && (
+            <details style={{ fontSize: '13px' }}>
+              <summary style={{
+                cursor: 'pointer', color: 'var(--muted)', fontWeight: 600,
+                fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em',
+                userSelect: 'none', listStyle: 'none', display: 'flex', alignItems: 'center', gap: '4px',
+              }}>
+                <span>💭</span> Why this quest?
+              </summary>
+              <p style={{
+                margin: '8px 0 0', lineHeight: 1.55, color: 'var(--muted)',
+                background: 'var(--paper)', borderRadius: '6px',
+                padding: '10px 12px', border: '1px solid var(--line)',
+                fontSize: '13px',
+              }}>
+                {quest.reasoning}
+              </p>
+            </details>
+          )}
+
+          {/* Feedback */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Rate this quest:
+            </span>
+            <button
+              onClick={() => handleFeedback(1)}
+              disabled={feedbackSent}
+              style={{
+                background: feedback === 1 ? '#e8f5e9' : 'var(--paper)',
+                border: `1px solid ${feedback === 1 ? '#2e7d32' : 'var(--line)'}`,
+                color: feedback === 1 ? '#2e7d32' : 'var(--muted)',
+                borderRadius: '6px', padding: '4px 12px', cursor: feedbackSent ? 'default' : 'pointer',
+                fontSize: '14px', fontWeight: 600, transition: 'all 0.15s',
+              }}
+              title="This quest is great"
+            >👍</button>
+            <button
+              onClick={() => handleFeedback(-1)}
+              disabled={feedbackSent}
+              style={{
+                background: feedback === -1 ? '#fce4ec' : 'var(--paper)',
+                border: `1px solid ${feedback === -1 ? '#c62828' : 'var(--line)'}`,
+                color: feedback === -1 ? '#c62828' : 'var(--muted)',
+                borderRadius: '6px', padding: '4px 12px', cursor: feedbackSent ? 'default' : 'pointer',
+                fontSize: '14px', fontWeight: 600, transition: 'all 0.15s',
+              }}
+              title="Not for me"
+            >👎</button>
+            {feedbackSent && (
+              <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                {feedback === 1 ? 'Got it — noted for next time ✓' : 'Got it — we\'ll avoid this style ✓'}
+              </span>
+            )}
+          </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {onGuide && (
@@ -660,6 +731,7 @@ export default function QuestsPage() {
   const [suggested, setSuggested] = useState<Quest[]>([]);
   const [active, setActive] = useState<Quest[]>([]);
   const [logs, setLogs] = useState<QuestLog[]>([]);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState('');
@@ -668,14 +740,16 @@ export default function QuestsPage() {
   const [tab, setTab] = useState<'inbox' | 'active' | 'logs'>('inbox');
 
   const reload = useCallback(async () => {
-    const [s, a, l] = await Promise.all([
+    const [s, a, l, p] = await Promise.all([
       fetchSuggestedQuests(),
       fetchActiveQuests(),
       fetchQuestLogs(),
+      fetchUserProfile(),
     ]);
     setSuggested(s);
     setActive(a);
     setLogs(l);
+    setProfile(p);
   }, []);
 
   useEffect(() => {
@@ -797,6 +871,41 @@ export default function QuestsPage() {
           </div>
         </div>
 
+        {/* AI Knows You — personality banner */}
+        {profile?.personality_summary && (
+          <div style={{
+            background: 'linear-gradient(135deg, #f3e5f5 0%, #e8eaf6 100%)',
+            border: '1px solid #ce93d8',
+            borderRadius: 'var(--radius)',
+            padding: '12px 16px',
+            display: 'flex', alignItems: 'flex-start', gap: '12px',
+          }}>
+            <span style={{ fontSize: '22px', flexShrink: 0, lineHeight: 1 }}>🧠</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6a1b9a', marginBottom: '4px' }}>
+                AI knows your playstyle
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: '#4a148c' }}>
+                {profile.personality_summary}
+              </p>
+              {(profile.preferred_types.length > 0 || profile.avoided_types.length > 0) && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  {profile.preferred_types.map(t => (
+                    <span key={t} style={{ background: '#e8f5e9', color: '#2e7d32', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px' }}>
+                      ✓ {t}
+                    </span>
+                  ))}
+                  {profile.avoided_types.map(t => (
+                    <span key={t} style={{ background: '#fce4ec', color: '#c62828', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px' }}>
+                      ✕ {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Tabs + Content */}
         <div style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', padding: '0 8px', overflowX: 'auto' }}>
@@ -842,6 +951,7 @@ export default function QuestsPage() {
                       onAccept={() => handleAccept(q)}
                       onReject={() => handleReject(q)}
                       onGuide={() => setGuideQuest(q)}
+                      onFeedback={() => fetchUserProfile().then(p => p && setProfile(p))}
                     />
                   ))
                 )}
@@ -864,6 +974,7 @@ export default function QuestsPage() {
                       onProgress={v => handleProgress(q, v)}
                       onComplete={() => setCompleteQuest_(q)}
                       onGuide={() => setGuideQuest(q)}
+                      onFeedback={() => fetchUserProfile().then(p => p && setProfile(p))}
                     />
                   ))
                 )}

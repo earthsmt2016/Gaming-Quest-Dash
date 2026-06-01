@@ -35,6 +35,12 @@ async function ensureTables() {
       completed_at      TIMESTAMPTZ
     )
   `);
+
+  // Add reasoning column if missing (non-destructive migration)
+  await pool.query(`
+    ALTER TABLE quests ADD COLUMN IF NOT EXISTS reasoning TEXT
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS quest_guides (
       id            SERIAL PRIMARY KEY,
@@ -57,20 +63,189 @@ async function ensureTables() {
       completed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // User profile — singleton row (id=1)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_profile (
+      id                   INTEGER PRIMARY KEY DEFAULT 1,
+      preferred_difficulty TEXT NOT NULL DEFAULT 'medium',
+      preferred_types      JSONB NOT NULL DEFAULT '[]',
+      avoided_types        JSONB NOT NULL DEFAULT '[]',
+      avg_session_minutes  INTEGER NOT NULL DEFAULT 60,
+      completion_rates     JSONB NOT NULL DEFAULT '{}',
+      personality_summary  TEXT,
+      updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Quest feedback
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS quest_feedback (
+      id         SERIAL PRIMARY KEY,
+      quest_id   INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      rating     INTEGER NOT NULL,
+      comment    TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 }
 
 ensureTables().catch(err => console.error("quests ensureTables:", err));
 
+// ─── Profile computation ────────────────────────────────────────────────────
+
+async function buildUserProfile(): Promise<void> {
+  const [completionByType, rejectionByType, difficultyStats, sessionStats, feedbackStats] = await Promise.all([
+    pool.query(`SELECT type, COUNT(*)::int as cnt FROM quests WHERE status='completed' GROUP BY type`),
+    pool.query(`SELECT type, COUNT(*)::int as cnt FROM quests WHERE status='rejected' GROUP BY type`),
+    pool.query(`SELECT difficulty, COUNT(*)::int as cnt FROM quests WHERE status='completed' GROUP BY difficulty ORDER BY cnt DESC LIMIT 1`),
+    pool.query(`SELECT COALESCE(AVG(minutes)::int, 60) as avg_minutes FROM log_entries`),
+    pool.query(`
+      SELECT q.type, q.difficulty, AVG(f.rating)::float as avg_rating, COUNT(*)::int as cnt
+      FROM quest_feedback f JOIN quests q ON q.id = f.quest_id
+      GROUP BY q.type, q.difficulty
+    `),
+  ]);
+
+  const completionMap: Record<string, number> = {};
+  for (const r of completionByType.rows) completionMap[r.type] = r.cnt;
+
+  const rejectionMap: Record<string, number> = {};
+  for (const r of rejectionByType.rows) rejectionMap[r.type] = r.cnt;
+
+  // Feedback can nudge type preference (avg_rating > 0.5 = preferred, < -0.5 = avoided)
+  const feedbackTypeMap: Record<string, number> = {};
+  for (const r of feedbackStats.rows) {
+    feedbackTypeMap[r.type] = (feedbackTypeMap[r.type] ?? 0) + r.avg_rating * r.cnt;
+  }
+
+  const allTypes = ['challenge', 'exploration', 'grind', 'skill'];
+  const preferredTypes: string[] = [];
+  const avoidedTypes: string[] = [];
+
+  for (const t of allTypes) {
+    const completed = completionMap[t] ?? 0;
+    const rejected = rejectionMap[t] ?? 0;
+    const total = completed + rejected;
+    const feedbackScore = feedbackTypeMap[t] ?? 0;
+
+    if (total >= 2) {
+      const rate = completed / total;
+      if (rate >= 0.6 || feedbackScore > 1) preferredTypes.push(t);
+      else if (rate <= 0.3 || feedbackScore < -1) avoidedTypes.push(t);
+    } else if (Math.abs(feedbackScore) > 1) {
+      if (feedbackScore > 0) preferredTypes.push(t);
+      else avoidedTypes.push(t);
+    }
+  }
+
+  const preferredDifficulty = difficultyStats.rows[0]?.difficulty ?? 'medium';
+  const avgSessionMinutes = sessionStats.rows[0]?.avg_minutes ?? 60;
+
+  const completionRates: Record<string, { completed: number; rejected: number }> = {};
+  for (const t of allTypes) {
+    completionRates[t] = { completed: completionMap[t] ?? 0, rejected: rejectionMap[t] ?? 0 };
+  }
+
+  const totalCompleted = Object.values(completionMap).reduce((s, v) => s + v, 0);
+
+  // Generate personality summary using AI when there's meaningful history
+  let personalitySummary: string | null = null;
+  if (totalCompleted >= 2) {
+    const lines = [
+      `Quest completions by type: ${JSON.stringify(completionRates)}`,
+      `Preferred difficulty: ${preferredDifficulty}`,
+      `Preferred types: ${preferredTypes.join(', ') || 'none established yet'}`,
+      `Avoided types: ${avoidedTypes.join(', ') || 'none identified yet'}`,
+      `Average session length: ~${avgSessionMinutes} minutes`,
+    ];
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-5.4',
+        max_completion_tokens: 120,
+        messages: [
+          {
+            role: 'system',
+            content: 'Analyze this gamer\'s quest history and write a 2-sentence personality profile capturing their playstyle. Use second person ("You are..."). Be specific and insightful.',
+          },
+          { role: 'user', content: lines.join('\n') },
+        ],
+      });
+      personalitySummary = resp.choices[0]?.message?.content?.trim() ?? null;
+    } catch {
+      // silently skip personality generation
+    }
+  }
+
+  await pool.query(`
+    INSERT INTO user_profile (id, preferred_difficulty, preferred_types, avoided_types, avg_session_minutes, completion_rates, personality_summary, updated_at)
+    VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+    ON CONFLICT (id) DO UPDATE SET
+      preferred_difficulty = EXCLUDED.preferred_difficulty,
+      preferred_types      = EXCLUDED.preferred_types,
+      avoided_types        = EXCLUDED.avoided_types,
+      avg_session_minutes  = EXCLUDED.avg_session_minutes,
+      completion_rates     = EXCLUDED.completion_rates,
+      personality_summary  = COALESCE(EXCLUDED.personality_summary, user_profile.personality_summary),
+      updated_at           = NOW()
+  `, [
+    preferredDifficulty,
+    JSON.stringify(preferredTypes),
+    JSON.stringify(avoidedTypes),
+    avgSessionMinutes,
+    JSON.stringify(completionRates),
+    personalitySummary,
+  ]);
+}
+
 // ─── Internal: generate quests for a single game ───────────────────────────
 async function generateForGame(game: string, count: number = 2): Promise<any[]> {
-  // Fetch recent session data for this game
+  // Fetch player profile for personalization context
+  const profileRes = await pool.query(`SELECT * FROM user_profile WHERE id=1`);
+  const profile = profileRes.rows[0] ?? {
+    preferred_difficulty: 'medium',
+    preferred_types: [],
+    avoided_types: [],
+    avg_session_minutes: 60,
+    personality_summary: null,
+  };
+
+  const preferredTypes = (Array.isArray(profile.preferred_types) ? profile.preferred_types : []).join(', ') || 'not yet established';
+  const avoidedTypes = (Array.isArray(profile.avoided_types) ? profile.avoided_types : []).join(', ') || 'none';
+
+  // Recent feedback examples (last 5 thumbs-up and thumbs-down)
+  const [likedRes, dislikedRes] = await Promise.all([
+    pool.query(`
+      SELECT q.title, q.type, q.difficulty, f.comment
+      FROM quest_feedback f JOIN quests q ON q.id = f.quest_id
+      WHERE f.rating = 1 ORDER BY f.created_at DESC LIMIT 4
+    `),
+    pool.query(`
+      SELECT q.title, q.type, q.difficulty, f.comment
+      FROM quest_feedback f JOIN quests q ON q.id = f.quest_id
+      WHERE f.rating = -1 ORDER BY f.created_at DESC LIMIT 4
+    `),
+  ]);
+
+  const likedLines = likedRes.rows.map((r: any) =>
+    `  👍 "${r.title}" [${r.type}, ${r.difficulty}]${r.comment ? ` — "${r.comment}"` : ''}`
+  ).join('\n');
+  const dislikedLines = dislikedRes.rows.map((r: any) =>
+    `  👎 "${r.title}" [${r.type}, ${r.difficulty}]${r.comment ? ` — "${r.comment}"` : ''}`
+  ).join('\n');
+
+  const feedbackSection = (likedLines || dislikedLines)
+    ? `PLAYER FEEDBACK:\n${likedLines || '  (none)'}\n${dislikedLines || '  (none)'}`
+    : `PLAYER FEEDBACK:\n  (no feedback yet — treat as a new player)`;
+
+  // Recent session data for this game
   const logResult = await pool.query(`
     SELECT timestamp, action, minutes, type
     FROM log_entries WHERE game = $1
     ORDER BY timestamp DESC LIMIT 10
   `, [game]);
 
-  // Fetch past quest history for context
+  // Past quest history for this game
   const histResult = await pool.query(`
     SELECT title, type, difficulty, status FROM quests
     WHERE game = $1 ORDER BY created_at DESC LIMIT 5
@@ -78,24 +253,41 @@ async function generateForGame(game: string, count: number = 2): Promise<any[]> 
 
   const sessionLines = logResult.rows
     .map((r: any) => `  ${r.timestamp} (${r.minutes}m): ${r.action} [${r.type}]`)
-    .join("\n");
+    .join('\n');
 
   const pastQuestLines = histResult.rows
     .map((r: any) => `  ${r.title} [${r.type}, ${r.difficulty}, ${r.status}]`)
-    .join("\n");
+    .join('\n');
 
-  const systemPrompt = `You are an AI quest designer for a gaming tracker. Given a player's session history for a specific game, generate exactly ${count} personalized quests.
+  const systemPrompt = `You are a world-class AI quest designer who deeply understands this specific player. Use Chain-of-Thought reasoning to generate highly personalized, thoughtful quests.
+
+PLAYER PROFILE:
+- Preferred difficulty: ${profile.preferred_difficulty}
+- Preferred quest types: ${preferredTypes}
+- Quest types to avoid: ${avoidedTypes}
+- Avg session length: ~${profile.avg_session_minutes} minutes
+- Personality: ${profile.personality_summary || 'New player — no profile established yet. Be welcoming and varied.'}
+
+${feedbackSection}
 
 Quest types: "challenge" (overcome a hard obstacle), "exploration" (discover new things), "grind" (accumulate/farm), "skill" (master a mechanic).
 Difficulties: "easy" (30 min), "medium" (1–2 hours), "hard" (multiple sessions), "legendary" (major milestone).
 xp_reward: easy=50, medium=100, hard=200, legendary=500.
-estimated_minutes: realistic time to complete the quest.
-target: total progress units needed (e.g. 100 for percentage-based, or a specific count like 5 for "defeat 5 bosses").
+target: total progress units needed (e.g. 100 for percentage-based, 5 for "defeat 5 bosses").
+
+Think step-by-step before generating:
+1. What has this player been doing in ${game} lately?
+2. What quest types match their preferences and should be avoided?
+3. What difficulty fits their session length (${profile.avg_session_minutes}m avg) and recent performance?
+4. What would genuinely excite THIS player right now — not a generic quest, but one tailored to their history?
+
+Then generate exactly ${count} quest(s). Each must include a "reasoning" field.
 
 Rules:
-- Reference specific details from session notes — titles and descriptions must be personal to THIS player's journey
+- Reference specific details from their session notes
 - Avoid repeating past quests listed in history
-- Be creative and inspiring
+- Lean toward preferred types; avoid avoided types unless there's a strong reason
+- Be creative and inspiring — make the player feel understood
 
 Respond ONLY with valid JSON (no markdown):
 {
@@ -107,44 +299,62 @@ Respond ONLY with valid JSON (no markdown):
       "difficulty": "easy|medium|hard|legendary",
       "xp_reward": <number>,
       "estimated_minutes": <number>,
-      "target": <number>
+      "target": <number>,
+      "reasoning": "<2-3 sentences explaining exactly why this quest was chosen for this specific player>"
     }
   ]
 }`;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-5.4",
-    max_completion_tokens: 1200,
-    messages: [
-      { role: "system", content: systemPrompt },
-      {
-        role: "user",
-        content: `Game: ${game}\n\nRecent sessions:\n${sessionLines || "  (no sessions recorded)"}\n\nPast quests:\n${pastQuestLines || "  (none)"}`,
-      },
-    ],
-  });
+  const userContent = `Game: ${game}\n\nRecent sessions:\n${sessionLines || '  (no sessions recorded)'}\n\nPast quests:\n${pastQuestLines || '  (none)'}`;
 
-  const raw = response.choices[0]?.message?.content?.trim() ?? "";
-  let quests: Array<{
-    title: string; description: string; type: string;
-    difficulty: string; xp_reward: number; estimated_minutes: number; target: number;
-  }> = [];
+  async function callAI(extraInstruction?: string): Promise<string> {
+    const messages: any[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ];
+    if (extraInstruction) {
+      messages.push({ role: 'user', content: extraInstruction });
+    }
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5.4',
+      max_completion_tokens: 1500,
+      messages,
+    });
+    return response.choices[0]?.message?.content?.trim() ?? '';
+  }
 
-  try {
-    const jsonStr = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-    const parsed = JSON.parse(jsonStr);
-    quests = Array.isArray(parsed.quests) ? parsed.quests.slice(0, count) : [];
-  } catch {
-    console.error(`quests generate (${game}): failed to parse AI JSON`);
+  function parseQuests(raw: string): any[] {
+    try {
+      const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const parsed = JSON.parse(jsonStr);
+      return Array.isArray(parsed.quests) ? parsed.quests.slice(0, count) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // First attempt
+  let raw = await callAI();
+  let quests = parseQuests(raw);
+
+  // Auto-retry once on failure with stricter instruction
+  if (!quests.length) {
+    console.warn(`quests generate (${game}): first attempt failed to parse, retrying…`);
+    raw = await callAI('IMPORTANT: Your previous response could not be parsed. Respond ONLY with raw JSON — no markdown fences, no explanation, just the JSON object starting with {');
+    quests = parseQuests(raw);
+  }
+
+  if (!quests.length) {
+    console.error(`quests generate (${game}): both attempts failed to parse AI JSON`);
     return [];
   }
 
   const inserted = [];
   for (const q of quests) {
     const r = await pool.query(
-      `INSERT INTO quests (game, title, description, type, difficulty, xp_reward, estimated_minutes, target, status, ai_generated)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'suggested', true) RETURNING *`,
-      [game, q.title, q.description, q.type, q.difficulty, q.xp_reward, q.estimated_minutes, q.target ?? 100]
+      `INSERT INTO quests (game, title, description, type, difficulty, xp_reward, estimated_minutes, target, status, ai_generated, reasoning)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'suggested', true, $9) RETURNING *`,
+      [game, q.title, q.description, q.type, q.difficulty, q.xp_reward, q.estimated_minutes, q.target ?? 100, q.reasoning ?? null]
     );
     inserted.push(r.rows[0]);
   }
@@ -158,7 +368,6 @@ router.post("/quests/generate", async (req, res) => {
     const { game, count = 2 } = req.body as { game?: string; count?: number };
 
     if (game) {
-      // Generate for a specific game
       await generateForGame(game, count);
       const result = await pool.query(
         `SELECT * FROM quests WHERE game=$1 AND status='suggested' ORDER BY created_at DESC`,
@@ -166,11 +375,7 @@ router.post("/quests/generate", async (req, res) => {
       );
       res.json({ quests: result.rows, count: result.rows.length });
     } else {
-      // Generate for all known games
-      const gamesResult = await pool.query(`
-        SELECT DISTINCT game FROM log_entries
-        ORDER BY game
-      `);
+      const gamesResult = await pool.query(`SELECT DISTINCT game FROM log_entries ORDER BY game`);
       const games = gamesResult.rows.map((r: any) => r.game);
 
       for (const g of games) {
@@ -182,7 +387,6 @@ router.post("/quests/generate", async (req, res) => {
         if (existingCount < 1) {
           await generateForGame(g, 1);
         } else {
-          // Delete old suggested and regenerate
           await pool.query(`DELETE FROM quests WHERE game=$1 AND status='suggested'`, [g]);
           await generateForGame(g, 2);
         }
@@ -204,7 +408,6 @@ router.get("/quests/suggested", async (_req, res) => {
   try {
     await ensureTables();
 
-    // Enforce ≥1 per known game invariant: ALL distinct games, no cap
     const [gamesWithSuggestedRes, allGamesRes] = await Promise.all([
       pool.query(`SELECT DISTINCT game FROM quests WHERE status='suggested'`),
       pool.query(`SELECT DISTINCT game FROM log_entries ORDER BY game`),
@@ -214,12 +417,10 @@ router.get("/quests/suggested", async (_req, res) => {
       .map((r: any) => r.game)
       .filter((g: string) => !coveredGames.has(g));
 
-    // Await generation for ALL uncovered games before responding
     if (uncoveredGames.length > 0) {
       await Promise.all(uncoveredGames.map((g: string) => generateForGame(g, 1)));
     }
 
-    // Ensure total ≥ 3: top up from known games if needed
     const countRes = await pool.query(`SELECT COUNT(*)::int AS cnt FROM quests WHERE status='suggested'`);
     if ((countRes.rows[0].cnt as number) < 3 && allGamesRes.rows.length > 0) {
       const coveredNow = new Set(
@@ -260,12 +461,65 @@ router.get("/quests/active", async (_req, res) => {
 router.get("/quests/logs", async (_req, res) => {
   try {
     await ensureTables();
-    const result = await pool.query(
-      `SELECT * FROM quest_logs ORDER BY completed_at DESC`
-    );
+    const result = await pool.query(`SELECT * FROM quest_logs ORDER BY completed_at DESC`);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch quest logs", detail: String(err) });
+  }
+});
+
+// ─── GET /api/quests/profile ───────────────────────────────────────────────
+router.get("/quests/profile", async (_req, res) => {
+  try {
+    await ensureTables();
+    const r = await pool.query(`SELECT * FROM user_profile WHERE id=1`);
+    if (!r.rows.length) { res.json(null); return; }
+    res.json(r.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch profile", detail: String(err) });
+  }
+});
+
+// ─── POST /api/quests/profile/rebuild ─────────────────────────────────────
+router.post("/quests/profile/rebuild", async (_req, res) => {
+  try {
+    await ensureTables();
+    await buildUserProfile();
+    const r = await pool.query(`SELECT * FROM user_profile WHERE id=1`);
+    res.json(r.rows[0] ?? null);
+  } catch (err) {
+    console.error("profile rebuild error:", err);
+    res.status(500).json({ error: "Failed to rebuild profile", detail: String(err) });
+  }
+});
+
+// ─── POST /api/quests/:id/feedback ────────────────────────────────────────
+router.post("/quests/:id/feedback", async (req, res) => {
+  try {
+    await ensureTables();
+    const id = parseInt(req.params.id, 10);
+    const { rating, comment } = req.body as { rating: number; comment?: string };
+
+    if (rating !== 1 && rating !== -1) {
+      res.status(400).json({ error: "rating must be 1 (thumbs up) or -1 (thumbs down)" }); return;
+    }
+
+    const questCheck = await pool.query(`SELECT id FROM quests WHERE id=$1`, [id]);
+    if (!questCheck.rows.length) { res.status(404).json({ error: "Quest not found" }); return; }
+
+    // Upsert: one feedback per quest
+    await pool.query(`
+      INSERT INTO quest_feedback (quest_id, rating, comment, created_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT DO NOTHING
+    `, [id, rating, comment ?? null]);
+
+    // Rebuild profile in background (non-blocking)
+    buildUserProfile().catch(err => console.error("profile rebuild after feedback:", err));
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to save feedback", detail: String(err) });
   }
 });
 
@@ -297,7 +551,6 @@ router.post("/quests/:id/reject", async (req, res) => {
 
     await pool.query(`UPDATE quests SET status='rejected' WHERE id=$1`, [id]);
 
-    // Synchronously generate a replacement quest for the same game
     let replacement: any = null;
     try {
       const newQuests = await generateForGame(quest.game, 1);
@@ -321,7 +574,6 @@ router.patch("/quests/:id/progress", async (req, res) => {
     if (progress === undefined || progress === null) {
       res.status(400).json({ error: "progress is required" }); return;
     }
-    // Clamp against the quest's own target (not hardcoded 100)
     const questRow = await pool.query(`SELECT target FROM quests WHERE id=$1 AND status='active'`, [id]);
     if (!questRow.rows.length) { res.status(404).json({ error: "Quest not found or not active" }); return; }
     const target = questRow.rows[0].target ?? 100;
@@ -348,25 +600,25 @@ router.post("/quests/:id/complete", async (req, res) => {
     if (!questResult.rows.length) { res.status(404).json({ error: "Quest not found or not active" }); return; }
     const quest = questResult.rows[0];
 
-    // Mark quest complete
     await pool.query(
       `UPDATE quests SET status='completed', completed_at=NOW(), progress=target WHERE id=$1`,
       [id]
     );
 
-    // Write quest log entry
     const logResult = await pool.query(
       `INSERT INTO quest_logs (quest_id, game, title, xp_earned, time_taken_minutes, difficulty)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [id, quest.game, quest.title, quest.xp_reward, time_taken_minutes, quest.difficulty]
     );
 
-    // Feed existing reporting system: insert a normalized log_entries row
     await pool.query(
       `INSERT INTO log_entries (timestamp, game, action, minutes, type)
        VALUES ($1, $2, $3, $4, $5)`,
       [new Date().toISOString(), quest.game, `[Quest] ${quest.title}`, time_taken_minutes, quest.type]
     );
+
+    // Rebuild profile in background after completion
+    buildUserProfile().catch(err => console.error("profile rebuild after complete:", err));
 
     res.json({ quest: { ...quest, status: 'completed' }, log: logResult.rows[0] });
   } catch (err) {
@@ -374,7 +626,7 @@ router.post("/quests/:id/complete", async (req, res) => {
   }
 });
 
-// ─── Internal: search YouTube InnerTube for a single video ─────────────────
+// ─── Internal: YouTube search ──────────────────────────────────────────────
 const INNERTUBE_URL = 'https://www.youtube.com/youtubei/v1/search?prettyPrint=false';
 const INNERTUBE_CTX = { context: { client: { clientName: 'WEB', clientVersion: '2.20240101', hl: 'en', gl: 'US' } } };
 
@@ -400,7 +652,6 @@ async function searchYouTubeVideo(query: string): Promise<VideoResult | null> {
     if (!resp.ok) return null;
     const data = await resp.json() as Record<string, unknown>;
 
-    // Extract first videoRenderer
     function findFirst(obj: unknown): Record<string, unknown> | null {
       if (!obj || typeof obj !== 'object') return null;
       if (Array.isArray(obj)) { for (const item of obj) { const r = findFirst(item); if (r) return r; } return null; }
@@ -441,14 +692,12 @@ router.get("/quests/:id/guide", async (req, res) => {
     await ensureTables();
     const id = parseInt(req.params.id, 10);
 
-    // Return existing guide if available
     const existing = await pool.query(
       `SELECT * FROM quest_guides WHERE quest_id=$1 ORDER BY generated_at DESC LIMIT 1`,
       [id]
     );
     if (existing.rows.length) { res.json(existing.rows[0]); return; }
 
-    // Fetch quest details
     const questResult = await pool.query(`SELECT * FROM quests WHERE id=$1`, [id]);
     if (!questResult.rows.length) { res.status(404).json({ error: "Quest not found" }); return; }
     const quest = questResult.rows[0];
@@ -500,12 +749,10 @@ Respond ONLY with valid JSON (no markdown):
       console.error("quests guide: failed to parse AI JSON");
     }
 
-    // Resolve each search query to a real YouTube video via InnerTube (best-effort)
     const videoResults = await Promise.all(
       (parsed.video_queries ?? []).map(async (vq) => {
         const result = await searchYouTubeVideo(vq.query);
         if (result) return result;
-        // Fallback: return search URL entry
         return {
           id: '', title: vq.title,
           thumbnail: '',
@@ -515,7 +762,6 @@ Respond ONLY with valid JSON (no markdown):
       })
     );
 
-    // Filter out any blanks, keep valid video entries
     const youtube_links = videoResults.filter(v => v.id || (v as any).url);
 
     const r = await pool.query(
