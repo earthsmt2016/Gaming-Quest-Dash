@@ -346,42 +346,40 @@ export async function deleteReport(id: number): Promise<void> {
 
 export interface Quest {
   id: number;
+  game: string;
   title: string;
   description: string;
-  game: string;
-  category: 'challenge' | 'exploration' | 'grind' | 'skill';
+  type: 'challenge' | 'exploration' | 'grind' | 'skill';
   difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
   xp_reward: number;
-  status: 'pending' | 'active' | 'completed' | 'rejected';
-  objectives: string[];
-  generated_at: string;
+  estimated_minutes: number;
+  status: 'suggested' | 'active' | 'completed' | 'rejected';
+  progress: number;
+  target: number;
+  ai_generated: boolean;
+  created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
-  logs?: QuestLog[];
 }
 
 export interface QuestLog {
   id: number;
   quest_id: number;
-  note: string;
-  progress_pct: number;
-  logged_at: string;
+  game: string;
+  title: string;
+  xp_earned: number;
+  time_taken_minutes: number;
+  difficulty: string;
+  completed_at: string;
 }
 
 export interface QuestGuide {
   id: number;
   quest_id: number;
-  title: string;
   steps: string[];
-  youtube_url: string | null;
+  youtube_links: Array<{ title: string; url: string }>;
+  tips: string | null;
   generated_at: string;
-}
-
-export interface QuestStats {
-  active_count: number;
-  completed_count: number;
-  pending_count: number;
-  total_xp: number;
 }
 
 export async function fetchSuggestedQuests(): Promise<Quest[]> {
@@ -396,23 +394,17 @@ export async function fetchActiveQuests(): Promise<Quest[]> {
   return res.json();
 }
 
-export async function fetchCompletedQuests(): Promise<Quest[]> {
-  const res = await fetch(`${BASE}/quests/completed`);
+export async function fetchQuestLogs(): Promise<QuestLog[]> {
+  const res = await fetch(`${BASE}/quests/logs`);
   if (!res.ok) return [];
   return res.json();
 }
 
-export async function fetchQuestStats(): Promise<QuestStats> {
-  const res = await fetch(`${BASE}/quests/stats`);
-  if (!res.ok) return { active_count: 0, completed_count: 0, pending_count: 0, total_xp: 0 };
-  return res.json();
-}
-
-export async function generateQuests(games?: string[]): Promise<{ quests: Quest[]; count: number }> {
+export async function generateQuests(game?: string, count?: number): Promise<{ quests: Quest[]; count: number }> {
   const res = await fetch(`${BASE}/quests/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ games }),
+    body: JSON.stringify({ game, count }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -427,24 +419,28 @@ export async function acceptQuest(id: number): Promise<Quest> {
   return res.json();
 }
 
-export async function rejectQuest(id: number): Promise<Quest> {
+export async function rejectQuest(id: number): Promise<{ rejected: boolean; game: string }> {
   const res = await fetch(`${BASE}/quests/${id}/reject`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to reject quest');
   return res.json();
 }
 
-export async function logQuestProgress(id: number, note: string, progress_pct: number): Promise<QuestLog> {
+export async function updateQuestProgress(id: number, progress: number): Promise<Quest> {
   const res = await fetch(`${BASE}/quests/${id}/progress`, {
-    method: 'POST',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ note, progress_pct }),
+    body: JSON.stringify({ progress }),
   });
-  if (!res.ok) throw new Error('Failed to log progress');
+  if (!res.ok) throw new Error('Failed to update progress');
   return res.json();
 }
 
-export async function completeQuest(id: number): Promise<Quest> {
-  const res = await fetch(`${BASE}/quests/${id}/complete`, { method: 'POST' });
+export async function completeQuest(id: number, time_taken_minutes?: number): Promise<{ quest: Quest; log: QuestLog }> {
+  const res = await fetch(`${BASE}/quests/${id}/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ time_taken_minutes: time_taken_minutes ?? 0 }),
+  });
   if (!res.ok) throw new Error('Failed to complete quest');
   return res.json();
 }

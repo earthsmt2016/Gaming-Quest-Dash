@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Quest, QuestGuide,
-  fetchSuggestedQuests, fetchActiveQuests, fetchCompletedQuests,
-  fetchQuestStats, generateQuests,
-  acceptQuest, rejectQuest, logQuestProgress, completeQuest, fetchQuestGuide,
-  QuestStats,
+  Quest, QuestLog, QuestGuide,
+  fetchSuggestedQuests, fetchActiveQuests, fetchQuestLogs,
+  generateQuests, acceptQuest, rejectQuest,
+  updateQuestProgress, completeQuest, fetchQuestGuide,
 } from '../lib/api';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const DIFFICULTY_COLORS: Record<string, { bg: string; text: string }> = {
   easy:      { bg: '#e8f5e9', text: '#2e7d32' },
@@ -14,22 +15,29 @@ const DIFFICULTY_COLORS: Record<string, { bg: string; text: string }> = {
   legendary: { bg: '#f3e5f5', text: '#6a1b9a' },
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
+const TYPE_ICONS: Record<string, string> = {
   challenge:   '⚔️',
   exploration: '🗺️',
   grind:       '⚙️',
   skill:       '🎯',
 };
 
-function DifficultyBadge({ difficulty }: { difficulty: string }) {
-  const c = DIFFICULTY_COLORS[difficulty] ?? { bg: '#f5f5f5', text: '#333' };
+function fmtMins(m: number): string {
+  if (!m) return '—';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${h}h ${r}m` : `${h}h`;
+}
+
+// ─── Badges ──────────────────────────────────────────────────────────────────
+
+function DifficultyBadge({ d }: { d: string }) {
+  const c = DIFFICULTY_COLORS[d] ?? { bg: '#f5f5f5', text: '#555' };
   return (
     <span style={{
       background: c.bg, color: c.text, fontSize: '11px', fontWeight: 700,
       padding: '2px 8px', borderRadius: '20px', textTransform: 'capitalize', flexShrink: 0,
-    }}>
-      {difficulty}
-    </span>
+    }}>{d}</span>
   );
 }
 
@@ -38,35 +46,11 @@ function XPBadge({ xp }: { xp: number }) {
     <span style={{
       background: 'var(--accent)', color: '#fff', fontSize: '11px', fontWeight: 700,
       padding: '2px 8px', borderRadius: '20px', flexShrink: 0,
-    }}>
-      +{xp} XP
-    </span>
+    }}>+{xp} XP</span>
   );
 }
 
-function StatsBar({ stats }: { stats: QuestStats | null }) {
-  if (!stats) return null;
-  const items = [
-    { label: 'Active', value: stats.active_count, color: 'var(--accent)' },
-    { label: 'Completed', value: stats.completed_count, color: '#2e7d32' },
-    { label: 'Inbox', value: stats.pending_count, color: '#e65100' },
-    { label: 'Total XP', value: stats.total_xp.toLocaleString(), color: '#6a1b9a' },
-  ];
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-      {items.map(item => (
-        <div key={item.label} style={{
-          background: 'var(--paper)', border: '1px solid var(--line)',
-          borderRadius: 'var(--radius)', padding: '12px 14px',
-          boxShadow: 'var(--shadow)',
-        }}>
-          <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</div>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '2px', color: item.color }}>{item.value}</strong>
-        </div>
-      ))}
-    </div>
-  );
-}
+// ─── Guide Modal ─────────────────────────────────────────────────────────────
 
 function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
   const [guide, setGuide] = useState<QuestGuide | null>(null);
@@ -86,28 +70,28 @@ function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(28,24,20,.5)',
-        zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+        zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
           background: 'var(--paper)', borderRadius: 'var(--radius)', boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-          padding: '24px', maxWidth: '520px', width: '100%', maxHeight: '80vh', overflowY: 'auto',
+          padding: '24px', maxWidth: '520px', width: '100%', maxHeight: '82vh', overflowY: 'auto',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', gap: '12px' }}>
           <div>
             <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
-              {CATEGORY_ICONS[quest.category]} {quest.category} guide
+              {TYPE_ICONS[quest.type]} Quest Guide
             </div>
             <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{quest.title}</h3>
             <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '2px' }}>{quest.game}</div>
           </div>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: 'var(--muted)', lineHeight: 1, padding: '2px', flexShrink: 0 }}
-            aria-label="Close guide"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: 'var(--muted)', lineHeight: 1, padding: '2px', flexShrink: 0 }}
+            aria-label="Close"
           >×</button>
         </div>
 
@@ -122,60 +106,76 @@ function GuideModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
           </div>
         )}
         {guide && (
-          <>
-            <h4 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: 700 }}>{guide.title}</h4>
-            <ol style={{ margin: 0, padding: '0 0 0 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {guide.steps.map((step, i) => (
-                <li key={i} style={{ fontSize: '14px', lineHeight: 1.55 }}>{step}</li>
-              ))}
-            </ol>
-            {guide.youtube_url && (
-              <a
-                href={guide.youtube_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '6px',
-                  marginTop: '18px', padding: '9px 14px', borderRadius: 'var(--radius-sm)',
-                  background: '#ff0000', color: '#fff', fontWeight: 700, fontSize: '13px',
-                  textDecoration: 'none',
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-2.75 12.36 12.36 0 0 0-8.33 0A4.83 4.83 0 0 1 4.41 6.69a46.1 46.1 0 0 0 0 10.62 4.83 4.83 0 0 1 3.08 2.37 12.36 12.36 0 0 0 8.33 0 4.83 4.83 0 0 1 3.08-2.37 46.1 46.1 0 0 0 .69-10.62z" opacity=".8"/>
-                  <polygon points="10 15 15 12 10 9 10 15" fill="white"/>
-                </svg>
-                Find YouTube Guide
-              </a>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '10px' }}>Steps</div>
+              <ol style={{ margin: 0, padding: '0 0 0 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {guide.steps.map((step, i) => (
+                  <li key={i} style={{ fontSize: '14px', lineHeight: 1.55 }}>{step}</li>
+                ))}
+              </ol>
+            </div>
+
+            {guide.tips && (
+              <div style={{ background: 'var(--paper-2)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '6px' }}>💡 Tips</div>
+                <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55 }}>{guide.tips}</p>
+              </div>
             )}
-          </>
+
+            {guide.youtube_links && guide.youtube_links.length > 0 && (
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '8px' }}>🎬 Video Guides</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {guide.youtube_links.map((link, i) => (
+                    <a
+                      key={i}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '9px 12px', borderRadius: 'var(--radius-sm)',
+                        background: '#ff0000', color: '#fff', fontWeight: 600, fontSize: '13px',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+                        <path d="M21.8 8s-.2-1.4-.8-2c-.7-.8-1.6-.8-1.9-.8C16.6 5 12 5 12 5s-4.6 0-7.1.2c-.4 0-1.2 0-1.9.8-.6.6-.8 2-.8 2S2 9.6 2 11.2v1.5c0 1.6.2 3.2.2 3.2s.2 1.4.8 2c.7.8 1.7.7 2.1.8C6.4 19 12 19 12 19s4.6 0 7.1-.2c.4 0 1.2 0 1.9-.8.6-.6.8-2 .8-2s.2-1.6.2-3.2v-1.5C22 9.6 21.8 8 21.8 8z" opacity=".85"/>
+                        <polygon points="10 15 15 12 10 9 10 15" fill="white"/>
+                      </svg>
+                      {link.title}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function ProgressModal({ quest, onClose, onLogged }: {
+// ─── Complete Modal ───────────────────────────────────────────────────────────
+
+function CompleteModal({ quest, onClose, onCompleted }: {
   quest: Quest;
   onClose: () => void;
-  onLogged: (log: import('../lib/api').QuestLog) => void;
+  onCompleted: (log: QuestLog) => void;
 }) {
-  const [note, setNote] = useState('');
-  const [pct, setPct] = useState(0);
+  const [timeMins, setTimeMins] = useState(quest.estimated_minutes);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const lastPct = quest.logs?.length ? quest.logs[0].progress_pct : 0;
-
-  const handleSubmit = async () => {
-    if (!note.trim()) { setError('Please enter a progress note.'); return; }
+  const handleComplete = async () => {
     setSaving(true); setError('');
     try {
-      const log = await logQuestProgress(quest.id, note, pct);
-      onLogged(log);
+      const { log } = await completeQuest(quest.id, timeMins);
+      onCompleted(log);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      setError(e instanceof Error ? e.message : 'Failed');
     } finally {
       setSaving(false);
     }
@@ -184,98 +184,88 @@ function ProgressModal({ quest, onClose, onLogged }: {
   return (
     <div
       onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(28,24,20,.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(28,24,20,.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: 'var(--paper)', borderRadius: 'var(--radius)', boxShadow: '0 8px 40px rgba(0,0,0,0.18)', padding: '24px', maxWidth: '440px', width: '100%' }}
+        style={{ background: 'var(--paper)', borderRadius: 'var(--radius)', boxShadow: '0 8px 40px rgba(0,0,0,0.18)', padding: '24px', maxWidth: '400px', width: '100%' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Log Progress</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: 'var(--muted)', padding: '2px' }}>×</button>
+          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>🏆 Complete Quest</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: 'var(--muted)', padding: '2px' }}>×</button>
         </div>
-        <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '16px' }}>
-          {quest.title} — {quest.game}
-        </div>
+        <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--muted)' }}>
+          "{quest.title}" — you'll earn <strong style={{ color: 'var(--accent)' }}>+{quest.xp_reward} XP</strong>
+        </p>
         {error && (
           <div style={{ background: '#fff0f0', border: '1px solid #f5c6cb', borderRadius: '6px', padding: '10px', fontSize: '13px', color: '#842029', marginBottom: '12px' }}>{error}</div>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-            Progress note
-            <textarea
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              placeholder="What did you accomplish? Any obstacles?"
-              rows={3}
-              style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '9px 11px', fontSize: '14px', fontFamily: 'inherit', resize: 'vertical' }}
-            />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-            <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-              Completion <span style={{ color: 'var(--accent)' }}>{pct}%</span>
-            </span>
-            <input
-              type="range" min={lastPct} max={100} value={pct}
-              onChange={e => setPct(Number(e.target.value))}
-              style={{ accentColor: 'var(--accent)' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)' }}>
-              <span>{lastPct}% (last)</span><span>100%</span>
-            </div>
-          </label>
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-            <button className="btn" onClick={onClose} disabled={saving}>Cancel</button>
-            <button className="btn primary" onClick={handleSubmit} disabled={saving}>
-              {saving ? 'Saving…' : 'Save Progress'}
-            </button>
-          </div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
+          Time taken (minutes)
+          <input
+            type="number" min={0} max={9999}
+            value={timeMins}
+            onChange={e => setTimeMins(Number(e.target.value))}
+            style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '8px 10px', fontSize: '14px', fontFamily: 'inherit' }}
+          />
+        </label>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button className="btn" onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn primary" onClick={handleComplete} disabled={saving}>
+            {saving ? 'Saving…' : '✅ Mark Complete'}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
+// ─── Quest Card ──────────────────────────────────────────────────────────────
+
 function QuestCard({
-  quest,
-  onAccept, onReject, onProgress, onComplete, onGuide,
+  quest, onAccept, onReject, onProgress, onComplete, onGuide,
 }: {
   quest: Quest;
   onAccept?: () => void;
   onReject?: () => void;
-  onProgress?: () => void;
+  onProgress?: (v: number) => void;
   onComplete?: () => void;
   onGuide?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const lastProgress = quest.logs?.length ? quest.logs[0].progress_pct : 0;
+  const [localProgress, setLocalProgress] = useState(quest.progress);
+  const [saving, setSaving] = useState(false);
+
+  const pct = Math.round((localProgress / (quest.target || 100)) * 100);
+
+  const handleProgressChange = async (v: number) => {
+    setLocalProgress(v);
+    if (onProgress) {
+      setSaving(true);
+      try { await onProgress(v); } finally { setSaving(false); }
+    }
+  };
 
   return (
     <div style={{
       background: 'var(--paper)', border: '1px solid var(--line)',
-      borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)',
-      overflow: 'hidden',
+      borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', overflow: 'hidden',
     }}>
-      <div
-        style={{ padding: '14px 16px', cursor: 'pointer' }}
-        onClick={() => setExpanded(v => !v)}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+      <div style={{ padding: '14px 16px', cursor: 'pointer' }} onClick={() => setExpanded(v => !v)}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '5px' }}>
-              <span style={{ fontSize: '13px', color: 'var(--muted)', flexShrink: 0 }}>
-                {CATEGORY_ICONS[quest.category]}
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '4px' }}>
+              <span style={{ fontSize: '13px' }}>{TYPE_ICONS[quest.type]}</span>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {quest.game}
               </span>
-              <span style={{
-                fontSize: '12px', fontWeight: 600, color: 'var(--muted)',
-                textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0,
-              }}>{quest.game}</span>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>· {fmtMins(quest.estimated_minutes)}</span>
             </div>
             <div style={{ fontSize: '15px', fontWeight: 700, lineHeight: 1.3, marginBottom: '3px' }}>{quest.title}</div>
             <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.4 }}>{quest.description}</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end', flexShrink: 0 }}>
-            <DifficultyBadge difficulty={quest.difficulty} />
+            <DifficultyBadge d={quest.difficulty} />
             <XPBadge xp={quest.xp_reward} />
           </div>
         </div>
@@ -283,10 +273,11 @@ function QuestCard({
         {quest.status === 'active' && (
           <div style={{ marginTop: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>
-              <span>Progress</span><span>{lastProgress}%</span>
+              <span>Progress</span>
+              <span>{localProgress}/{quest.target} ({pct}%)</span>
             </div>
             <div style={{ height: '6px', background: 'var(--line)', borderRadius: '3px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: 'var(--accent)', width: `${lastProgress}%`, borderRadius: '3px', transition: 'width 0.3s' }} />
+              <div style={{ height: '100%', background: pct >= 100 ? '#2e7d32' : 'var(--accent)', width: `${Math.min(100, pct)}%`, borderRadius: '3px', transition: 'width 0.3s' }} />
             </div>
           </div>
         )}
@@ -297,31 +288,33 @@ function QuestCard({
       </div>
 
       {expanded && (
-        <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', background: 'var(--paper-2)' }}>
-          {quest.objectives.length > 0 && (
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '8px' }}>Objectives</div>
-              <ul style={{ margin: 0, padding: '0 0 0 18px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                {quest.objectives.map((obj, i) => (
-                  <li key={i} style={{ fontSize: '13px', lineHeight: 1.45 }}>{obj}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {quest.logs && quest.logs.length > 0 && (
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '8px' }}>Progress Log</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {quest.logs.slice(0, 3).map(log => (
-                  <div key={log.id} style={{ fontSize: '13px', display: 'flex', gap: '8px', alignItems: 'baseline' }}>
-                    <span style={{ color: 'var(--muted)', fontSize: '11px', flexShrink: 0 }}>
-                      {new Date(log.logged_at).toLocaleDateString()}
-                    </span>
-                    <span style={{ flex: 1 }}>{log.note}</span>
-                    <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>{log.progress_pct}%</span>
-                  </div>
-                ))}
+        <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', background: 'var(--paper-2)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {quest.status === 'active' && onProgress && (
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+                Update Progress {saving && <span style={{ fontWeight: 400 }}>saving…</span>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input
+                  type="range" min={0} max={quest.target}
+                  value={localProgress}
+                  onChange={e => setLocalProgress(Number(e.target.value))}
+                  onMouseUp={() => handleProgressChange(localProgress)}
+                  onTouchEnd={() => handleProgressChange(localProgress)}
+                  style={{ flex: 1, accentColor: 'var(--accent)' }}
+                />
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    className="btn"
+                    onClick={() => handleProgressChange(Math.max(0, localProgress - Math.ceil(quest.target / 10)))}
+                    style={{ fontSize: '12px', padding: '5px 10px' }}
+                  >−</button>
+                  <button
+                    className="btn"
+                    onClick={() => handleProgressChange(Math.min(quest.target, localProgress + Math.ceil(quest.target / 10)))}
+                    style={{ fontSize: '12px', padding: '5px 10px' }}
+                  >+</button>
+                </div>
               </div>
             </div>
           )}
@@ -329,12 +322,7 @@ function QuestCard({
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {onGuide && (
               <button className="btn soft" onClick={onGuide} style={{ fontSize: '12px', padding: '7px 12px' }}>
-                ✨ AI Guide
-              </button>
-            )}
-            {onProgress && (
-              <button className="btn soft" onClick={onProgress} style={{ fontSize: '12px', padding: '7px 12px' }}>
-                📝 Log Progress
+                ✨ Show Guide
               </button>
             )}
             {onComplete && (
@@ -359,29 +347,110 @@ function QuestCard({
   );
 }
 
+// ─── Logs Dashboard ───────────────────────────────────────────────────────────
+
+function LogsDashboard({ logs }: { logs: QuestLog[] }) {
+  const totalXp = logs.reduce((s, l) => s + l.xp_earned, 0);
+  const avgMins = logs.length
+    ? Math.round(logs.reduce((s, l) => s + l.time_taken_minutes, 0) / logs.length)
+    : 0;
+
+  const gameCounts: Record<string, number> = {};
+  for (const l of logs) gameCounts[l.game] = (gameCounts[l.game] ?? 0) + 1;
+  const topGames = Object.entries(gameCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
+  const stats = [
+    { label: 'Completed', value: logs.length, color: '#2e7d32' },
+    { label: 'Total XP', value: totalXp.toLocaleString(), color: '#6a1b9a' },
+    { label: 'Avg Time', value: fmtMins(avgMins), color: '#e65100' },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+        {stats.map(s => (
+          <div key={s.label} style={{ background: 'var(--paper-2)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+            <strong style={{ display: 'block', fontSize: '20px', marginTop: '2px', color: s.color }}>{s.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {topGames.length > 0 && (
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '8px' }}>Top Games</div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {topGames.map(([game, count]) => (
+              <span key={game} style={{ background: 'var(--paper-2)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', padding: '4px 10px', fontSize: '12px', fontWeight: 600 }}>
+                {game} <span style={{ color: 'var(--accent)' }}>×{count}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {logs.length > 0 && (
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '8px' }}>Completion History</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            {logs.map(log => (
+              <div key={log.id} style={{
+                display: 'flex', gap: '10px', alignItems: 'center',
+                padding: '10px 12px',
+                background: 'var(--paper)', border: '1px solid var(--line)',
+                borderRadius: 'var(--radius-sm)', flexWrap: 'wrap',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>✅ {log.title}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '1px' }}>{log.game}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                  <DifficultyBadge d={log.difficulty} />
+                  <XPBadge xp={log.xp_earned} />
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{fmtMins(log.time_taken_minutes)}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{new Date(log.completed_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {logs.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--muted)' }}>
+          <div style={{ fontSize: '32px', marginBottom: '10px' }}>🏆</div>
+          <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>No completed quests yet</div>
+          <div style={{ fontSize: '13px' }}>Complete active quests to earn XP and build your log.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function QuestsPage() {
   const [suggested, setSuggested] = useState<Quest[]>([]);
   const [active, setActive] = useState<Quest[]>([]);
-  const [completed, setCompleted] = useState<Quest[]>([]);
-  const [stats, setStats] = useState<QuestStats | null>(null);
+  const [logs, setLogs] = useState<QuestLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState('');
   const [guideQuest, setGuideQuest] = useState<Quest | null>(null);
-  const [progressQuest, setProgressQuest] = useState<Quest | null>(null);
-  const [tab, setTab] = useState<'inbox' | 'active' | 'completed'>('inbox');
+  const [completeQuest_, setCompleteQuest_] = useState<Quest | null>(null);
+  const [tab, setTab] = useState<'inbox' | 'active' | 'logs'>('inbox');
 
   const reload = useCallback(async () => {
-    const [s, a, c, st] = await Promise.all([
+    const [s, a, l] = await Promise.all([
       fetchSuggestedQuests(),
       fetchActiveQuests(),
-      fetchCompletedQuests(),
-      fetchQuestStats(),
+      fetchQuestLogs(),
     ]);
     setSuggested(s);
     setActive(a);
-    setCompleted(c);
-    setStats(st);
+    setLogs(l);
   }, []);
 
   useEffect(() => {
@@ -404,36 +473,35 @@ export default function QuestsPage() {
 
   const handleAccept = async (quest: Quest) => {
     await acceptQuest(quest.id);
-    await reload();
+    setSuggested(prev => prev.filter(q => q.id !== quest.id));
+    setActive(prev => [{ ...quest, status: 'active', accepted_at: new Date().toISOString() }, ...prev]);
     setTab('active');
   };
 
   const handleReject = async (quest: Quest) => {
     await rejectQuest(quest.id);
-    await reload();
+    setSuggested(prev => prev.filter(q => q.id !== quest.id));
+    // Backend fires replacement generation in background; reload after brief delay
+    setTimeout(() => reload(), 3000);
   };
 
-  const handleComplete = async (quest: Quest) => {
-    if (!confirm(`Mark "${quest.title}" as complete? You'll earn ${quest.xp_reward} XP!`)) return;
-    await completeQuest(quest.id);
-    await reload();
-    setTab('completed');
+  const handleProgress = async (quest: Quest, value: number) => {
+    const updated = await updateQuestProgress(quest.id, value);
+    setActive(prev => prev.map(q => q.id === quest.id ? updated : q));
   };
 
-  const handleProgressLogged = useCallback(async (log: import('../lib/api').QuestLog) => {
-    setActive(prev => prev.map(q =>
-      q.id === log.quest_id
-        ? { ...q, logs: [log, ...(q.logs ?? [])] }
-        : q
-    ));
-    const st = await fetchQuestStats();
-    setStats(st);
+  const handleCompleted = useCallback((log: QuestLog) => {
+    setActive(prev => prev.filter(q => q.id !== log.quest_id));
+    setLogs(prev => [log, ...prev]);
+    setTab('logs');
   }, []);
 
-  const tabItems: { id: typeof tab; label: string; count: number }[] = [
-    { id: 'inbox', label: 'Quest Inbox', count: suggested.length },
+  const totalXp = logs.reduce((s, l) => s + l.xp_earned, 0);
+
+  const tabItems: { id: typeof tab; label: string; count?: number }[] = [
+    { id: 'inbox', label: 'Inbox', count: suggested.length },
     { id: 'active', label: 'Active', count: active.length },
-    { id: 'completed', label: 'Completed', count: completed.length },
+    { id: 'logs', label: 'Logs' },
   ];
 
   return (
@@ -442,20 +510,29 @@ export default function QuestsPage() {
         .quest-tab-btn {
           background: none; border: none; cursor: pointer;
           font: inherit; font-size: 14px; font-weight: 600;
-          color: var(--muted); padding: 8px 14px;
+          color: var(--muted); padding: 9px 16px;
           border-bottom: 2px solid transparent;
           transition: color 0.12s;
+          display: flex; align-items: center; gap: 6px;
         }
         .quest-tab-btn:hover { color: var(--text); }
         .quest-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .quest-count-pill {
+          background: var(--line); color: var(--muted);
+          border-radius: 20px; font-size: 11px; font-weight: 700;
+          padding: 1px 7px;
+        }
+        .quest-tab-btn.active .quest-count-pill {
+          background: var(--accent); color: #fff;
+        }
       `}</style>
 
       {guideQuest && <GuideModal quest={guideQuest} onClose={() => setGuideQuest(null)} />}
-      {progressQuest && (
-        <ProgressModal
-          quest={progressQuest}
-          onClose={() => setProgressQuest(null)}
-          onLogged={handleProgressLogged}
+      {completeQuest_ && (
+        <CompleteModal
+          quest={completeQuest_}
+          onClose={() => setCompleteQuest_(null)}
+          onCompleted={handleCompleted}
         />
       )}
 
@@ -465,54 +542,41 @@ export default function QuestsPage() {
         <div style={{
           background: 'var(--paper)', border: '1px solid var(--line)',
           borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)',
-          padding: '16px',
+          padding: '16px 18px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap',
         }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>⚔️ AI Quest System</h2>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--muted)' }}>
-              AI-generated quests tailored to your gaming history
+              Personalized quests generated from your gaming history
+              {totalXp > 0 && <> · <strong style={{ color: '#6a1b9a' }}>{totalXp.toLocaleString()} XP earned</strong></>}
             </p>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
             <button
               className="btn primary"
               onClick={handleGenerate}
               disabled={generating}
               style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              {generating ? (
-                <>⏳ Generating…</>
-              ) : (
-                <>✨ Generate New Quests</>
-              )}
+              {generating ? '⏳ Generating…' : '✨ Generate New Quests'}
             </button>
-            {genError && (
-              <div style={{ fontSize: '12px', color: '#c62828' }}>{genError}</div>
-            )}
+            {genError && <div style={{ fontSize: '12px', color: '#c62828' }}>{genError}</div>}
           </div>
         </div>
 
-        {/* Stats */}
-        <StatsBar stats={stats} />
-
-        {/* Tabs */}
+        {/* Tabs + Content */}
         <div style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)' }}>
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', padding: '0 8px' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', padding: '0 8px', overflowX: 'auto' }}>
             {tabItems.map(t => (
               <button
                 key={t.id}
                 className={`quest-tab-btn${tab === t.id ? ' active' : ''}`}
                 onClick={() => setTab(t.id)}
               >
-                {t.label}
-                {t.count > 0 && (
-                  <span style={{
-                    marginLeft: '6px', background: tab === t.id ? 'var(--accent)' : 'var(--line)',
-                    color: tab === t.id ? '#fff' : 'var(--muted)',
-                    borderRadius: '20px', fontSize: '11px', fontWeight: 700,
-                    padding: '1px 7px',
-                  }}>{t.count}</span>
+                {t.label === 'Inbox' ? 'Quest Inbox' : t.label}
+                {t.count !== undefined && t.count > 0 && (
+                  <span className="quest-count-pill">{t.count}</span>
                 )}
               </button>
             ))}
@@ -525,19 +589,24 @@ export default function QuestsPage() {
               </div>
             )}
 
+            {/* ── Inbox ── */}
             {!loading && tab === 'inbox' && (
               <>
                 {suggested.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--muted)' }}>
                     <div style={{ fontSize: '32px', marginBottom: '10px' }}>🗺️</div>
-                    <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>No quests in your inbox</div>
-                    <div style={{ fontSize: '13px' }}>Click "Generate New Quests" to get AI-crafted quests based on your gaming history.</div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>Quest Inbox is empty</div>
+                    <div style={{ fontSize: '13px', marginBottom: '16px' }}>
+                      Click "Generate New Quests" to get AI-crafted quests based on your gaming history.
+                    </div>
+                    <button className="btn primary" onClick={handleGenerate} disabled={generating}>
+                      {generating ? '⏳ Generating…' : '✨ Generate Quests'}
+                    </button>
                   </div>
                 ) : (
                   suggested.map(q => (
                     <QuestCard
-                      key={q.id}
-                      quest={q}
+                      key={q.id} quest={q}
                       onAccept={() => handleAccept(q)}
                       onReject={() => handleReject(q)}
                       onGuide={() => setGuideQuest(q)}
@@ -547,21 +616,21 @@ export default function QuestsPage() {
               </>
             )}
 
+            {/* ── Active ── */}
             {!loading && tab === 'active' && (
               <>
                 {active.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--muted)' }}>
                     <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚔️</div>
                     <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>No active quests</div>
-                    <div style={{ fontSize: '13px' }}>Accept quests from your inbox to start tracking them.</div>
+                    <div style={{ fontSize: '13px' }}>Accept quests from your inbox to start tracking progress.</div>
                   </div>
                 ) : (
                   active.map(q => (
                     <QuestCard
-                      key={q.id}
-                      quest={q}
-                      onProgress={() => setProgressQuest(q)}
-                      onComplete={() => handleComplete(q)}
+                      key={q.id} quest={q}
+                      onProgress={v => handleProgress(q, v)}
+                      onComplete={() => setCompleteQuest_(q)}
                       onGuide={() => setGuideQuest(q)}
                     />
                   ))
@@ -569,40 +638,8 @@ export default function QuestsPage() {
               </>
             )}
 
-            {!loading && tab === 'completed' && (
-              <>
-                {completed.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--muted)' }}>
-                    <div style={{ fontSize: '32px', marginBottom: '10px' }}>🏆</div>
-                    <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>No completed quests yet</div>
-                    <div style={{ fontSize: '13px' }}>Complete active quests to see them here.</div>
-                  </div>
-                ) : (
-                  completed.map(q => (
-                    <div key={q.id} style={{
-                      background: 'var(--paper)', border: '1px solid var(--line)',
-                      borderRadius: 'var(--radius)', padding: '14px 16px', opacity: 0.85,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', justifyContent: 'space-between' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '3px' }}>
-                            {CATEGORY_ICONS[q.category]} {q.game}
-                          </div>
-                          <div style={{ fontSize: '14px', fontWeight: 700 }}>✅ {q.title}</div>
-                          <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-                            Completed {q.completed_at ? new Date(q.completed_at).toLocaleDateString() : ''}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end', flexShrink: 0 }}>
-                          <DifficultyBadge difficulty={q.difficulty} />
-                          <XPBadge xp={q.xp_reward} />
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </>
-            )}
+            {/* ── Logs ── */}
+            {!loading && tab === 'logs' && <LogsDashboard logs={logs} />}
           </div>
         </div>
       </div>
