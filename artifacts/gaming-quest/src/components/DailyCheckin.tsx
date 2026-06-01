@@ -386,44 +386,53 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
             )}
 
             {/* ── Quest Recommendations ── */}
-            {(plan.status === 'ai' || plan.status === 'fallback') && questRecs && (questRecs.fitting.length > 0 || questRecs.partial.length > 0) && (
-              <div style={{ marginTop: '4px', padding: '12px 14px', background: '#f3e5f5', border: '1px solid #ce93d8', borderRadius: '10px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6a1b9a', marginBottom: '10px' }}>
-                  ⚔️ Quest Opportunities This Session
+            {(plan.status === 'ai' || plan.status === 'fallback') && questRecs && (() => {
+              const planGames = new Set((plan.picks as any[]).map(p => p.game));
+              const fitting = questRecs.fitting.filter(q => planGames.has(q.game));
+              const partial = questRecs.partial.filter(q => planGames.has(q.game));
+              if (fitting.length === 0 && partial.length === 0) return null;
+              return (
+                <div style={{ marginTop: '4px', padding: '12px 14px', background: '#f3e5f5', border: '1px solid #ce93d8', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6a1b9a', marginBottom: '10px' }}>
+                    ⚔️ Quest Opportunities This Session
+                  </div>
+                  {fitting.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: partial.length > 0 ? '10px' : 0 }}>
+                      <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Fits in your session:</div>
+                      {fitting.map(q => (
+                        <div key={q.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: '#fff', borderRadius: '8px', padding: '10px 12px', border: '1px solid #ce93d8' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, marginBottom: '2px' }}>{q.game}</div>
+                            <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
+                          </div>
+                          <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                            <div style={{ fontSize: '15px', fontWeight: 700, color: '#2e7d32' }}>{fmtMins(q.estimated_minutes)}</div>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#2e7d32' }}>fits ✓</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {partial.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Make partial progress on:</div>
+                      {partial.map(q => (
+                        <div key={q.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: '#fff', borderRadius: '8px', padding: '10px 12px', border: '1px solid #e1bee7' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, marginBottom: '2px' }}>{q.game}</div>
+                            <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
+                          </div>
+                          <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                            <div style={{ fontSize: '15px', fontWeight: 700, color: '#e65100' }}>{fmtMins(q.estimated_minutes)}</div>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#e65100' }}>needed</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {questRecs.fitting.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: questRecs.partial.length > 0 ? '10px' : 0 }}>
-                    <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Fits in your session:</div>
-                    {questRecs.fitting.map(q => (
-                      <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', borderRadius: '8px', padding: '8px 10px', border: '1px solid #ce93d8' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{q.game} · ~{fmtMins(q.estimated_minutes)}</div>
-                        </div>
-                        <span style={{
-                          fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', flexShrink: 0,
-                          background: '#e8f5e9', color: '#2e7d32',
-                        }}>fits ✓</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {questRecs.partial.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Make partial progress on:</div>
-                    {questRecs.partial.map(q => (
-                      <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', borderRadius: '8px', padding: '8px 10px', border: '1px solid #e1bee7' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{q.game} · ~{fmtMins(q.estimated_minutes)} needed</div>
-                        </div>
-                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', flexShrink: 0, background: '#fff3e0', color: '#e65100' }}>partial</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              );
+            })()}
 
             {/* ── AI plan ── */}
             {plan.status === 'ai' && (
