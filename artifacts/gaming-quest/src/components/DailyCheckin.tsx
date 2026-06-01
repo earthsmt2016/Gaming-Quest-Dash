@@ -395,8 +395,9 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
 
             {/* ── Quest Recommendations ── */}
             {(plan.status === 'ai' || plan.status === 'fallback') && questRecs && (() => {
-              const fitting = questRecs.fitting;
-              const partial = questRecs.partial;
+              const planGames = new Set((plan.picks as any[]).map(p => p.game));
+              const fitting = questRecs.fitting.filter(q => planGames.has(q.game));
+              const partial = questRecs.partial.filter(q => planGames.has(q.game));
               if (fitting.length === 0 && partial.length === 0) return null;
               return (
                 <div style={{ marginTop: '4px', padding: '12px 14px', background: '#f3e5f5', border: '1px solid #ce93d8', borderRadius: '10px' }}>
