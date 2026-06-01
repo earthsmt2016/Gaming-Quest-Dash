@@ -98,4 +98,4 @@ Optimized for **Replit** but fully compatible with local development using Node.
 
 ## License
 
-This is a private repository. All rights reserved.
+This project is public on GitHub. All rights reserved.
