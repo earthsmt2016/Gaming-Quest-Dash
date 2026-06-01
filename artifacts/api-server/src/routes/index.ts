@@ -12,6 +12,7 @@ import storageRouter from "./storage";
 import screenshotAnalysisRouter from "./screenshotAnalysis";
 import platformsRouter from "./platforms";
 import questsRouter from "./quests";
+import companionRouter from "./companion";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(storageRouter);
 router.use(screenshotAnalysisRouter);
 router.use(platformsRouter);
 router.use(questsRouter);
+router.use(companionRouter);
 
 export default router;

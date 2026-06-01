@@ -10,6 +10,7 @@ import DailyCheckin from './components/DailyCheckin';
 import ReportsPage from './components/ReportsPage';
 import QuestsPage from './components/QuestsPage';
 import ActiveQuestsWidget from './components/ActiveQuestsWidget';
+import CompanionChat from './components/CompanionChat';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
 import {
@@ -417,6 +418,9 @@ export default function App() {
 
                     {/* Active Quests widget */}
                     <ActiveQuestsWidget onNavigate={() => setActivePage('quests')} />
+
+                    {/* AI Companion Chat */}
+                    <CompanionChat />
 
                     {/* Needs attention — full width, prominent */}
                     <div className="dash-card">

@@ -1,1 +1,2 @@
 - [Quest AI personalization](quest-ai-personalization.md) — profile is singleton (id=1 in user_profile); reasoning stored per quest; profile rebuilds are fire-and-forget after feedback/completion
+- [AI Companion Chat](companion-chat.md) — ai_conversations table; POST /companion/chat injects full context per request (profile, quests, sessions); history trimmed to 100 rows; gpt-5.4 model; CompanionChat.tsx on dashboard below ActiveQuestsWidget

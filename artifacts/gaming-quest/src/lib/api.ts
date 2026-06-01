@@ -513,3 +513,34 @@ export async function rebuildUserProfile(): Promise<UserProfile | null> {
     return res.json();
   } catch { return null; }
 }
+
+// ─── AI Companion ─────────────────────────────────────────────────────────────
+
+export interface CompanionMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export async function sendCompanionMessage(message: string): Promise<{ reply: string }> {
+  const res = await fetch(`${BASE}/companion/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok) throw new Error('Failed to send message');
+  return res.json();
+}
+
+export async function fetchCompanionHistory(): Promise<CompanionMessage[]> {
+  try {
+    const res = await fetch(`${BASE}/companion/history`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
+export async function clearCompanionHistory(): Promise<void> {
+  await fetch(`${BASE}/companion/history`, { method: 'DELETE' });
+}
