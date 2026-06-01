@@ -420,17 +420,56 @@ export async function fetchQuestLogs(): Promise<QuestLog[]> {
   return res.json();
 }
 
-export async function generateQuests(game?: string, count?: number): Promise<{ quests: Quest[]; count: number }> {
+export async function generateQuests(game?: string, count?: number, difficulty?: string): Promise<{ quests: Quest[]; count: number }> {
   const res = await fetch(`${BASE}/quests/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ game, count }),
+    body: JSON.stringify({ game, count, difficulty }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any).error || 'Generation failed');
   }
   return res.json();
+}
+
+// ─── Quest Mini Logs ──────────────────────────────────────────────────────────
+
+export interface QuestMiniLog {
+  id: number;
+  quest_id: number;
+  note: string;
+  created_at: string;
+}
+
+export async function fetchMiniLogs(questId: number): Promise<QuestMiniLog[]> {
+  try {
+    const res = await fetch(`${BASE}/quests/${questId}/mini-logs`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
+export async function addMiniLog(questId: number, note: string): Promise<QuestMiniLog> {
+  const res = await fetch(`${BASE}/quests/${questId}/mini-logs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note }),
+  });
+  if (!res.ok) throw new Error('Failed to add mini log');
+  return res.json();
+}
+
+export async function deleteMiniLog(questId: number, logId: number): Promise<void> {
+  await fetch(`${BASE}/quests/${questId}/mini-logs/${logId}`, { method: 'DELETE' });
+}
+
+export async function fetchQuestRecommendations(minutes: number): Promise<{ fitting: Quest[]; partial: Quest[] }> {
+  try {
+    const res = await fetch(`${BASE}/quests/recommendations?minutes=${minutes}`);
+    if (!res.ok) return { fitting: [], partial: [] };
+    return res.json();
+  } catch { return { fitting: [], partial: [] }; }
 }
 
 export async function acceptQuest(id: number): Promise<Quest> {

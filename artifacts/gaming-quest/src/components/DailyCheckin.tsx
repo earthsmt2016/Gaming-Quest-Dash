@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LogEntry, computeRecommendations, badgeFor } from '../lib/logParser';
-import { fetchDailyPlan, DailyPlanGame, DailyPlanPick } from '../lib/api';
+import { fetchDailyPlan, fetchQuestRecommendations, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
 
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
@@ -108,6 +108,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   const [useCustom, setUseCustom] = useState(false);
   const [plan, setPlan] = useState<PlanState>({ status: 'idle' });
   const [copied, setCopied] = useState<string | null>(null);
+  const [questRecs, setQuestRecs] = useState<{ fitting: Quest[]; partial: Quest[] } | null>(null);
 
   const handleSubmit = async () => {
     let mins: number;
@@ -120,6 +121,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
     }
 
     setPlan({ status: 'loading', mins });
+    setQuestRecs(null);
 
     const activeGames = buildActiveGames(logs, manualCompletions, paused);
     const dayOfWeek = DAYS[new Date().getDay()];
@@ -135,6 +137,9 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
       const fallback = computeRecommendations(mins, logs, manualCompletions, paused);
       setPlan({ status: 'fallback', mins, picks: fallback });
     }
+
+    // Fetch quest recommendations for this session length (non-blocking)
+    fetchQuestRecommendations(mins).then(r => setQuestRecs(r)).catch(() => {});
   };
 
   const handleReset = () => {
@@ -142,6 +147,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
     setSelected(null);
     setCustomStr('');
     setUseCustom(false);
+    setQuestRecs(null);
   };
 
   const copyGame = (game: string, mins: number) => {
@@ -376,6 +382,46 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                   AI is analysing your games and planning a{' '}
                   <strong>{fmtMins(plan.mins)}</strong> session…
                 </div>
+              </div>
+            )}
+
+            {/* ── Quest Recommendations ── */}
+            {(plan.status === 'ai' || plan.status === 'fallback') && questRecs && (questRecs.fitting.length > 0 || questRecs.partial.length > 0) && (
+              <div style={{ marginTop: '4px', padding: '12px 14px', background: '#f3e5f5', border: '1px solid #ce93d8', borderRadius: '10px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6a1b9a', marginBottom: '10px' }}>
+                  ⚔️ Quest Opportunities This Session
+                </div>
+                {questRecs.fitting.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: questRecs.partial.length > 0 ? '10px' : 0 }}>
+                    <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Fits in your session:</div>
+                    {questRecs.fitting.map(q => (
+                      <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', borderRadius: '8px', padding: '8px 10px', border: '1px solid #ce93d8' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{q.game} · ~{fmtMins(q.estimated_minutes)}</div>
+                        </div>
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', flexShrink: 0,
+                          background: '#e8f5e9', color: '#2e7d32',
+                        }}>fits ✓</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {questRecs.partial.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Make partial progress on:</div>
+                    {questRecs.partial.map(q => (
+                      <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', borderRadius: '8px', padding: '8px 10px', border: '1px solid #e1bee7' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{q.game} · ~{fmtMins(q.estimated_minutes)} needed</div>
+                        </div>
+                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', flexShrink: 0, background: '#fff3e0', color: '#e65100' }}>partial</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

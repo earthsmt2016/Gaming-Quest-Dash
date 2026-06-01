@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Quest, QuestLog, QuestGuide, QuestVideoLink, YouTubeVideo, UserProfile,
+  Quest, QuestLog, QuestGuide, QuestVideoLink, QuestMiniLog, YouTubeVideo, UserProfile,
   fetchSuggestedQuests, fetchActiveQuests, fetchQuestLogs,
   generateQuests, acceptQuest, rejectQuest,
   updateQuestProgress, completeQuest, fetchQuestGuide,
   searchYouTubeGuides, addVideoToGuide, removeVideoFromGuide,
-  submitQuestFeedback, fetchUserProfile,
+  submitQuestFeedback, fetchUserProfile, fetchMiniLogs, addMiniLog, deleteMiniLog,
 } from '../lib/api';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -150,6 +150,89 @@ function VideoThumb({
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{video.title}</span>
         {video.duration && <span style={{ flexShrink: 0, opacity: 0.8, fontSize: '10px' }}>{video.duration}</span>}
       </div>
+    </div>
+  );
+}
+
+// ─── Mini Log Panel ───────────────────────────────────────────────────────────
+
+function MiniLogPanel({
+  miniLogs, onAdd, onDelete,
+}: {
+  miniLogs: QuestMiniLog[];
+  onAdd?: (note: string) => Promise<void>;
+  onDelete?: (logId: number) => Promise<void>;
+}) {
+  const [note, setNote] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const handleAdd = async () => {
+    if (!note.trim() || !onAdd || adding) return;
+    setAdding(true);
+    try { await onAdd(note.trim()); setNote(''); }
+    finally { setAdding(false); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!onDelete || deletingId) return;
+    setDeletingId(id);
+    try { await onDelete(id); }
+    finally { setDeletingId(null); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>
+        📝 Progress Notes {miniLogs.length > 0 && `(${miniLogs.length})`}
+      </div>
+      {miniLogs.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {miniLogs.map(log => (
+            <div key={log.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: '8px',
+              background: 'var(--paper-2)', borderRadius: '6px', padding: '6px 10px',
+              opacity: deletingId === log.id ? 0.4 : 1, transition: 'opacity 0.15s',
+            }}>
+              <span style={{ fontSize: '13px', flex: 1, lineHeight: 1.4 }}>• {log.note}</span>
+              <span style={{ fontSize: '10px', color: 'var(--muted)', flexShrink: 0, marginTop: '2px' }}>
+                {new Date(log.created_at).toLocaleDateString()}
+              </span>
+              {onDelete && (
+                <button
+                  onClick={() => handleDelete(log.id)}
+                  disabled={deletingId !== null}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: '14px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+                >×</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {onAdd && (
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <input
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="Add a progress note…"
+            style={{
+              flex: 1, border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
+              padding: '6px 10px', fontSize: '13px', fontFamily: 'inherit',
+              background: 'var(--paper)',
+            }}
+          />
+          <button
+            className="btn"
+            onClick={handleAdd}
+            disabled={adding || !note.trim()}
+            style={{ fontSize: '12px', padding: '6px 12px', flexShrink: 0 }}
+          >{adding ? '…' : '+ Note'}</button>
+        </div>
+      )}
+      {miniLogs.length === 0 && !onAdd && (
+        <div style={{ fontSize: '13px', color: 'var(--muted)' }}>No progress notes yet.</div>
+      )}
     </div>
   );
 }
@@ -450,6 +533,7 @@ function CompleteModal({ quest, onClose, onCompleted }: {
 
 function QuestCard({
   quest, onAccept, onReject, onProgress, onComplete, onGuide, onFeedback,
+  miniLogs, onAddMiniLog, onDeleteMiniLog,
 }: {
   quest: Quest;
   onAccept?: () => void;
@@ -458,6 +542,9 @@ function QuestCard({
   onComplete?: () => void;
   onGuide?: () => void;
   onFeedback?: (rating: 1 | -1) => void;
+  miniLogs?: QuestMiniLog[];
+  onAddMiniLog?: (note: string) => Promise<void>;
+  onDeleteMiniLog?: (logId: number) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [localProgress, setLocalProgress] = useState(quest.progress);
@@ -558,6 +645,15 @@ function QuestCard({
             </div>
           )}
 
+          {/* Mini Log Panel — only for active quests */}
+          {miniLogs !== undefined && (
+            <MiniLogPanel
+              miniLogs={miniLogs}
+              onAdd={onAddMiniLog}
+              onDelete={onDeleteMiniLog}
+            />
+          )}
+
           {/* AI Reasoning */}
           {quest.reasoning && (
             <details style={{ fontSize: '13px' }}>
@@ -637,6 +733,38 @@ function QuestCard({
               </button>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Game Group (collapsible) ─────────────────────────────────────────────────
+
+function GameGroup({ game, count, children }: { game: string; count: number; children: React.ReactNode }) {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setCollapsed(v => !v)}
+        style={{
+          width: '100%', textAlign: 'left', background: 'var(--paper-2)',
+          border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
+          padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center',
+          gap: '8px', marginBottom: collapsed ? 0 : '8px', fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ flex: 1, fontSize: '13px', fontWeight: 700 }}>🎮 {game}</span>
+        <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+          {count} quest{count !== 1 ? 's' : ''}
+        </span>
+        <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '4px' }}>
+          {collapsed ? '▶' : '▼'}
+        </span>
+      </button>
+      {!collapsed && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {children}
         </div>
       )}
     </div>
@@ -727,6 +855,13 @@ function LogsDashboard({ logs }: { logs: QuestLog[] }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+const DIFFICULTY_OPTIONS: { label: string; value: string }[] = [
+  { label: 'Easy', value: 'easy' },
+  { label: 'Normal', value: 'medium' },
+  { label: 'Hard', value: 'hard' },
+  { label: 'Super Hard', value: 'legendary' },
+];
+
 export default function QuestsPage() {
   const [suggested, setSuggested] = useState<Quest[]>([]);
   const [active, setActive] = useState<Quest[]>([]);
@@ -738,6 +873,8 @@ export default function QuestsPage() {
   const [guideQuest, setGuideQuest] = useState<Quest | null>(null);
   const [completeQuest_, setCompleteQuest_] = useState<Quest | null>(null);
   const [tab, setTab] = useState<'inbox' | 'active' | 'logs'>('inbox');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('');
+  const [miniLogs, setMiniLogs] = useState<Record<number, QuestMiniLog[]>>({});
 
   const reload = useCallback(async () => {
     const [s, a, l, p] = await Promise.all([
@@ -750,6 +887,14 @@ export default function QuestsPage() {
     setActive(a);
     setLogs(l);
     setProfile(p);
+    if (a.length) {
+      const mlEntries = await Promise.all(
+        a.map(q => fetchMiniLogs(q.id).then(ml => [q.id, ml] as const))
+      );
+      setMiniLogs(Object.fromEntries(mlEntries));
+    } else {
+      setMiniLogs({});
+    }
   }, []);
 
   useEffect(() => {
@@ -760,7 +905,7 @@ export default function QuestsPage() {
   const handleGenerate = async () => {
     setGenerating(true); setGenError('');
     try {
-      await generateQuests();
+      await generateQuests(undefined, undefined, selectedDifficulty || undefined);
       await reload();
       setTab('inbox');
     } catch (e) {
@@ -769,6 +914,16 @@ export default function QuestsPage() {
       setGenerating(false);
     }
   };
+
+  const handleAddMiniLog = useCallback(async (questId: number, note: string) => {
+    const log = await addMiniLog(questId, note);
+    setMiniLogs(prev => ({ ...prev, [questId]: [...(prev[questId] ?? []), log] }));
+  }, []);
+
+  const handleDeleteMiniLog = useCallback(async (questId: number, logId: number) => {
+    await deleteMiniLog(questId, logId);
+    setMiniLogs(prev => ({ ...prev, [questId]: (prev[questId] ?? []).filter(l => l.id !== logId) }));
+  }, []);
 
   const handleAccept = async (quest: Quest) => {
     await acceptQuest(quest.id);
@@ -858,7 +1013,23 @@ export default function QuestsPage() {
               {totalXp > 0 && <> · <strong style={{ color: '#6a1b9a' }}>{totalXp.toLocaleString()} XP earned</strong></>}
             </p>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {DIFFICULTY_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setSelectedDifficulty(d => d === opt.value ? '' : opt.value)}
+                  style={{
+                    fontSize: '11px', padding: '4px 9px', borderRadius: 'var(--radius-sm)',
+                    border: `1px solid ${selectedDifficulty === opt.value ? 'var(--accent)' : 'var(--line)'}`,
+                    background: selectedDifficulty === opt.value ? 'var(--accent)' : 'var(--paper-2)',
+                    color: selectedDifficulty === opt.value ? '#fff' : 'var(--muted)',
+                    cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+                    transition: 'all 0.12s',
+                  }}
+                >{opt.label}</button>
+              ))}
+            </div>
             <button
               className="btn primary"
               onClick={handleGenerate}
@@ -867,6 +1038,11 @@ export default function QuestsPage() {
             >
               {generating ? '⏳ Generating…' : '✨ Generate New Quests'}
             </button>
+            {selectedDifficulty && (
+              <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                Forcing <strong>{DIFFICULTY_OPTIONS.find(o => o.value === selectedDifficulty)?.label}</strong> difficulty
+              </div>
+            )}
             {genError && <div style={{ fontSize: '12px', color: '#c62828' }}>{genError}</div>}
           </div>
         </div>
@@ -944,8 +1120,12 @@ export default function QuestsPage() {
                       {generating ? '⏳ Generating…' : '✨ Generate Quests'}
                     </button>
                   </div>
-                ) : (
-                  suggested.map(q => (
+                ) : (() => {
+                  const byGame = suggested.reduce<Record<string, Quest[]>>((acc, q) => {
+                    (acc[q.game] ??= []).push(q); return acc;
+                  }, {});
+                  const games = Object.keys(byGame).sort();
+                  const renderCard = (q: Quest) => (
                     <QuestCard
                       key={q.id} quest={q}
                       onAccept={() => handleAccept(q)}
@@ -953,8 +1133,15 @@ export default function QuestsPage() {
                       onGuide={() => setGuideQuest(q)}
                       onFeedback={() => fetchUserProfile().then(p => p && setProfile(p))}
                     />
-                  ))
-                )}
+                  );
+                  return games.length <= 1
+                    ? suggested.map(renderCard)
+                    : games.map(game => (
+                        <GameGroup key={game} game={game} count={byGame[game].length}>
+                          {byGame[game].map(renderCard)}
+                        </GameGroup>
+                      ));
+                })()}
               </>
             )}
 
@@ -967,17 +1154,31 @@ export default function QuestsPage() {
                     <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>No active quests</div>
                     <div style={{ fontSize: '13px' }}>Accept quests from your inbox to start tracking progress.</div>
                   </div>
-                ) : (
-                  active.map(q => (
+                ) : (() => {
+                  const byGame = active.reduce<Record<string, Quest[]>>((acc, q) => {
+                    (acc[q.game] ??= []).push(q); return acc;
+                  }, {});
+                  const games = Object.keys(byGame).sort();
+                  const renderCard = (q: Quest) => (
                     <QuestCard
                       key={q.id} quest={q}
                       onProgress={v => handleProgress(q, v)}
                       onComplete={() => setCompleteQuest_(q)}
                       onGuide={() => setGuideQuest(q)}
                       onFeedback={() => fetchUserProfile().then(p => p && setProfile(p))}
+                      miniLogs={miniLogs[q.id] ?? []}
+                      onAddMiniLog={note => handleAddMiniLog(q.id, note)}
+                      onDeleteMiniLog={logId => handleDeleteMiniLog(q.id, logId)}
                     />
-                  ))
-                )}
+                  );
+                  return games.length <= 1
+                    ? active.map(renderCard)
+                    : games.map(game => (
+                        <GameGroup key={game} game={game} count={byGame[game].length}>
+                          {byGame[game].map(renderCard)}
+                        </GameGroup>
+                      ));
+                })()}
               </>
             )}
 

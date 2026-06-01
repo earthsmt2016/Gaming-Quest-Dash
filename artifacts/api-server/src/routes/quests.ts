@@ -88,6 +88,21 @@ async function ensureTables() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // Mini progress logs per quest
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS quest_mini_logs (
+      id         SERIAL PRIMARY KEY,
+      quest_id   INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+      note       TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Rich description on quest completion log
+  await pool.query(`
+    ALTER TABLE quest_logs ADD COLUMN IF NOT EXISTS description TEXT
+  `);
 }
 
 ensureTables().catch(err => console.error("quests ensureTables:", err));
@@ -199,7 +214,7 @@ async function buildUserProfile(): Promise<void> {
 }
 
 // ─── Internal: generate quests for a single game ───────────────────────────
-async function generateForGame(game: string, count: number = 2): Promise<any[]> {
+async function generateForGame(game: string, count: number = 2, forceDifficulty?: string): Promise<any[]> {
   // Fetch player profile for personalization context
   const profileRes = await pool.query(`SELECT * FROM user_profile WHERE id=1`);
   const profile = profileRes.rows[0] ?? {
@@ -282,7 +297,7 @@ Think step-by-step before generating:
 4. What would genuinely excite THIS player right now — not a generic quest, but one tailored to their history?
 
 Then generate exactly ${count} quest(s). Each must include a "reasoning" field.
-
+${forceDifficulty ? `\nCRITICAL: You MUST generate ALL quests at "${forceDifficulty}" difficulty. Do not deviate from this regardless of player profile.\n` : ''}
 Rules:
 - Reference specific details from their session notes
 - Avoid repeating past quests listed in history
@@ -362,13 +377,37 @@ Respond ONLY with valid JSON (no markdown):
 }
 
 // ─── POST /api/quests/generate ─────────────────────────────────────────────
+// ─── GET /api/quests/recommendations ───────────────────────────────────────
+router.get("/quests/recommendations", async (req, res) => {
+  try {
+    await ensureTables();
+    const minutes = parseInt(req.query.minutes as string, 10) || 60;
+
+    const [fittingRes, partialRes] = await Promise.all([
+      pool.query(
+        `SELECT * FROM quests WHERE status='active' AND estimated_minutes <= $1 ORDER BY estimated_minutes DESC LIMIT 5`,
+        [minutes]
+      ),
+      pool.query(
+        `SELECT * FROM quests WHERE status='active' AND estimated_minutes > $1 ORDER BY accepted_at DESC LIMIT 3`,
+        [minutes]
+      ),
+    ]);
+
+    res.json({ fitting: fittingRes.rows, partial: partialRes.rows });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch recommendations", detail: String(err) });
+  }
+});
+
+// ─── POST /api/quests/generate ─────────────────────────────────────────────
 router.post("/quests/generate", async (req, res) => {
   try {
     await ensureTables();
-    const { game, count = 2 } = req.body as { game?: string; count?: number };
+    const { game, count = 2, difficulty } = req.body as { game?: string; count?: number; difficulty?: string };
 
     if (game) {
-      await generateForGame(game, count);
+      await generateForGame(game, count, difficulty);
       const result = await pool.query(
         `SELECT * FROM quests WHERE game=$1 AND status='suggested' ORDER BY created_at DESC`,
         [game]
@@ -385,10 +424,10 @@ router.post("/quests/generate", async (req, res) => {
         );
         const existingCount = existing.rows[0].cnt;
         if (existingCount < 1) {
-          await generateForGame(g, 1);
+          await generateForGame(g, 1, difficulty);
         } else {
           await pool.query(`DELETE FROM quests WHERE game=$1 AND status='suggested'`, [g]);
-          await generateForGame(g, 2);
+          await generateForGame(g, 2, difficulty);
         }
       }
 
@@ -589,6 +628,45 @@ router.patch("/quests/:id/progress", async (req, res) => {
   }
 });
 
+// ─── Mini Log routes ────────────────────────────────────────────────────────
+router.get("/quests/:id/mini-logs", async (req, res) => {
+  try {
+    await ensureTables();
+    const id = parseInt(req.params.id, 10);
+    const r = await pool.query(`SELECT * FROM quest_mini_logs WHERE quest_id=$1 ORDER BY created_at ASC`, [id]);
+    res.json(r.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch mini logs", detail: String(err) });
+  }
+});
+
+router.post("/quests/:id/mini-logs", async (req, res) => {
+  try {
+    await ensureTables();
+    const id = parseInt(req.params.id, 10);
+    const { note } = req.body as { note: string };
+    if (!note?.trim()) { res.status(400).json({ error: "note is required" }); return; }
+    const r = await pool.query(
+      `INSERT INTO quest_mini_logs (quest_id, note) VALUES ($1, $2) RETURNING *`,
+      [id, note.trim()]
+    );
+    res.json(r.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to add mini log", detail: String(err) });
+  }
+});
+
+router.delete("/quests/:id/mini-logs/:logId", async (req, res) => {
+  try {
+    await ensureTables();
+    const logId = parseInt(req.params.logId, 10);
+    await pool.query(`DELETE FROM quest_mini_logs WHERE id=$1`, [logId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete mini log", detail: String(err) });
+  }
+});
+
 // ─── POST /api/quests/:id/complete ─────────────────────────────────────────
 router.post("/quests/:id/complete", async (req, res) => {
   try {
@@ -600,21 +678,35 @@ router.post("/quests/:id/complete", async (req, res) => {
     if (!questResult.rows.length) { res.status(404).json({ error: "Quest not found or not active" }); return; }
     const quest = questResult.rows[0];
 
+    // Collect mini logs for rich completion record
+    const miniLogsRes = await pool.query(
+      `SELECT note, created_at FROM quest_mini_logs WHERE quest_id=$1 ORDER BY created_at ASC`,
+      [id]
+    );
+    const miniLogs = miniLogsRes.rows;
+    const description = miniLogs.length > 0
+      ? `${quest.description}\n\nProgress notes:\n${miniLogs.map((l: any) => `• ${l.note}`).join('\n')}`
+      : quest.description;
+
+    const actionText = miniLogs.length > 0
+      ? `[Quest] ${quest.title} — ${miniLogs.map((l: any) => l.note).join('; ')}`
+      : `[Quest] ${quest.title}`;
+
     await pool.query(
       `UPDATE quests SET status='completed', completed_at=NOW(), progress=target WHERE id=$1`,
       [id]
     );
 
     const logResult = await pool.query(
-      `INSERT INTO quest_logs (quest_id, game, title, xp_earned, time_taken_minutes, difficulty)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [id, quest.game, quest.title, quest.xp_reward, time_taken_minutes, quest.difficulty]
+      `INSERT INTO quest_logs (quest_id, game, title, xp_earned, time_taken_minutes, difficulty, description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [id, quest.game, quest.title, quest.xp_reward, time_taken_minutes, quest.difficulty, description]
     );
 
     await pool.query(
       `INSERT INTO log_entries (timestamp, game, action, minutes, type)
        VALUES ($1, $2, $3, $4, $5)`,
-      [new Date().toISOString(), quest.game, `[Quest] ${quest.title}`, time_taken_minutes, quest.type]
+      [new Date().toISOString(), quest.game, actionText, time_taken_minutes, quest.type]
     );
 
     // Rebuild profile in background after completion
