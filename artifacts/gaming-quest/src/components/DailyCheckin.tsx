@@ -579,7 +579,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                               <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, marginBottom: '2px' }}>{q.game}</div>
                               <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: q.description ? '4px' : 0 }}>{q.title}</div>
                               {q.description && (
-                                <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>
+                                <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: 1.4 }}>
                                   {q.description}
                                 </div>
                               )}
@@ -639,7 +639,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px' }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, marginBottom: '2px' }}>{q.game}</div>
-                                <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
+                                <div style={{ fontSize: '13px', fontWeight: 700 }}>{q.title}</div>
                               </div>
                               <div style={{ flexShrink: 0, textAlign: 'right' }}>
                                 <div style={{ fontSize: '15px', fontWeight: 700, color: '#e65100' }}>{fmtMins(q.estimated_minutes)}</div>

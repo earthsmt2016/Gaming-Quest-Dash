@@ -385,11 +385,11 @@ router.get("/quests/recommendations", async (req, res) => {
 
     const [fittingRes, partialRes] = await Promise.all([
       pool.query(
-        `SELECT * FROM quests WHERE status='active' AND estimated_minutes <= $1 ORDER BY estimated_minutes DESC LIMIT 5`,
+        `SELECT * FROM quests WHERE status IN ('active','suggested') AND estimated_minutes <= $1 ORDER BY status DESC, estimated_minutes DESC LIMIT 10`,
         [minutes]
       ),
       pool.query(
-        `SELECT * FROM quests WHERE status='active' AND estimated_minutes > $1 ORDER BY accepted_at DESC LIMIT 3`,
+        `SELECT * FROM quests WHERE status IN ('active','suggested') AND estimated_minutes > $1 ORDER BY status DESC, accepted_at DESC LIMIT 5`,
         [minutes]
       ),
     ]);
