@@ -181,6 +181,7 @@ export default function CompanionChat() {
   const [open, setOpen] = useState(true);
   const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastAiMsgRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchCompanionHistory()
@@ -190,7 +191,11 @@ export default function CompanionChat() {
   }, []);
 
   useEffect(() => {
-    if (open && messagesRef.current) {
+    if (!open || !messagesRef.current) return;
+    const last = messages[messages.length - 1];
+    if (last?.role === 'assistant' && lastAiMsgRef.current) {
+      lastAiMsgRef.current.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } else {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }
   }, [messages, open]);
@@ -319,9 +324,14 @@ export default function CompanionChat() {
                 </div>
               )}
 
-              {messages.map(msg => (
-                <MessageBubble key={msg.id} msg={msg} onCopy={handleCopy} />
-              ))}
+              {messages.map((msg, i) => {
+                const isLastAi = msg.role === 'assistant' && i === messages.length - 1;
+                return (
+                  <div key={msg.id} ref={isLastAi ? lastAiMsgRef : undefined}>
+                    <MessageBubble msg={msg} onCopy={handleCopy} />
+                  </div>
+                );
+              })}
 
               {loading && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
