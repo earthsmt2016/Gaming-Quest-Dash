@@ -598,24 +598,26 @@ export interface CompanionMessage {
   created_at: string;
 }
 
-export async function sendCompanionMessage(message: string): Promise<{ reply: string }> {
+export async function sendCompanionMessage(message: string, game?: string): Promise<{ reply: string }> {
   const res = await fetch(`${BASE}/companion/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, game: game ?? null }),
   });
   if (!res.ok) throw new Error('Failed to send message');
   return res.json();
 }
 
-export async function fetchCompanionHistory(): Promise<CompanionMessage[]> {
+export async function fetchCompanionHistory(game?: string): Promise<CompanionMessage[]> {
   try {
-    const res = await fetch(`${BASE}/companion/history`);
+    const url = game ? `${BASE}/companion/history?game=${encodeURIComponent(game)}` : `${BASE}/companion/history`;
+    const res = await fetch(url);
     if (!res.ok) return [];
     return res.json();
   } catch { return []; }
 }
 
-export async function clearCompanionHistory(): Promise<void> {
-  await fetch(`${BASE}/companion/history`, { method: 'DELETE' });
+export async function clearCompanionHistory(game?: string): Promise<void> {
+  const url = game ? `${BASE}/companion/history?game=${encodeURIComponent(game)}` : `${BASE}/companion/history`;
+  await fetch(url, { method: 'DELETE' });
 }
