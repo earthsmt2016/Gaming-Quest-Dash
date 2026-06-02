@@ -742,7 +742,7 @@ function QuestCard({
 // ─── Game Group (collapsible) ─────────────────────────────────────────────────
 
 function GameGroup({ game, count, children }: { game: string; count: number; children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   return (
     <div>
       <button
