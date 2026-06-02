@@ -1067,7 +1067,7 @@ export default function QuestsPage() {
                   </button>
                   {gamePickerOpen && (
                     <div style={{
-                      position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50,
+                      position: 'absolute', right: 0, bottom: 'calc(100% + 4px)', zIndex: 50,
                       background: 'var(--paper)', border: '1px solid var(--line)',
                       borderRadius: 'var(--radius-sm)', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
                       minWidth: '180px', maxWidth: '260px', padding: '8px 0',
@@ -1215,7 +1215,7 @@ export default function QuestsPage() {
                   const games = Object.keys(byGame).sort();
                   const renderCard = (q: Quest) => (
                     <QuestCard
-                      key={q.id} quest={q}
+                      key={`inbox-${q.id}`} quest={q}
                       onAccept={() => handleAccept(q)}
                       onReject={() => handleReject(q)}
                       onGuide={() => setGuideQuest(q)}
@@ -1249,7 +1249,7 @@ export default function QuestsPage() {
                   const games = Object.keys(byGame).sort();
                   const renderCard = (q: Quest) => (
                     <QuestCard
-                      key={q.id} quest={q}
+                      key={`active-${q.id}`} quest={q}
                       onProgress={v => handleProgress(q, v)}
                       onComplete={() => setCompleteQuest_(q)}
                       onGuide={() => setGuideQuest(q)}
