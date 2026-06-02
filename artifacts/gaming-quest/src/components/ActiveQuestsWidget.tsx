@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Quest, fetchActiveQuests } from '../lib/api';
+import { Quest, fetchActiveQuests, completeQuest } from '../lib/api';
 
 const POLL_INTERVAL_MS = 60_000;
+const DONE_DISPLAY_MS = 1400;
 
 const DIFFICULTY_COLORS: Record<string, { bg: string; text: string }> = {
   easy:      { bg: '#e8f5e9', text: '#2e7d32' },
@@ -25,6 +26,7 @@ interface ActiveQuestsWidgetProps {
 export default function ActiveQuestsWidget({ onNavigate, refreshKey = 0 }: ActiveQuestsWidgetProps) {
   const [quests, setQuests] = useState<Quest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [completing, setCompleting] = useState<Record<number, 'pending' | 'done'>>({});
   const firstLoad = useRef(true);
 
   useEffect(() => {
@@ -54,6 +56,31 @@ export default function ActiveQuestsWidget({ onNavigate, refreshKey = 0 }: Activ
       clearInterval(timer);
     };
   }, [refreshKey]);
+
+  const handleComplete = async (e: React.MouseEvent, questId: number) => {
+    e.stopPropagation();
+    if (completing[questId]) return;
+
+    setCompleting(prev => ({ ...prev, [questId]: 'pending' }));
+    try {
+      await completeQuest(questId);
+      setCompleting(prev => ({ ...prev, [questId]: 'done' }));
+      setTimeout(() => {
+        setQuests(prev => prev.filter(q => q.id !== questId));
+        setCompleting(prev => {
+          const next = { ...prev };
+          delete next[questId];
+          return next;
+        });
+      }, DONE_DISPLAY_MS);
+    } catch {
+      setCompleting(prev => {
+        const next = { ...prev };
+        delete next[questId];
+        return next;
+      });
+    }
+  };
 
   return (
     <div className="dash-card">
@@ -88,6 +115,9 @@ export default function ActiveQuestsWidget({ onNavigate, refreshKey = 0 }: Activ
           {quests.map((q, i) => {
             const pct = q.target > 0 ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0;
             const col = DIFFICULTY_COLORS[q.difficulty] ?? { bg: '#f5f5f5', text: '#555' };
+            const state = completing[q.id];
+            const isDone = state === 'done';
+            const isPending = state === 'pending';
             return (
               <div
                 key={q.id}
@@ -96,12 +126,13 @@ export default function ActiveQuestsWidget({ onNavigate, refreshKey = 0 }: Activ
                   cursor: 'pointer',
                   padding: '10px 12px',
                   borderRadius: '8px',
-                  background: 'var(--paper-2)',
+                  background: isDone ? '#f0fdf4' : 'var(--paper-2)',
                   borderBottom: i < quests.length - 1 ? 'none' : 'none',
-                  transition: 'opacity 0.15s',
+                  transition: 'opacity 0.15s, background 0.2s',
+                  opacity: isDone ? 0.85 : 1,
                 }}
-                onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
-                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                onMouseEnter={e => (e.currentTarget.style.opacity = isDone ? '0.85' : '0.8')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = isDone ? '0.85' : '1')}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '13px' }}>{TYPE_ICONS[q.type] ?? '📋'}</span>
@@ -130,6 +161,44 @@ export default function ActiveQuestsWidget({ onNavigate, refreshKey = 0 }: Activ
                   <span style={{ fontSize: '11px', color: 'var(--muted)', flexShrink: 0, minWidth: '32px', textAlign: 'right' }}>
                     {pct}%
                   </span>
+                  {isDone ? (
+                    <span style={{
+                      fontSize: '11px', fontWeight: 700, color: '#2e7d32',
+                      flexShrink: 0, display: 'flex', alignItems: 'center', gap: '3px',
+                    }}>
+                      ✓ Done
+                    </span>
+                  ) : (
+                    <button
+                      onClick={e => handleComplete(e, q.id)}
+                      disabled={isPending}
+                      style={{
+                        flexShrink: 0,
+                        fontSize: '11px', fontWeight: 600,
+                        padding: '3px 9px',
+                        borderRadius: '12px',
+                        border: '1.5px solid var(--accent)',
+                        background: 'transparent',
+                        color: 'var(--accent)',
+                        cursor: isPending ? 'default' : 'pointer',
+                        opacity: isPending ? 0.6 : 1,
+                        transition: 'background 0.15s, color 0.15s',
+                        lineHeight: 1.4,
+                      }}
+                      onMouseEnter={e => {
+                        if (!isPending) {
+                          (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)';
+                          (e.currentTarget as HTMLButtonElement).style.color = '#fff';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                        (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)';
+                      }}
+                    >
+                      {isPending ? '…' : 'Complete'}
+                    </button>
+                  )}
                 </div>
               </div>
             );
