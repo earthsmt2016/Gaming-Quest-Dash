@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { LogEntry, computeRecommendations, badgeFor } from '../lib/logParser';
-import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, fetchSubQuest, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
+import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, fetchSubQuest, completeQuest, addMiniLog, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
 
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
@@ -110,15 +110,46 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   const [copied, setCopied] = useState<string | null>(null);
   const [questRecs, setQuestRecs] = useState<{ fitting: Quest[]; partial: Quest[] } | null>(null);
   const [subQuests, setSubQuests] = useState<Record<number, { loading: boolean; title?: string; goal?: string }>>({});
+  const [logNotes, setLogNotes] = useState<Record<number, string>>({});
+  const [logNoteOpen, setLogNoteOpen] = useState<Set<number>>(new Set());
+  const [completedInSession, setCompletedInSession] = useState<Set<number>>(new Set());
+  const [subQuestDone, setSubQuestDone] = useState<Set<number>>(new Set());
 
   const handleSubQuest = useCallback(async (questId: number, mins: number) => {
     setSubQuests(prev => ({ ...prev, [questId]: { loading: true } }));
     try {
       const result = await fetchSubQuest(questId, mins);
       setSubQuests(prev => ({ ...prev, [questId]: { loading: false, title: result.title, goal: result.goal } }));
+      addMiniLog(questId, `🎯 Sub-quest (${mins}m): ${result.title} — ${result.goal}`).catch(() => {});
     } catch {
       setSubQuests(prev => ({ ...prev, [questId]: { loading: false } }));
     }
+  }, []);
+
+  const toggleLogNote = useCallback((questId: number) => {
+    setLogNoteOpen(prev => {
+      const next = new Set(prev);
+      next.has(questId) ? next.delete(questId) : next.add(questId);
+      return next;
+    });
+  }, []);
+
+  const handleAddNote = useCallback(async (questId: number) => {
+    const note = (logNotes[questId] ?? '').trim();
+    if (!note) return;
+    await addMiniLog(questId, note).catch(() => {});
+    setLogNotes(prev => ({ ...prev, [questId]: '' }));
+    setLogNoteOpen(prev => { const next = new Set(prev); next.delete(questId); return next; });
+  }, [logNotes]);
+
+  const handleCompleteQuest = useCallback(async (questId: number, mins: number) => {
+    await completeQuest(questId, mins).catch(() => {});
+    setCompletedInSession(prev => new Set([...prev, questId]));
+  }, []);
+
+  const handleSubQuestDone = useCallback(async (questId: number, title: string) => {
+    await addMiniLog(questId, `✅ Sub-quest completed: ${title}`).catch(() => {});
+    setSubQuestDone(prev => new Set([...prev, questId]));
   }, []);
 
   const handleSubmit = async () => {
@@ -525,6 +556,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
 
             {/* ── Quest Opportunities (after plan) ── */}
             {(plan.status === 'ai' || plan.status === 'fallback') && questRecs && (() => {
+              const sessionMins = (plan as any).mins as number;
               const planGames = new Set((plan.picks as any[]).map(p => p.game));
               const fitting = questRecs.fitting.filter(q => planGames.has(q.game));
               const partial = questRecs.partial.filter(q => planGames.has(q.game));
@@ -534,29 +566,74 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                   <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6a1b9a', marginBottom: '10px' }}>
                     ⚔️ Quest Opportunities This Session
                   </div>
+
+                  {/* Fitting quests */}
                   {fitting.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: partial.length > 0 ? '10px' : 0 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: partial.length > 0 ? '12px' : 0 }}>
                       <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Fits in your session:</div>
                       {fitting.map(q => (
-                        <div key={q.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: '#fff', borderRadius: '8px', padding: '10px 12px', border: '1px solid #ce93d8' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, marginBottom: '2px' }}>{q.game}</div>
-                            <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.title}</div>
+                        <div key={q.id} style={{ background: '#fff', borderRadius: '8px', border: '1px solid #ce93d8', overflow: 'hidden' }}>
+                          {/* Header */}
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600, marginBottom: '2px' }}>{q.game}</div>
+                              <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: q.description ? '4px' : 0 }}>{q.title}</div>
+                              {q.description && (
+                                <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>
+                                  {q.description}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                              <div style={{ fontSize: '15px', fontWeight: 700, color: '#2e7d32' }}>{fmtMins(q.estimated_minutes)}</div>
+                              <div style={{ fontSize: '10px', fontWeight: 700, color: '#2e7d32' }}>fits ✓</div>
+                            </div>
                           </div>
-                          <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                            <div style={{ fontSize: '15px', fontWeight: 700, color: '#2e7d32' }}>{fmtMins(q.estimated_minutes)}</div>
-                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#2e7d32' }}>fits ✓</div>
-                          </div>
+                          {/* Actions */}
+                          {completedInSession.has(q.id) ? (
+                            <div style={{ borderTop: '1px solid #c8e6c9', padding: '8px 12px', background: '#e8f5e9', fontSize: '12px', fontWeight: 700, color: '#2e7d32' }}>
+                              ✅ Completed this session!
+                            </div>
+                          ) : (
+                            <div style={{ borderTop: '1px dashed #ce93d8', padding: '7px 12px', display: 'flex', gap: '6px', flexWrap: 'wrap' as const }}>
+                              <button
+                                onClick={() => handleCompleteQuest(q.id, sessionMins)}
+                                style={{ background: '#2e7d32', color: '#fff', border: 'none', borderRadius: '20px', padding: '4px 12px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'inherit' }}
+                              >✓ Complete quest</button>
+                              <button
+                                onClick={() => toggleLogNote(q.id)}
+                                style={{ background: 'none', border: '1px solid #ab47bc', borderRadius: '20px', padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: '#7b1fa2', fontFamily: 'inherit' }}
+                              >📝 Add note</button>
+                            </div>
+                          )}
+                          {/* Inline note input */}
+                          {logNoteOpen.has(q.id) && !completedInSession.has(q.id) && (
+                            <div style={{ borderTop: '1px dashed #ce93d8', padding: '8px 12px', display: 'flex', gap: '6px' }}>
+                              <textarea
+                                value={logNotes[q.id] ?? ''}
+                                onChange={e => setLogNotes(prev => ({ ...prev, [q.id]: e.target.value }))}
+                                placeholder="Quick session note…"
+                                rows={2}
+                                style={{ flex: 1, fontSize: '12px', border: '1px solid #ce93d8', borderRadius: '6px', padding: '5px 8px', fontFamily: 'inherit', resize: 'none', background: 'var(--paper-2)' }}
+                              />
+                              <button
+                                onClick={() => handleAddNote(q.id)}
+                                style={{ background: '#6a1b9a', color: '#fff', border: 'none', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'inherit', alignSelf: 'flex-end' }}
+                              >Save</button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
+
+                  {/* Partial quests */}
                   {partial.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <div style={{ fontSize: '11px', color: '#7b1fa2', fontWeight: 600, marginBottom: '2px' }}>Needs more time — make partial progress:</div>
                       {partial.map(q => {
                         const sq = subQuests[q.id];
-                        const sessionMins = (plan as any).mins as number;
+                        const isDone = subQuestDone.has(q.id);
                         return (
                           <div key={q.id} style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e1bee7', overflow: 'hidden' }}>
                             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px' }}>
@@ -583,12 +660,26 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                               </div>
                             )}
                             {sq && !sq.loading && sq.title && (
-                              <div style={{ borderTop: '1px solid #ce93d8', padding: '10px 12px', background: '#f3e5f5' }}>
-                                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7b1fa2', marginBottom: '4px' }}>
-                                  ⚡ {fmtMins(sessionMins)} sub-quest
+                              <div style={{ borderTop: '1px solid #ce93d8', background: '#f3e5f5' }}>
+                                <div style={{ padding: '10px 12px 6px' }}>
+                                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7b1fa2', marginBottom: '4px' }}>
+                                    ⚡ {fmtMins(sessionMins)} sub-quest · saved to mini-log
+                                  </div>
+                                  <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '3px' }}>{sq.title}</div>
+                                  <div style={{ fontSize: '12px', color: '#4a148c', lineHeight: 1.4 }}>{sq.goal}</div>
                                 </div>
-                                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '3px' }}>{sq.title}</div>
-                                <div style={{ fontSize: '12px', color: '#4a148c', lineHeight: 1.4 }}>{sq.goal}</div>
+                                {isDone ? (
+                                  <div style={{ borderTop: '1px solid #c8e6c9', padding: '7px 12px', background: '#e8f5e9', fontSize: '12px', fontWeight: 700, color: '#2e7d32' }}>
+                                    ✅ Marked done — logged to mini-notes
+                                  </div>
+                                ) : (
+                                  <div style={{ borderTop: '1px dashed #ce93d8', padding: '7px 12px' }}>
+                                    <button
+                                      onClick={() => handleSubQuestDone(q.id, sq.title!)}
+                                      style={{ background: '#2e7d32', color: '#fff', border: 'none', borderRadius: '20px', padding: '4px 12px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'inherit' }}
+                                    >✓ Mark sub-quest done</button>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
