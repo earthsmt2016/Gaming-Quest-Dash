@@ -546,7 +546,7 @@ function QuestCard({
   onAddMiniLog?: (note: string) => Promise<void>;
   onDeleteMiniLog?: (logId: number) => Promise<void>;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [localProgress, setLocalProgress] = useState(quest.progress);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<1 | -1 | null>(null);
@@ -1067,10 +1067,11 @@ export default function QuestsPage() {
                   </button>
                   {gamePickerOpen && (
                     <div style={{
-                      position: 'absolute', left: 0, bottom: 'calc(100% + 4px)', zIndex: 50,
+                      position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 50,
                       background: 'var(--paper)', border: '1px solid var(--line)',
                       borderRadius: 'var(--radius-sm)', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
                       minWidth: '180px', maxWidth: '260px', padding: '8px 0',
+                      maxHeight: 'min(280px, 50vh)', overflowY: 'auto',
                     }}>
                       <div style={{ padding: '4px 12px 8px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>Filter by game</span>
