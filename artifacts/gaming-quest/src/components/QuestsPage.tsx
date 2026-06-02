@@ -1067,7 +1067,7 @@ export default function QuestsPage() {
                   </button>
                   {gamePickerOpen && (
                     <div style={{
-                      position: 'absolute', right: 0, bottom: 'calc(100% + 4px)', zIndex: 50,
+                      position: 'absolute', left: 0, bottom: 'calc(100% + 4px)', zIndex: 50,
                       background: 'var(--paper)', border: '1px solid var(--line)',
                       borderRadius: 'var(--radius-sm)', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
                       minWidth: '180px', maxWidth: '260px', padding: '8px 0',
