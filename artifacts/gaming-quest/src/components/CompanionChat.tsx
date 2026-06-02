@@ -444,7 +444,7 @@ export default function CompanionChat() {
         {open && (
           <>
             {/* Messages */}
-            <div ref={messagesRef} style={{ height: isEmpty ? 'auto' : '400px', overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--paper-2)' }}>
+            <div ref={messagesRef} style={{ maxHeight: '420px', overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--paper-2)' }}>
               {historyLoading && (
                 <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '13px', padding: '16px 0' }}>Loading conversation…</div>
               )}
