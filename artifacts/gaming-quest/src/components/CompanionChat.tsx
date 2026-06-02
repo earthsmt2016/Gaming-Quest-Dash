@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   LineChart, Line,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
 import { sendCompanionMessage, fetchCompanionHistory, clearCompanionHistory, fetchGames, CompanionMessage } from '../lib/api';
 
@@ -98,21 +98,25 @@ function InlineChart({ spec }: { spec: ChartSpec }) {
   };
 
   if (spec.type === 'pie' || spec.type === 'donut') {
-    const inner = spec.type === 'donut' ? 50 : 0;
+    const inner = spec.type === 'donut' ? 48 : 0;
     return (
       <div style={wrapStyle}>
         {chartHeader}
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={240}>
           <PieChart>
             <Pie
               data={data} dataKey="value" nameKey="name"
-              cx="50%" cy="50%" outerRadius={85} innerRadius={inner}
-              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-              labelLine={false}
+              cx="50%" cy="45%" outerRadius={80} innerRadius={inner}
             >
               {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
             </Pie>
-            <Tooltip formatter={(v: number) => fmt(v)} />
+            <Tooltip formatter={(v: number) => [fmt(v), '']} />
+            <Legend
+              iconType="circle"
+              iconSize={8}
+              formatter={(value: string) => value.length > 22 ? value.slice(0, 20) + '…' : value}
+              wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
