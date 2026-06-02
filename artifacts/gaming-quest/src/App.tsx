@@ -78,6 +78,7 @@ export default function App() {
   const navigateTo = (page: Page) => {
     setActivePage(page);
     if (page === 'dashboard') setDashboardRefreshKey(k => k + 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const [reportSaving, setReportSaving] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
