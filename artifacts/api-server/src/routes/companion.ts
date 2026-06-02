@@ -209,10 +209,15 @@ You have live tools to query the player's gaming database. USE THEM proactively 
 CHARTS: When data is better shown visually, embed a chart using this exact format on its own line:
 [CHART:{"type":"bar","title":"Time Played (last 30d)","labels":["Game A","Game B"],"values":[120,45],"unit":"minutes"}]
 
-Chart types: "bar" (comparisons/rankings), "line" (not yet supported, use bar), "pie" (distribution/share).
+Chart types:
+- "bar" — horizontal bars, best for comparing games or categories
+- "line" — line over time, best for session trends (use date labels like "Mon", "Jun 1")
+- "pie" — circular, best for showing proportional share across a few items
+- "donut" — like pie but with a hole, great for time-split breakdowns
+Rules:
 - labels and values must be the same length.
-- unit examples: "minutes", "sessions", "XP", "hours".
-- You can mix chart + text in one message. Chart goes on its own line between paragraphs.
+- unit examples: "minutes", "sessions", "XP", "hours" — "minutes" values will be auto-converted to hours in the UI.
+- You can mix chart + text in one message. Put the chart on its own line between paragraphs.
 - Only produce a chart when you have real data from a tool call. Never invent chart data.
 
 Rules:

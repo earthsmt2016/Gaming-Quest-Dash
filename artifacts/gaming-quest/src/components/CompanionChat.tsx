@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import { sendCompanionMessage, fetchCompanionHistory, clearCompanionHistory, fetchGames, CompanionMessage } from '../lib/api';
 
@@ -17,61 +18,138 @@ const CHART_COLORS = ['#6a1b9a', '#1565c0', '#00897b', '#f57c00', '#c62828', '#5
 // ─── Chart types ───────────────────────────────────────────────────────────────
 
 interface ChartSpec {
-  type: 'bar' | 'pie';
+  type: 'bar' | 'pie' | 'donut' | 'line';
   title: string;
   labels: string[];
   values: number[];
   unit?: string;
 }
 
+/**
+ * Robust parser: tracks brace depth so JSON arrays inside [CHART:{...}]
+ * don't break extraction. The naive regex /\[CHART:(.*?)\]/ stops at the
+ * first ] inside the JSON (e.g. labels:[…]).
+ */
 function parseContentBlocks(text: string): Array<{ kind: 'text' | 'chart'; content: string }> {
   const blocks: Array<{ kind: 'text' | 'chart'; content: string }> = [];
-  const regex = /\[CHART:([\s\S]*?)\]/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      const txt = text.slice(lastIndex, match.index).trim();
-      if (txt) blocks.push({ kind: 'text', content: txt });
+  const MARKER = '[CHART:';
+  let remaining = text;
+
+  while (true) {
+    const markerIdx = remaining.indexOf(MARKER);
+    if (markerIdx === -1) {
+      const leftover = remaining.trim();
+      if (leftover) blocks.push({ kind: 'text', content: leftover });
+      break;
     }
-    blocks.push({ kind: 'chart', content: match[1] });
-    lastIndex = regex.lastIndex;
+
+    const textBefore = remaining.slice(0, markerIdx).trim();
+    if (textBefore) blocks.push({ kind: 'text', content: textBefore });
+
+    // Walk forward tracking brace depth to find the end of the JSON object
+    const jsonStart = markerIdx + MARKER.length;
+    let depth = 0;
+    let jsonEnd = -1;
+    for (let i = jsonStart; i < remaining.length; i++) {
+      const ch = remaining[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          // Expect a closing ] immediately after the JSON object
+          if (remaining[i + 1] === ']') {
+            blocks.push({ kind: 'chart', content: remaining.slice(jsonStart, i + 1) });
+            jsonEnd = i + 2;
+          }
+          break;
+        }
+      }
+    }
+
+    if (jsonEnd === -1) {
+      // Malformed — treat rest as plain text
+      const rest = remaining.slice(markerIdx).trim();
+      if (rest) blocks.push({ kind: 'text', content: rest });
+      break;
+    }
+
+    remaining = remaining.slice(jsonEnd);
   }
-  const remaining = text.slice(lastIndex).trim();
-  if (remaining) blocks.push({ kind: 'text', content: remaining });
+
   return blocks;
 }
 
 function InlineChart({ spec }: { spec: ChartSpec }) {
   const data = spec.labels.map((l, i) => ({ name: l, value: Number(spec.values[i] ?? 0) }));
-  const fmt = (v: number) => spec.unit === 'minutes' ? `${Math.round(v / 60 * 10) / 10}h` : `${v}${spec.unit ? ' ' + spec.unit : ''}`;
+  const fmt = (v: number) =>
+    spec.unit === 'minutes' ? `${Math.round((v / 60) * 10) / 10}h`
+    : spec.unit === 'hours' ? `${v}h`
+    : `${v}${spec.unit ? ' ' + spec.unit : ''}`;
 
-  return (
-    <div style={{ margin: '8px 0', background: 'var(--paper-2)', borderRadius: '10px', padding: '12px', border: '1px solid var(--line)' }}>
-      <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '10px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        {spec.title}
-      </div>
-      {spec.type === 'pie' ? (
-        <ResponsiveContainer width="100%" height={200}>
+  const chartHeader = (
+    <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '10px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      {spec.title}
+    </div>
+  );
+
+  const wrapStyle: React.CSSProperties = {
+    margin: '8px 0', background: 'var(--paper-2)', borderRadius: '10px',
+    padding: '12px', border: '1px solid var(--line)',
+  };
+
+  if (spec.type === 'pie' || spec.type === 'donut') {
+    const inner = spec.type === 'donut' ? 50 : 0;
+    return (
+      <div style={wrapStyle}>
+        {chartHeader}
+        <ResponsiveContainer width="100%" height={220}>
           <PieChart>
-            <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+            <Pie
+              data={data} dataKey="value" nameKey="name"
+              cx="50%" cy="50%" outerRadius={85} innerRadius={inner}
+              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+              labelLine={false}
+            >
               {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
             </Pie>
             <Tooltip formatter={(v: number) => fmt(v)} />
           </PieChart>
         </ResponsiveContainer>
-      ) : (
-        <ResponsiveContainer width="100%" height={Math.max(160, data.length * 32)}>
-          <BarChart data={data} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
-            <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
-            <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
+      </div>
+    );
+  }
+
+  if (spec.type === 'line') {
+    return (
+      <div style={wrapStyle}>
+        {chartHeader}
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={data} margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={fmt} />
             <Tooltip formatter={(v: number) => [fmt(v), spec.unit ?? 'value']} />
-            <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-              {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-            </Bar>
-          </BarChart>
+            <Line type="monotone" dataKey="value" stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} />
+          </LineChart>
         </ResponsiveContainer>
-      )}
+      </div>
+    );
+  }
+
+  // Default: horizontal bar chart
+  return (
+    <div style={wrapStyle}>
+      {chartHeader}
+      <ResponsiveContainer width="100%" height={Math.max(160, data.length * 36)}>
+        <BarChart data={data} layout="vertical" margin={{ left: 8, right: 28, top: 4, bottom: 4 }}>
+          <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
+          <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
+          <Tooltip formatter={(v: number) => [fmt(v), spec.unit ?? 'value']} />
+          <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+            {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
