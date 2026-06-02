@@ -73,6 +73,12 @@ export default function App() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [activePage, setActivePage] = useState<Page>('dashboard');
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+
+  const navigateTo = (page: Page) => {
+    setActivePage(page);
+    if (page === 'dashboard') setDashboardRefreshKey(k => k + 1);
+  };
   const [reportSaving, setReportSaving] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
 
@@ -350,7 +356,7 @@ export default function App() {
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
         <TopBar
           activePage={activePage}
-          onPageChange={setActivePage}
+          onPageChange={navigateTo}
           onHamburger={() => setSidebarOpen(o => !o)}
         />
 
@@ -421,7 +427,7 @@ export default function App() {
                     />
 
                     {/* Active Quests widget */}
-                    <ActiveQuestsWidget onNavigate={() => setActivePage('quests')} />
+                    <ActiveQuestsWidget onNavigate={() => navigateTo('quests')} refreshKey={dashboardRefreshKey} />
 
                     {/* Needs attention — full width, prominent */}
                     <div className="dash-card">

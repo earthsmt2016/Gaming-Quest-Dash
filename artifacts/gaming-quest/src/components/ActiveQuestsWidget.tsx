@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Quest, fetchActiveQuests } from '../lib/api';
+
+const POLL_INTERVAL_MS = 60_000;
 
 const DIFFICULTY_COLORS: Record<string, { bg: string; text: string }> = {
   easy:      { bg: '#e8f5e9', text: '#2e7d32' },
@@ -17,18 +19,41 @@ const TYPE_ICONS: Record<string, string> = {
 
 interface ActiveQuestsWidgetProps {
   onNavigate: () => void;
+  refreshKey?: number;
 }
 
-export default function ActiveQuestsWidget({ onNavigate }: ActiveQuestsWidgetProps) {
+export default function ActiveQuestsWidget({ onNavigate, refreshKey = 0 }: ActiveQuestsWidgetProps) {
   const [quests, setQuests] = useState<Quest[]>([]);
   const [loading, setLoading] = useState(true);
+  const firstLoad = useRef(true);
 
   useEffect(() => {
-    fetchActiveQuests()
-      .then(q => setQuests(q.slice(0, 3)))
-      .catch(() => setQuests([]))
-      .finally(() => setLoading(false));
-  }, []);
+    let cancelled = false;
+
+    const load = () => {
+      if (!firstLoad.current) {
+        // subsequent fetches are silent (no loading spinner flicker)
+      } else {
+        setLoading(true);
+      }
+      fetchActiveQuests()
+        .then(q => { if (!cancelled) setQuests(q.slice(0, 3)); })
+        .catch(() => { if (!cancelled) setQuests([]); })
+        .finally(() => {
+          if (!cancelled) {
+            setLoading(false);
+            firstLoad.current = false;
+          }
+        });
+    };
+
+    load();
+    const timer = setInterval(load, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [refreshKey]);
 
   return (
     <div className="dash-card">
