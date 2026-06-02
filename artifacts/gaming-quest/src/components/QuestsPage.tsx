@@ -546,7 +546,7 @@ function QuestCard({
   onAddMiniLog?: (note: string) => Promise<void>;
   onDeleteMiniLog?: (logId: number) => Promise<void>;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [localProgress, setLocalProgress] = useState(quest.progress);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<1 | -1 | null>(null);
