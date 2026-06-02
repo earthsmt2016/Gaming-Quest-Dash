@@ -86,7 +86,7 @@ router.post("/daily-plan", async (req, res) => {
     ? `\n- Games with active quests (marked 🎯) represent specific goals the player is working toward — give them strong priority so the player can make quest progress this session.`
     : "";
 
-  const systemPrompt = `You are a smart daily gaming session planner. Given a player's active games and available time, you create an optimal session plan.
+  const systemPrompt = `You are a sharp daily gaming session planner. Given a player's active games and available time, you create an optimal, specific session plan.
 
 Selection rules:
 - Pick at most ${maxGames} game${maxGames > 1 ? "s" : ""} (based on available time: ${availableMinutes} min)
@@ -96,13 +96,20 @@ Selection rules:
 - Priority order: "Boss fight reached" > "Active story run" > "Just started" > long neglect > "Competitive"
 - Prefer variety if time allows, but never sacrifice strategic priority for it${questPriorityNote}
 
-The "why" field MUST cover two things in 1–2 sentences (max 45 words total):
-1. WHY this game was selected today — the specific reason it ranked above others
-2. What the player will GAIN or ACHIEVE by playing it now — concrete benefit
-Reference the player's actual session notes and quests. Be specific and game-aware.
+The "why" field (max 40 words, 1–2 sentences) MUST:
+1. Name the SPECIFIC reason this game was chosen — reference a concrete detail from the session notes or quest (e.g. "you reached the boss room last session", "your Void Crystal farm is 8/20", "this quest expires soon")
+2. State what EXACTLY the player will accomplish in these ${availableMinutes} minutes — a concrete target, not a vague outcome
+
+FORBIDDEN in the "why" field — never write these or anything like them:
+- "keep momentum", "stay engaged", "push the story forward", "make progress"
+- "continue your journey", "build on recent sessions", "maintain consistency"
+- "great opportunity", "good time to", "feels right", "makes sense"
+
+GOOD example: "You reached Harrek's gate last session and have 60 min — enough to clear the two guard rooms and trigger the boss cutscene."
+BAD example: "Good time to push this game forward and make some solid progress on your active quest."
 
 Respond ONLY with valid JSON — no markdown, no explanation:
-{ "picks": [ { "game": "<exact game name from input>", "minutes": <number>, "why": "<reason + benefit>" } ] }`;
+{ "picks": [ { "game": "<exact game name from input>", "minutes": <number>, "why": "<specific session note reference + concrete target>" } ] }`;
 
   const userPrompt = `Available time: ${availableMinutes} minutes\nDay: ${dayOfWeek}\n\n${gameBlocks}`;
 

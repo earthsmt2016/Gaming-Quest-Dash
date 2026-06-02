@@ -274,7 +274,7 @@ async function generateForGame(game: string, count: number = 2, forceDifficulty?
     .map((r: any) => `  ${r.title} [${r.type}, ${r.difficulty}, ${r.status}]`)
     .join('\n');
 
-  const systemPrompt = `You are a world-class AI quest designer who deeply understands this specific player. Use Chain-of-Thought reasoning to generate highly personalized, thoughtful quests.
+  const systemPrompt = `You are a world-class AI quest designer who deeply understands this specific player. Use Chain-of-Thought reasoning to generate highly personalized, sharp, actionable quests.
 
 PLAYER PROFILE:
 - Preferred difficulty: ${profile.preferred_difficulty}
@@ -290,32 +290,50 @@ Difficulties: "easy" (30 min), "medium" (1–2 hours), "hard" (multiple sessions
 xp_reward: easy=50, medium=100, hard=200, legendary=500.
 target: total progress units needed (e.g. 100 for percentage-based, 5 for "defeat 5 bosses").
 
+SPECIFICITY RULES — THIS IS CRITICAL:
+Every quest title and description MUST name at least one concrete game element: an enemy, area, mechanic, item, ability, or objective.
+
+FORBIDDEN PHRASES — never use these or anything like them:
+- "make progress on", "push the objective forward", "keep momentum", "work toward", "advance your journey"
+- "engage with", "explore opportunities", "tackle challenges", "meaningful progress"
+- "next phase", "main storyline", "complete objectives", "take on the next challenge"
+
+TITLE FORMAT: Action verb + specific target
+- BAD: "Story Momentum – advance the narrative"
+- GOOD: "Defeat Commander Harrek in the Siege of Irongate"
+- BAD: "Grind for Resources"
+- GOOD: "Farm 20 Stormite Crystals from the Eastern Cavern"
+
+DESCRIPTION FORMAT: 1-2 sentences — what specifically to do + what "done" looks like
+- BAD: "Push through the next section and make partial progress toward the boss."
+- GOOD: "Fight through the substation corridor and defeat the Sentinel guarding the blast door. Quest done when you pick up the Ignition Core from its remains."
+
 Think step-by-step before generating:
-1. What has this player been doing in ${game} lately?
+1. What has this player been doing in ${game} lately? What specific thing happened in their last session?
 2. What quest types match their preferences and should be avoided?
 3. What difficulty fits their session length (${profile.avg_session_minutes}m avg) and recent performance?
-4. What would genuinely excite THIS player right now — not a generic quest, but one tailored to their history?
+4. What is the most logical and exciting NEXT thing for this player — based on their actual session notes?
 
 Then generate exactly ${count} quest(s). Each must include a "reasoning" field.
 ${forceDifficulty ? `\nCRITICAL: You MUST generate ALL quests at "${forceDifficulty}" difficulty. Do not deviate from this regardless of player profile.\n` : ''}
-Rules:
-- Reference specific details from their session notes
+Additional rules:
+- Reference specific details from their session notes in both description and reasoning
 - Avoid repeating past quests listed in history
 - Lean toward preferred types; avoid avoided types unless there's a strong reason
-- Be creative and inspiring — make the player feel understood
+- The reasoning field must explain WHY this quest for THIS player RIGHT NOW — cite specific session notes
 
 Respond ONLY with valid JSON (no markdown):
 {
   "quests": [
     {
-      "title": "<quest title>",
-      "description": "<1-2 sentences: flavour text + what to do>",
+      "title": "<verb + specific target, no vague words>",
+      "description": "<1-2 sentences: specific action + clear done-state>",
       "type": "challenge|exploration|grind|skill",
       "difficulty": "easy|medium|hard|legendary",
       "xp_reward": <number>,
       "estimated_minutes": <number>,
       "target": <number>,
-      "reasoning": "<2-3 sentences explaining exactly why this quest was chosen for this specific player>"
+      "reasoning": "<2-3 sentences citing specific session notes and explaining why this quest fits this player now>"
     }
   ]
 }`;
@@ -617,18 +635,40 @@ router.post("/quests/:id/sub-quest", async (req, res) => {
     if (!questResult.rows.length) { res.status(404).json({ error: "Quest not found" }); return; }
     const quest = questResult.rows[0];
 
-    const systemPrompt = `You are a gaming quest designer. Given a quest that needs more time than the player has, create a concrete mini-goal they can fully accomplish in their available session time. It must be a meaningful step toward the full quest — not vague filler.
+    // Fetch recent mini-logs for this quest — gives the AI real context on current progress
+    const miniLogsRes = await pool.query(
+      `SELECT note FROM quest_mini_logs WHERE quest_id=$1 ORDER BY created_at DESC LIMIT 6`,
+      [id]
+    );
+    const miniLogLines = miniLogsRes.rows.map((r: any) => `  • ${r.note}`).join('\n');
+
+    const systemPrompt = `You are a laser-focused gaming session planner. The player has less time than the quest needs — your job is to give them ONE sharp, achievable mini-goal for today's session.
+
+RULES FOR THE TITLE (max 8 words):
+- Start with an action verb (Reach, Defeat, Unlock, Collect, Clear, Farm, Complete, Find…)
+- Name the SPECIFIC thing: enemy, location, item, mechanic — not a vague concept
+- BAD: "Make progress on the main quest" | "Push story forward" | "Keep momentum"
+- GOOD: "Defeat the Golem boss in Stonekeep Ruins" | "Farm 15 Void Crystals from Shadow Creeps" | "Reach the third checkpoint in Ember Valley"
+
+RULES FOR THE GOAL (max 35 words):
+- State exactly what to do AND what "done" looks like
+- Reference specific in-game elements (enemy names, area names, item names, ability names) where known
+- BAD: "Make meaningful progress toward completing the quest objectives"
+- GOOD: "Kill the Ashen Sentinel at the dungeon entrance. Done when the gate behind it opens and you get the Ember Key."
+
+If the player has mini-logs (recent progress notes), the mini-goal MUST be the logical NEXT step — never repeat something already done.
 
 Respond ONLY with valid JSON, no markdown:
-{ "title": "<action title, max 8 words>", "goal": "<exactly what to do and what counts as done, max 30 words>" }`;
+{ "title": "<verb + specific target>", "goal": "<exact action + clear done-state>" }`;
 
     const userPrompt = `Game: ${quest.game}
 Full quest: "${quest.title}"
 Description: ${quest.description ?? 'N/A'}
-Full quest needs: ${quest.estimated_minutes} minutes
+Full quest estimated time: ${quest.estimated_minutes} minutes
 Available today: ${availableMinutes} minutes
+${miniLogLines ? `\nRecent progress notes (mini-logs):\n${miniLogLines}` : '\nNo progress notes yet — this is the first session on this quest.'}
 
-Generate a mini-goal achievable in ${availableMinutes} minutes that makes real progress toward this quest.`;
+Generate ONE mini-goal achievable in ${availableMinutes} minutes that makes a concrete, specific step forward.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.4",
