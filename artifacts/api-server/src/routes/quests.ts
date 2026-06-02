@@ -698,6 +698,19 @@ router.post("/quests/:id/reject", async (req, res) => {
   }
 });
 
+// ─── DELETE /api/quests/:id ────────────────────────────────────────────────
+router.delete("/quests/:id", async (req, res) => {
+  try {
+    await ensureTables();
+    const id = parseInt(req.params.id, 10);
+    const r = await pool.query(`DELETE FROM quests WHERE id=$1 RETURNING id`, [id]);
+    if (!r.rows.length) { res.status(404).json({ error: "Quest not found" }); return; }
+    res.json({ ok: true, id });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete quest", detail: String(err) });
+  }
+});
+
 // ─── PATCH /api/quests/:id/progress ───────────────────────────────────────
 router.patch("/quests/:id/progress", async (req, res) => {
   try {

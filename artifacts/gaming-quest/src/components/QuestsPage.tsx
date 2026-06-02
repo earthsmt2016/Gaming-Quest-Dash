@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Quest, QuestLog, QuestGuide, QuestVideoLink, QuestMiniLog, YouTubeVideo, UserProfile,
   fetchSuggestedQuests, fetchActiveQuests, fetchQuestLogs,
-  generateQuests, fetchGames, acceptQuest, rejectQuest,
+  generateQuests, fetchGames, acceptQuest, rejectQuest, deleteQuest,
   updateQuestProgress, completeQuest, fetchQuestGuide,
   searchYouTubeGuides, addVideoToGuide, removeVideoFromGuide,
   submitQuestFeedback, fetchUserProfile, fetchMiniLogs, addMiniLog, deleteMiniLog,
@@ -532,12 +532,13 @@ function CompleteModal({ quest, onClose, onCompleted }: {
 // ─── Quest Card ──────────────────────────────────────────────────────────────
 
 function QuestCard({
-  quest, onAccept, onReject, onProgress, onComplete, onGuide, onFeedback,
+  quest, onAccept, onReject, onDelete, onProgress, onComplete, onGuide, onFeedback,
   miniLogs, onAddMiniLog, onDeleteMiniLog,
 }: {
   quest: Quest;
   onAccept?: () => void;
   onReject?: () => void;
+  onDelete?: () => void;
   onProgress?: (v: number) => void;
   onComplete?: () => void;
   onGuide?: () => void;
@@ -730,6 +731,11 @@ function QuestCard({
             {onReject && (
               <button className="btn" onClick={onReject} style={{ fontSize: '12px', padding: '7px 12px', color: 'var(--muted)' }}>
                 ✕ Dismiss
+              </button>
+            )}
+            {onDelete && (
+              <button className="btn" onClick={onDelete} style={{ fontSize: '12px', padding: '7px 12px', color: '#c62828', marginLeft: 'auto' }}>
+                🗑 Remove
               </button>
             )}
           </div>
@@ -945,6 +951,12 @@ export default function QuestsPage() {
     setSuggested(prev => prev.filter(q => q.id !== quest.id));
     setActive(prev => [{ ...quest, status: 'active', accepted_at: new Date().toISOString() }, ...prev]);
     setTab('active');
+  };
+
+  const handleDelete = async (quest: Quest) => {
+    setSuggested(prev => prev.filter(q => q.id !== quest.id));
+    setActive(prev => prev.filter(q => q.id !== quest.id));
+    await deleteQuest(quest.id).catch(() => {});
   };
 
   const handleReject = async (quest: Quest) => {
@@ -1219,6 +1231,7 @@ export default function QuestsPage() {
                       key={`inbox-${q.id}`} quest={q}
                       onAccept={() => handleAccept(q)}
                       onReject={() => handleReject(q)}
+                      onDelete={() => handleDelete(q)}
                       onGuide={() => setGuideQuest(q)}
                       onFeedback={() => fetchUserProfile().then(p => p && setProfile(p))}
                     />
@@ -1253,6 +1266,7 @@ export default function QuestsPage() {
                       key={`active-${q.id}`} quest={q}
                       onProgress={v => handleProgress(q, v)}
                       onComplete={() => setCompleteQuest_(q)}
+                      onDelete={() => handleDelete(q)}
                       onGuide={() => setGuideQuest(q)}
                       onFeedback={() => fetchUserProfile().then(p => p && setProfile(p))}
                       miniLogs={miniLogs[q.id] ?? []}
