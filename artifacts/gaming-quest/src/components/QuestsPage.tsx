@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Quest, QuestLog, QuestGuide, QuestVideoLink, QuestMiniLog, YouTubeVideo, UserProfile,
-  fetchSuggestedQuests, fetchActiveQuests, fetchQuestLogs,
   generateQuests, fetchGames, acceptQuest, rejectQuest, deleteQuest,
   updateQuestProgress, completeQuest, fetchQuestGuide,
   searchYouTubeGuides, addVideoToGuide, removeVideoFromGuide,
   submitQuestFeedback, fetchUserProfile, fetchMiniLogs, addMiniLog, deleteMiniLog,
 } from '../lib/api';
+import { useQuestsContext } from '../context/QuestsContext';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -869,11 +869,7 @@ const DIFFICULTY_OPTIONS: { label: string; value: string }[] = [
 ];
 
 export default function QuestsPage() {
-  const [suggested, setSuggested] = useState<Quest[]>([]);
-  const [active, setActive] = useState<Quest[]>([]);
-  const [logs, setLogs] = useState<QuestLog[]>([]);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { active, suggested, logs, profile, loading, refresh, setActive, setSuggested, setLogs, setProfile } = useQuestsContext();
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState('');
   const [guideQuest, setGuideQuest] = useState<Quest | null>(null);
@@ -885,32 +881,19 @@ export default function QuestsPage() {
   const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
 
-  const reload = useCallback(async () => {
-    const [s, a, l, p] = await Promise.all([
-      fetchSuggestedQuests(),
-      fetchActiveQuests(),
-      fetchQuestLogs(),
-      fetchUserProfile(),
-    ]);
-    setSuggested(s);
-    setActive(a);
-    setLogs(l);
-    setProfile(p);
-    if (a.length) {
-      const mlEntries = await Promise.all(
-        a.map(q => fetchMiniLogs(q.id).then(ml => [q.id, ml] as const))
-      );
-      setMiniLogs(Object.fromEntries(mlEntries));
-    } else {
-      setMiniLogs({});
-    }
+  // On mount: refresh shared context data and load mini-logs for active quests
+  useEffect(() => {
+    refresh();
+    fetchGames().then(setAvailableGames);
   }, []);
 
+  // Sync mini-logs whenever active quests change
   useEffect(() => {
-    setLoading(true);
-    reload().finally(() => setLoading(false));
-    fetchGames().then(setAvailableGames);
-  }, [reload]);
+    if (!active.length) { setMiniLogs({}); return; }
+    Promise.all(
+      active.map(q => fetchMiniLogs(q.id).then(ml => [q.id, ml] as const))
+    ).then(entries => setMiniLogs(Object.fromEntries(entries)));
+  }, [active.map(q => q.id).join(',')]);
 
   const toggleGame = (game: string) => {
     setSelectedGames(prev => {
@@ -927,7 +910,7 @@ export default function QuestsPage() {
     try {
       const gamesArr = selectedGames.size > 0 ? Array.from(selectedGames) : undefined;
       await generateQuests(undefined, undefined, selectedDifficulty || undefined, gamesArr);
-      await reload();
+      await refresh();
       setTab('inbox');
     } catch (e) {
       setGenError(e instanceof Error ? e.message : 'Generation failed');
@@ -982,7 +965,7 @@ export default function QuestsPage() {
     setActive(prev => prev.filter(q => q.id !== log.quest_id));
     setLogs(prev => [log, ...prev]);
     setTab('logs');
-  }, []);
+  }, [setActive, setLogs]);
 
   const totalXp = logs.reduce((s, l) => s + l.xp_earned, 0);
 

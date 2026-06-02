@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Quest, fetchActiveQuests, completeQuest } from '../lib/api';
+import React, { useState } from 'react';
+import { Quest, completeQuest } from '../lib/api';
+import { useQuestsContext } from '../context/QuestsContext';
 
-const POLL_INTERVAL_MS = 60_000;
 const DONE_DISPLAY_MS = 1400;
 
 const DIFFICULTY_COLORS: Record<string, { bg: string; text: string }> = {
@@ -20,42 +20,13 @@ const TYPE_ICONS: Record<string, string> = {
 
 interface ActiveQuestsWidgetProps {
   onNavigate: () => void;
-  refreshKey?: number;
 }
 
-export default function ActiveQuestsWidget({ onNavigate, refreshKey = 0 }: ActiveQuestsWidgetProps) {
-  const [quests, setQuests] = useState<Quest[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function ActiveQuestsWidget({ onNavigate }: ActiveQuestsWidgetProps) {
+  const { active, loading, setActive } = useQuestsContext();
   const [completing, setCompleting] = useState<Record<number, 'pending' | 'done'>>({});
-  const firstLoad = useRef(true);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = () => {
-      if (!firstLoad.current) {
-        // subsequent fetches are silent (no loading spinner flicker)
-      } else {
-        setLoading(true);
-      }
-      fetchActiveQuests()
-        .then(q => { if (!cancelled) setQuests(q.slice(0, 3)); })
-        .catch(() => { if (!cancelled) setQuests([]); })
-        .finally(() => {
-          if (!cancelled) {
-            setLoading(false);
-            firstLoad.current = false;
-          }
-        });
-    };
-
-    load();
-    const timer = setInterval(load, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [refreshKey]);
+  const quests: Quest[] = active.slice(0, 3);
 
   const handleComplete = async (e: React.MouseEvent, questId: number) => {
     e.stopPropagation();
@@ -66,7 +37,7 @@ export default function ActiveQuestsWidget({ onNavigate, refreshKey = 0 }: Activ
       await completeQuest(questId);
       setCompleting(prev => ({ ...prev, [questId]: 'done' }));
       setTimeout(() => {
-        setQuests(prev => prev.filter(q => q.id !== questId));
+        setActive(prev => prev.filter(q => q.id !== questId));
         setCompleting(prev => {
           const next = { ...prev };
           delete next[questId];

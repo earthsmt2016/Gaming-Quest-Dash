@@ -13,6 +13,7 @@ import ActiveQuestsWidget from './components/ActiveQuestsWidget';
 import CompanionChat from './components/CompanionChat';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
+import { QuestsProvider } from './context/QuestsContext';
 import {
   LogEntry,
   ActionType,
@@ -73,11 +74,9 @@ export default function App() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [activePage, setActivePage] = useState<Page>('dashboard');
-  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
 
   const navigateTo = (page: Page) => {
     setActivePage(page);
-    if (page === 'dashboard') setDashboardRefreshKey(k => k + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const [reportSaving, setReportSaving] = useState(false);
@@ -324,6 +323,7 @@ export default function App() {
   }, [sidebarOpen]);
 
   return (
+    <QuestsProvider>
     <>
       <style>{`
         @media (min-width: 1100px) {
@@ -428,7 +428,7 @@ export default function App() {
                     />
 
                     {/* Active Quests widget */}
-                    <ActiveQuestsWidget onNavigate={() => navigateTo('quests')} refreshKey={dashboardRefreshKey} />
+                    <ActiveQuestsWidget onNavigate={() => navigateTo('quests')} />
 
                     {/* Needs attention — full width, prominent */}
                     <div className="dash-card">
@@ -581,6 +581,7 @@ export default function App() {
         </div>
       </div>
     </>
+    </QuestsProvider>
   );
 }
 
