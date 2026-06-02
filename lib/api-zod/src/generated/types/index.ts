@@ -12,3 +12,6 @@ export * from './newLogEntry';
 export * from './okResult';
 export * from './quest';
 export * from './questProgressUpdate';
+export * from './uploadUrlRequest';
+export * from './uploadUrlResponse';
+export * from './uploadUrlResponseMetadata';
