@@ -6,6 +6,40 @@ import {
 } from 'recharts';
 import { sendCompanionMessage, fetchCompanionHistory, clearCompanionHistory, fetchGames, CompanionMessage } from '../lib/api';
 
+// ─── Download helpers ─────────────────────────────────────────────────────────
+
+function langToExt(lang: string): string {
+  const map: Record<string, string> = {
+    python: 'py', py: 'py',
+    javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts',
+    bash: 'sh', shell: 'sh', sh: 'sh',
+    autohotkey: 'ahk', ahk: 'ahk',
+    lua: 'lua', ruby: 'rb', go: 'go', rust: 'rs', c: 'c', cpp: 'cpp',
+  };
+  return map[lang.toLowerCase()] ?? 'txt';
+}
+
+function downloadBlob(filename: string, content: string, mime = 'text/plain') {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadChartSvg(container: HTMLElement | null, title: string) {
+  const svg = container?.querySelector('svg');
+  if (!svg) return;
+  const serialized = new XMLSerializer().serializeToString(svg);
+  const withMeta = `<?xml version="1.0" encoding="utf-8"?>\n${serialized}`;
+  const name = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'chart';
+  downloadBlob(`${name}.svg`, withMeta, 'image/svg+xml');
+}
+
 const QUICK_ACTIONS = [
   { label: '📊 Show my game breakdown', message: 'Show me a chart of how my time is split across games this month.' },
   { label: '🎮 What should I play today?', message: 'Based on my history and active quests, what should I play today and for how long?' },
@@ -80,6 +114,7 @@ function parseContentBlocks(text: string): Array<{ kind: 'text' | 'chart'; conte
 }
 
 function InlineChart({ spec }: { spec: ChartSpec }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const data = spec.labels.map((l, i) => ({ name: l, value: Number(spec.values[i] ?? 0) }));
   const fmt = (v: number) =>
     spec.unit === 'minutes' ? `${Math.round((v / 60) * 10) / 10}h`
@@ -87,8 +122,12 @@ function InlineChart({ spec }: { spec: ChartSpec }) {
     : `${v}${spec.unit ? ' ' + spec.unit : ''}`;
 
   const chartHeader = (
-    <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '10px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-      {spec.title}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+      <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{spec.title}</span>
+      <button
+        onClick={() => downloadChartSvg(containerRef.current, spec.title)}
+        style={{ background: 'none', border: '1px solid var(--line)', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', padding: '2px 8px', color: 'var(--muted)', fontFamily: 'inherit' }}
+      >⬇ SVG</button>
     </div>
   );
 
@@ -100,7 +139,7 @@ function InlineChart({ spec }: { spec: ChartSpec }) {
   if (spec.type === 'pie' || spec.type === 'donut') {
     const inner = spec.type === 'donut' ? 48 : 0;
     return (
-      <div style={wrapStyle}>
+      <div ref={containerRef} style={wrapStyle}>
         {chartHeader}
         <ResponsiveContainer width="100%" height={240}>
           <PieChart>
@@ -125,7 +164,7 @@ function InlineChart({ spec }: { spec: ChartSpec }) {
 
   if (spec.type === 'line') {
     return (
-      <div style={wrapStyle}>
+      <div ref={containerRef} style={wrapStyle}>
         {chartHeader}
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={data} margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
@@ -142,7 +181,7 @@ function InlineChart({ spec }: { spec: ChartSpec }) {
 
   // Default: horizontal bar chart
   return (
-    <div style={wrapStyle}>
+    <div ref={containerRef} style={wrapStyle}>
       {chartHeader}
       <ResponsiveContainer width="100%" height={Math.max(160, data.length * 36)}>
         <BarChart data={data} layout="vertical" margin={{ left: 8, right: 28, top: 4, bottom: 4 }}>
@@ -208,11 +247,21 @@ function MessageBubble({ msg, onCopy }: { msg: CompanionMessage; onCopy: (text: 
         const codeLines: string[] = [];
         i++;
         while (i < lines.length && !lines[i].trim().startsWith('```')) { codeLines.push(lines[i]); i++; }
+        const codeStr = codeLines.join('\n');
+        const ext = lang ? langToExt(lang) : 'txt';
         elements.push(
-          <pre key={k++} style={{ background: '#1e1e2e', color: '#cdd6f4', borderRadius: '6px', padding: '10px 12px', fontSize: '12px', overflowX: 'auto', margin: '6px 0', fontFamily: 'monospace', lineHeight: 1.5 }}>
-            {lang && <div style={{ fontSize: '10px', color: '#6c7086', marginBottom: '6px', textTransform: 'uppercase' }}>{lang}</div>}
-            {codeLines.join('\n')}
-          </pre>
+          <div key={k++} style={{ margin: '6px 0', borderRadius: '8px', overflow: 'hidden', border: '1px solid #313244' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#181825', padding: '6px 12px' }}>
+              <span style={{ fontSize: '10px', color: '#6c7086', textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: '0.05em' }}>{lang || 'code'}</span>
+              <button
+                onClick={() => downloadBlob(`script.${ext}`, codeStr)}
+                style={{ background: 'none', border: '1px solid #45475a', borderRadius: '4px', color: '#cdd6f4', cursor: 'pointer', fontSize: '10px', padding: '2px 8px', fontFamily: 'inherit' }}
+              >⬇ Download</button>
+            </div>
+            <pre style={{ background: '#1e1e2e', color: '#cdd6f4', padding: '10px 12px', fontSize: '12px', overflowX: 'auto', margin: 0, fontFamily: 'monospace', lineHeight: 1.5 }}>
+              {codeStr}
+            </pre>
+          </div>
         );
         i++; continue;
       }

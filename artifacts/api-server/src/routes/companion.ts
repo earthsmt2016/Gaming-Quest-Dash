@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import * as fs from "fs/promises";
+import * as os from "os";
+import * as path from "path";
+
+const execFileAsync = promisify(execFile);
 
 const router = Router();
 
@@ -76,6 +83,21 @@ const TOOLS: any[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'execute_script',
+      description: 'Write and execute a JavaScript or Python script on the server. Use for calculations, data analysis, generating formatted output, or testing automation logic. Always show the code to the player before or after running it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          language: { type: 'string', enum: ['javascript', 'python'], description: 'Programming language to use.' },
+          code: { type: 'string', description: 'The complete script code to run.' },
+        },
+        required: ['language', 'code'],
+      },
+    },
+  },
 ];
 
 async function executeTool(name: string, args: Record<string, any>): Promise<string> {
@@ -127,6 +149,36 @@ async function executeTool(name: string, args: Record<string, any>): Promise<str
         gp
       );
       return JSON.stringify({ sessions: r.rows });
+    }
+
+    if (name === 'execute_script') {
+      const language = String(args.language ?? 'javascript');
+      const code = String(args.code ?? '');
+      if (!code.trim()) return JSON.stringify({ error: 'No code provided' });
+
+      const ext = language === 'python' ? '.py' : '.js';
+      const tmpFile = path.join(os.tmpdir(), `companion_${Date.now()}${ext}`);
+      try {
+        await fs.writeFile(tmpFile, code, 'utf8');
+        const binary = language === 'python' ? 'python3' : 'node';
+        const { stdout, stderr } = await execFileAsync(binary, [tmpFile], {
+          timeout: 12000,
+          maxBuffer: 1024 * 128,
+        });
+        return JSON.stringify({
+          success: true,
+          output: stdout.slice(0, 3000) || '(no output)',
+          warnings: stderr.slice(0, 500) || undefined,
+        });
+      } catch (err: any) {
+        return JSON.stringify({
+          success: false,
+          error: (err.stderr?.toString() || err.message || 'Execution failed').slice(0, 1000),
+          output: err.stdout?.toString().slice(0, 500),
+        });
+      } finally {
+        fs.unlink(tmpFile).catch(() => {});
+      }
     }
 
     return JSON.stringify({ error: `Unknown tool: ${name}` });
@@ -219,6 +271,12 @@ Rules:
 - unit examples: "minutes", "sessions", "XP", "hours" — "minutes" values will be auto-converted to hours in the UI.
 - You can mix chart + text in one message. Put the chart on its own line between paragraphs.
 - Only produce a chart when you have real data from a tool call. Never invent chart data.
+
+SCRIPT EXECUTION: You can write AND run scripts using the execute_script tool.
+- Use it for: calculations on player data, generating reports, testing automation scripts
+- Supported: javascript, python
+- Always include the code in a fenced code block in your reply so the player can download it
+- After running, summarise the output clearly — don't just paste raw numbers
 
 Rules:
 - Always reference the player's actual game history when relevant
