@@ -223,9 +223,33 @@ function MessageBubble({ msg, onCopy }: { msg: CompanionMessage; onCopy: (text: 
         continue;
       }
       if (line.match(/^\d+\.\s/)) {
-        const items: string[] = [];
-        while (i < lines.length && lines[i].match(/^\d+\.\s/)) { items.push(lines[i].replace(/^\d+\.\s/, '')); i++; }
-        elements.push(<ol key={k++} style={{ margin: '4px 0', paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '3px' }}>{items.map((item, ii) => <li key={ii} style={{ fontSize: '14px', lineHeight: 1.5 }}>{formatInline(item)}</li>)}</ol>);
+        const items: Array<{ header: string; bullets: string[] }> = [];
+        while (i < lines.length && lines[i].match(/^\d+\.\s/)) {
+          const header = lines[i].replace(/^\d+\.\s/, '');
+          i++;
+          const bullets: string[] = [];
+          while (i < lines.length && lines[i].match(/^[-*•]\s/)) {
+            bullets.push(lines[i].replace(/^[-*•]\s/, ''));
+            i++;
+          }
+          // skip blank separator lines between numbered items
+          while (i < lines.length && !lines[i].trim() && i + 1 < lines.length && lines[i + 1].match(/^\d+\.\s/)) { i++; }
+          items.push({ header, bullets });
+        }
+        elements.push(
+          <ol key={k++} style={{ margin: '4px 0', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {items.map((item, ii) => (
+              <li key={ii} style={{ fontSize: '14px', lineHeight: 1.5 }}>
+                {formatInline(item.header)}
+                {item.bullets.length > 0 && (
+                  <ul style={{ margin: '4px 0 0', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {item.bullets.map((b, bi) => <li key={bi} style={{ fontSize: '13px', lineHeight: 1.5, listStyleType: 'disc' }}>{formatInline(b)}</li>)}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ol>
+        );
         continue;
       }
       if (!line.trim()) { elements.push(<div key={k++} style={{ height: '6px' }} />); i++; continue; }
