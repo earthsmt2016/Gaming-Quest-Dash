@@ -171,6 +171,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
     // Fetch active quests to give the AI quest context (non-blocking parallel)
     const activeQuestsPromise = fetchActiveQuests().catch(() => [] as Quest[]);
 
+    let planGameNames: string[] = [];
     try {
       const rawActiveQuests = await activeQuestsPromise;
       const activeQuestData = rawActiveQuests.map(q => ({
@@ -180,16 +181,18 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
       const picks = await fetchDailyPlan(mins, dayOfWeek, activeGames, activeQuestData);
       if (picks.length > 0) {
         setPlan({ status: 'ai', mins, picks });
+        planGameNames = picks.map(p => p.game);
       } else {
         throw new Error('empty');
       }
     } catch {
       const fallback = computeRecommendations(mins, logs, manualCompletions, paused);
       setPlan({ status: 'fallback', mins, picks: fallback });
+      planGameNames = (fallback as any[]).map((p: any) => p.game);
     }
 
-    // Fetch quest recommendations for this session length (non-blocking)
-    fetchQuestRecommendations(mins).then(r => setQuestRecs(r)).catch(() => {});
+    // Fetch quest recommendations filtered to the plan's games
+    fetchQuestRecommendations(mins, planGameNames).then(r => setQuestRecs(r)).catch(() => {});
   };
 
   const handleReset = () => {

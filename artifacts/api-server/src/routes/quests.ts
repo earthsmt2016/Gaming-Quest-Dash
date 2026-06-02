@@ -383,15 +383,28 @@ router.get("/quests/recommendations", async (req, res) => {
     await ensureTables();
     const minutes = parseInt(req.query.minutes as string, 10) || 60;
 
+    const gamesParam = req.query.games as string | undefined;
+    const games = gamesParam ? gamesParam.split('|').map(g => g.trim()).filter(Boolean) : null;
+
     const [fittingRes, partialRes] = await Promise.all([
-      pool.query(
-        `SELECT * FROM quests WHERE status IN ('active','suggested') AND estimated_minutes <= $1 ORDER BY status DESC, estimated_minutes DESC LIMIT 10`,
-        [minutes]
-      ),
-      pool.query(
-        `SELECT * FROM quests WHERE status IN ('active','suggested') AND estimated_minutes > $1 ORDER BY status DESC, accepted_at DESC LIMIT 5`,
-        [minutes]
-      ),
+      games && games.length > 0
+        ? pool.query(
+            `SELECT * FROM quests WHERE status IN ('active','suggested') AND estimated_minutes <= $1 AND game = ANY($2) ORDER BY status DESC, estimated_minutes DESC`,
+            [minutes, games]
+          )
+        : pool.query(
+            `SELECT * FROM quests WHERE status IN ('active','suggested') AND estimated_minutes <= $1 ORDER BY status DESC, estimated_minutes DESC LIMIT 10`,
+            [minutes]
+          ),
+      games && games.length > 0
+        ? pool.query(
+            `SELECT * FROM quests WHERE status IN ('active','suggested') AND estimated_minutes > $1 AND game = ANY($2) ORDER BY status DESC, estimated_minutes DESC`,
+            [minutes, games]
+          )
+        : pool.query(
+            `SELECT * FROM quests WHERE status IN ('active','suggested') AND estimated_minutes > $1 ORDER BY status DESC, accepted_at DESC LIMIT 5`,
+            [minutes]
+          ),
     ]);
 
     res.json({ fitting: fittingRes.rows, partial: partialRes.rows });

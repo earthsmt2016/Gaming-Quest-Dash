@@ -494,9 +494,11 @@ export async function deleteMiniLog(questId: number, logId: number): Promise<voi
   await fetch(`${BASE}/quests/${questId}/mini-logs/${logId}`, { method: 'DELETE' });
 }
 
-export async function fetchQuestRecommendations(minutes: number): Promise<{ fitting: Quest[]; partial: Quest[] }> {
+export async function fetchQuestRecommendations(minutes: number, games?: string[]): Promise<{ fitting: Quest[]; partial: Quest[] }> {
   try {
-    const res = await fetch(`${BASE}/quests/recommendations?minutes=${minutes}`);
+    let url = `${BASE}/quests/recommendations?minutes=${minutes}`;
+    if (games && games.length > 0) url += `&games=${encodeURIComponent(games.join('|'))}`;
+    const res = await fetch(url);
     if (!res.ok) return { fitting: [], partial: [] };
     return res.json();
   } catch { return { fitting: [], partial: [] }; }
