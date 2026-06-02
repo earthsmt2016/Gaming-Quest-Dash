@@ -319,6 +319,7 @@ export default function CompanionChat() {
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastAiMsgRef = useRef<HTMLDivElement>(null);
 
   // Fetch games list once
   useEffect(() => {
@@ -336,7 +337,13 @@ export default function CompanionChat() {
 
   useEffect(() => {
     if (!open || !messagesRef.current) return;
-    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    const last = messages[messages.length - 1];
+    if (last?.role === 'assistant' && lastAiMsgRef.current) {
+      // Scroll the container (not the page) so the top of the AI reply is visible
+      messagesRef.current.scrollTop = lastAiMsgRef.current.offsetTop - messagesRef.current.offsetTop;
+    } else {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    }
   }, [messages, open]);
 
   // Close game picker on outside click
@@ -494,11 +501,14 @@ export default function CompanionChat() {
                 </div>
               )}
 
-              {messages.map((msg) => (
-                <div key={msg.id}>
-                  <MessageBubble msg={msg} onCopy={handleCopy} />
-                </div>
-              ))}
+              {messages.map((msg, i) => {
+                const isLastAi = msg.role === 'assistant' && i === messages.length - 1;
+                return (
+                  <div key={msg.id} ref={isLastAi ? lastAiMsgRef : undefined}>
+                    <MessageBubble msg={msg} onCopy={handleCopy} />
+                  </div>
+                );
+              })}
 
               {loading && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
