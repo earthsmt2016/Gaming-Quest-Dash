@@ -400,17 +400,44 @@ router.get("/quests/recommendations", async (req, res) => {
   }
 });
 
+// ─── GET /api/games ────────────────────────────────────────────────────────
+router.get("/games", async (_req, res) => {
+  try {
+    await ensureTables();
+    const result = await pool.query(`SELECT DISTINCT game FROM log_entries ORDER BY game`);
+    res.json({ games: result.rows.map((r: any) => r.game) });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch games", detail: String(err) });
+  }
+});
+
 // ─── POST /api/quests/generate ─────────────────────────────────────────────
 router.post("/quests/generate", async (req, res) => {
   try {
     await ensureTables();
-    const { game, count = 2, difficulty } = req.body as { game?: string; count?: number; difficulty?: string };
+    const { game, games: gamesFilter, count = 2, difficulty } = req.body as {
+      game?: string;
+      games?: string[];
+      count?: number;
+      difficulty?: string;
+    };
 
-    if (game) {
-      await generateForGame(game, count, difficulty);
+    // Resolve which games to generate for
+    // Priority: games array > single game > all games from log_entries
+    const targetGames: string[] | null =
+      Array.isArray(gamesFilter) && gamesFilter.length > 0
+        ? gamesFilter
+        : game
+        ? [game]
+        : null;
+
+    if (targetGames) {
+      for (const g of targetGames) {
+        await generateForGame(g, count, difficulty);
+      }
       const result = await pool.query(
-        `SELECT * FROM quests WHERE game=$1 AND status='suggested' ORDER BY created_at DESC`,
-        [game]
+        `SELECT * FROM quests WHERE game = ANY($1::text[]) AND status='suggested' ORDER BY created_at DESC`,
+        [targetGames]
       );
       res.json({ quests: result.rows, count: result.rows.length });
     } else {

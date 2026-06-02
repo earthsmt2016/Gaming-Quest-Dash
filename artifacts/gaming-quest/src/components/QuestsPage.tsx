@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Quest, QuestLog, QuestGuide, QuestVideoLink, QuestMiniLog, YouTubeVideo, UserProfile,
   fetchSuggestedQuests, fetchActiveQuests, fetchQuestLogs,
-  generateQuests, acceptQuest, rejectQuest,
+  generateQuests, fetchGames, acceptQuest, rejectQuest,
   updateQuestProgress, completeQuest, fetchQuestGuide,
   searchYouTubeGuides, addVideoToGuide, removeVideoFromGuide,
   submitQuestFeedback, fetchUserProfile, fetchMiniLogs, addMiniLog, deleteMiniLog,
@@ -875,6 +875,9 @@ export default function QuestsPage() {
   const [tab, setTab] = useState<'inbox' | 'active' | 'logs'>('inbox');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('');
   const [miniLogs, setMiniLogs] = useState<Record<number, QuestMiniLog[]>>({});
+  const [availableGames, setAvailableGames] = useState<string[]>([]);
+  const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
+  const [gamePickerOpen, setGamePickerOpen] = useState(false);
 
   const reload = useCallback(async () => {
     const [s, a, l, p] = await Promise.all([
@@ -900,12 +903,24 @@ export default function QuestsPage() {
   useEffect(() => {
     setLoading(true);
     reload().finally(() => setLoading(false));
+    fetchGames().then(setAvailableGames);
   }, [reload]);
+
+  const toggleGame = (game: string) => {
+    setSelectedGames(prev => {
+      const next = new Set(prev);
+      if (next.has(game)) next.delete(game);
+      else next.add(game);
+      return next;
+    });
+  };
 
   const handleGenerate = async () => {
     setGenerating(true); setGenError('');
+    setGamePickerOpen(false);
     try {
-      await generateQuests(undefined, undefined, selectedDifficulty || undefined);
+      const gamesArr = selectedGames.size > 0 ? Array.from(selectedGames) : undefined;
+      await generateQuests(undefined, undefined, selectedDifficulty || undefined, gamesArr);
       await reload();
       setTab('inbox');
     } catch (e) {
@@ -1014,6 +1029,7 @@ export default function QuestsPage() {
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+            {/* Difficulty filter pills */}
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {DIFFICULTY_OPTIONS.map(opt => (
                 <button
@@ -1030,17 +1046,89 @@ export default function QuestsPage() {
                 >{opt.label}</button>
               ))}
             </div>
-            <button
-              className="btn primary"
-              onClick={handleGenerate}
-              disabled={generating}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              {generating ? '⏳ Generating…' : '✨ Generate New Quests'}
-            </button>
+
+            {/* Game filter toggle + generate */}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {availableGames.length > 0 && (
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setGamePickerOpen(o => !o)}
+                    style={{
+                      fontSize: '12px', padding: '6px 11px', borderRadius: 'var(--radius-sm)',
+                      border: `1px solid ${selectedGames.size > 0 ? 'var(--accent)' : 'var(--line)'}`,
+                      background: selectedGames.size > 0 ? '#f3e5f5' : 'var(--paper-2)',
+                      color: selectedGames.size > 0 ? '#6a1b9a' : 'var(--muted)',
+                      cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+                      display: 'flex', alignItems: 'center', gap: '5px',
+                    }}
+                  >
+                    🎮 {selectedGames.size > 0 ? `${selectedGames.size} game${selectedGames.size > 1 ? 's' : ''}` : 'All games'}
+                    <span style={{ fontSize: '10px', opacity: 0.7 }}>{gamePickerOpen ? '▲' : '▼'}</span>
+                  </button>
+                  {gamePickerOpen && (
+                    <div style={{
+                      position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50,
+                      background: 'var(--paper)', border: '1px solid var(--line)',
+                      borderRadius: 'var(--radius-sm)', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                      minWidth: '180px', maxWidth: '260px', padding: '8px 0',
+                    }}>
+                      <div style={{ padding: '4px 12px 8px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>Filter by game</span>
+                        {selectedGames.size > 0 && (
+                          <button
+                            onClick={() => setSelectedGames(new Set())}
+                            style={{ fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: 0 }}
+                          >Clear</button>
+                        )}
+                      </div>
+                      <div style={{ maxHeight: '220px', overflowY: 'auto', padding: '4px 0' }}>
+                        {availableGames.map(g => (
+                          <label
+                            key={g}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '8px',
+                              padding: '6px 12px', cursor: 'pointer', fontSize: '13px',
+                              background: selectedGames.has(g) ? 'var(--paper-2)' : 'transparent',
+                              transition: 'background 0.1s',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedGames.has(g)}
+                              onChange={() => toggleGame(g)}
+                              style={{ accentColor: 'var(--accent)', width: '14px', height: '14px', flexShrink: 0 }}
+                            />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {selectedGames.size === 0 && (
+                        <div style={{ padding: '4px 12px 2px', fontSize: '11px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                          None selected = generate for all games
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              <button
+                className="btn primary"
+                onClick={handleGenerate}
+                disabled={generating}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {generating ? '⏳ Generating…' : '✨ Generate New Quests'}
+              </button>
+            </div>
+
             {selectedDifficulty && (
               <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
                 Forcing <strong>{DIFFICULTY_OPTIONS.find(o => o.value === selectedDifficulty)?.label}</strong> difficulty
+              </div>
+            )}
+            {selectedGames.size > 0 && (
+              <div style={{ fontSize: '11px', color: '#6a1b9a' }}>
+                Targeting: <strong>{Array.from(selectedGames).join(', ')}</strong>
               </div>
             )}
             {genError && <div style={{ fontSize: '12px', color: '#c62828' }}>{genError}</div>}

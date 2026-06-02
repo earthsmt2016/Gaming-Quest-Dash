@@ -443,11 +443,18 @@ export async function fetchQuestLogs(): Promise<QuestLog[]> {
   return res.json();
 }
 
-export async function generateQuests(game?: string, count?: number, difficulty?: string): Promise<{ quests: Quest[]; count: number }> {
+export async function fetchGames(): Promise<string[]> {
+  const res = await fetch(`${BASE}/games`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.games ?? [];
+}
+
+export async function generateQuests(game?: string, count?: number, difficulty?: string, games?: string[]): Promise<{ quests: Quest[]; count: number }> {
   const res = await fetch(`${BASE}/quests/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ game, count, difficulty }),
+    body: JSON.stringify({ game, count, difficulty, games }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
