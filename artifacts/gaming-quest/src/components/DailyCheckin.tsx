@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useContext } from 'react';
 import { LogEntry, computeRecommendations, badgeFor } from '../lib/logParser';
-import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, fetchSubQuest, completeQuest, addMiniLog, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
+import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, fetchSubQuest, completeQuest, addMiniLog, triggerQuestRefresh, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
+import { QuestsContext } from '../context/QuestsContext';
 
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
@@ -114,6 +115,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   const [logNoteOpen, setLogNoteOpen] = useState<Set<number>>(new Set());
   const [completedInSession, setCompletedInSession] = useState<Set<number>>(new Set());
   const [subQuestDone, setSubQuestDone] = useState<Set<number>>(new Set());
+  const { refresh: refreshQuests } = useContext(QuestsContext);
 
   const handleSubQuest = useCallback(async (questId: number, mins: number) => {
     setSubQuests(prev => ({ ...prev, [questId]: { loading: true } }));
@@ -142,15 +144,41 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
     setLogNoteOpen(prev => { const next = new Set(prev); next.delete(questId); return next; });
   }, [logNotes]);
 
-  const handleCompleteQuest = useCallback(async (questId: number, mins: number) => {
+  const handleCompleteQuest = useCallback(async (questId: number, game: string, mins: number) => {
     await completeQuest(questId, mins).catch(() => {});
     setCompletedInSession(prev => new Set([...prev, questId]));
-  }, []);
 
-  const handleSubQuestDone = useCallback(async (questId: number, title: string) => {
+    // Refresh quest pool for this game, then reload recs + context after server finishes
+    triggerQuestRefresh([game]);
+    setTimeout(() => {
+      refreshQuests();
+      setPlan(prev => {
+        if (prev.status === 'ai' || prev.status === 'fallback') {
+          const planGames = (prev.picks as any[]).map((p: any) => p.game);
+          fetchQuestRecommendations((prev as any).mins, planGames).then(setQuestRecs).catch(() => {});
+        }
+        return prev;
+      });
+    }, 5000);
+  }, [refreshQuests]);
+
+  const handleSubQuestDone = useCallback(async (questId: number, game: string, title: string) => {
     await addMiniLog(questId, `✅ Sub-quest completed: ${title}`).catch(() => {});
     setSubQuestDone(prev => new Set([...prev, questId]));
-  }, []);
+
+    // Refresh quest pool for this game, then reload recs + context after server finishes
+    triggerQuestRefresh([game]);
+    setTimeout(() => {
+      refreshQuests();
+      setPlan(prev => {
+        if (prev.status === 'ai' || prev.status === 'fallback') {
+          const planGames = (prev.picks as any[]).map((p: any) => p.game);
+          fetchQuestRecommendations((prev as any).mins, planGames).then(setQuestRecs).catch(() => {});
+        }
+        return prev;
+      });
+    }, 5000);
+  }, [refreshQuests]);
 
   const handleSubmit = async () => {
     let mins: number;
@@ -600,7 +628,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                           ) : (
                             <div style={{ borderTop: '1px dashed #ce93d8', padding: '7px 12px', display: 'flex', gap: '6px', flexWrap: 'wrap' as const }}>
                               <button
-                                onClick={() => handleCompleteQuest(q.id, sessionMins)}
+                                onClick={() => handleCompleteQuest(q.id, q.game, sessionMins)}
                                 style={{ background: '#2e7d32', color: '#fff', border: 'none', borderRadius: '20px', padding: '4px 12px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'inherit' }}
                               >✓ Complete quest</button>
                               <button
@@ -678,7 +706,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                                 ) : (
                                   <div style={{ borderTop: '1px dashed #ce93d8', padding: '7px 12px' }}>
                                     <button
-                                      onClick={() => handleSubQuestDone(q.id, sq.title!)}
+                                      onClick={() => handleSubQuestDone(q.id, q.game, sq.title!)}
                                       style={{ background: '#2e7d32', color: '#fff', border: 'none', borderRadius: '20px', padding: '4px 12px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'inherit' }}
                                     >✓ Mark sub-quest done</button>
                                   </div>
