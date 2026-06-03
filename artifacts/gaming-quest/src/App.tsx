@@ -34,6 +34,7 @@ import {
   fetchCompletions, toggleCompletion, fetchPaused, togglePaused,
   fetchPlatforms, setGamePlatform,
   updateLog, deleteLog, saveReport, patchReportInsights,
+  triggerQuestRefresh,
 } from './lib/api';
 
 export type Page = 'dashboard' | 'log' | 'games' | 'quests' | 'reports';
@@ -171,6 +172,10 @@ export default function App() {
     try {
       const saved = await saveLogs(newEntries);
       setLogs(prev => dedupe([...prev, ...saved]).sort((a, b) => b.date.getTime() - a.date.getTime()));
+
+      // Fire-and-forget: refresh quest pool for every newly logged game
+      const uniqueGames = [...new Set(newEntries.map(e => e.game))];
+      triggerQuestRefresh(uniqueGames);
     } catch (err) {
       alert(`Failed to save logs: ${err instanceof Error ? err.message : String(err)}`);
       return false;

@@ -5,6 +5,7 @@ import {
   updateQuestProgress, completeQuest, fetchQuestGuide,
   searchYouTubeGuides, addVideoToGuide, removeVideoFromGuide,
   submitQuestFeedback, fetchUserProfile, fetchMiniLogs, addMiniLog, deleteMiniLog,
+  triggerQuestRefresh,
 } from '../lib/api';
 import { useQuestsContext } from '../context/QuestsContext';
 
@@ -880,6 +881,7 @@ export default function QuestsPage() {
   const [availableGames, setAvailableGames] = useState<string[]>([]);
   const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // On mount: refresh shared context data and load mini-logs for active quests
   useEffect(() => {
@@ -922,7 +924,17 @@ export default function QuestsPage() {
   const handleAddMiniLog = useCallback(async (questId: number, note: string) => {
     const log = await addMiniLog(questId, note);
     setMiniLogs(prev => ({ ...prev, [questId]: [...(prev[questId] ?? []), log] }));
-  }, []);
+
+    // Trigger smart refresh: archive stale quests + refill pool for this game
+    const game = active.find(q => q.id === questId)?.game;
+    if (game) {
+      triggerQuestRefresh([game]);
+      setRefreshing(true);
+      setTimeout(() => {
+        refresh().finally(() => setRefreshing(false));
+      }, 5000);
+    }
+  }, [active, refresh]);
 
   const handleDeleteMiniLog = useCallback(async (questId: number, logId: number) => {
     await deleteMiniLog(questId, logId);
@@ -1168,7 +1180,7 @@ export default function QuestsPage() {
 
         {/* Tabs + Content */}
         <div style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)' }}>
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', padding: '0 8px', overflowX: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--line)', padding: '0 8px', overflowX: 'auto' }}>
             {tabItems.map(t => (
               <button
                 key={t.id}
@@ -1181,6 +1193,15 @@ export default function QuestsPage() {
                 )}
               </button>
             ))}
+            {refreshing && (
+              <span style={{
+                marginLeft: 'auto', fontSize: '11px', color: 'var(--muted)',
+                display: 'flex', alignItems: 'center', gap: '5px', paddingRight: '8px', flexShrink: 0,
+              }}>
+                <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', fontSize: '12px' }}>⚙️</span>
+                Refreshing quests…
+              </span>
+            )}
           </div>
 
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>

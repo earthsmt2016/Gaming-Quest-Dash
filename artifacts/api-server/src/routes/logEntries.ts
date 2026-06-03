@@ -2,6 +2,7 @@ import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { logEntriesTable } from "@workspace/db/schema";
+import { smartRefresh } from "./quests";
 
 const router = Router();
 
@@ -41,6 +42,10 @@ router.post("/logs", async (req, res) => {
 
     const inserted = await db.insert(logEntriesTable).values(values).returning();
     res.json(inserted);
+
+    // Fire-and-forget: refresh quest pool for every game that just got new logs
+    const uniqueGames = [...new Set(values.map(v => v.game))];
+    smartRefresh(uniqueGames).catch(err => console.error('smartRefresh after log insert:', err));
   } catch (err) {
     res.status(400).json({ error: "Invalid log entries", detail: String(err) });
   }

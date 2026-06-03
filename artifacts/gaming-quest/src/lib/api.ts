@@ -376,7 +376,7 @@ export interface Quest {
   difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
   xp_reward: number;
   estimated_minutes: number;
-  status: 'suggested' | 'active' | 'completed' | 'rejected';
+  status: 'suggested' | 'active' | 'completed' | 'rejected' | 'archived';
   progress: number;
   target: number;
   ai_generated: boolean;
@@ -384,6 +384,7 @@ export interface Quest {
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
+  archived_at?: string | null;
 }
 
 export interface UserProfile {
@@ -448,6 +449,16 @@ export async function fetchGames(): Promise<string[]> {
   if (!res.ok) return [];
   const data = await res.json();
   return data.games ?? [];
+}
+
+export async function triggerQuestRefresh(games?: string[]): Promise<void> {
+  try {
+    await fetch(`${BASE}/quests/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ games: games ?? [] }),
+    });
+  } catch { /* fire-and-forget, ignore errors */ }
 }
 
 export async function generateQuests(game?: string, count?: number, difficulty?: string, games?: string[]): Promise<{ quests: Quest[]; count: number }> {
