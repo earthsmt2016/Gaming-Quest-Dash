@@ -889,7 +889,7 @@ router.post("/quests/:id/complete", async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const { time_taken_minutes = 0 } = req.body as { time_taken_minutes?: number };
 
-    const questResult = await pool.query(`SELECT * FROM quests WHERE id=$1 AND status='active'`, [id]);
+    const questResult = await pool.query(`SELECT * FROM quests WHERE id=$1 AND status IN ('active','suggested')`, [id]);
     if (!questResult.rows.length) { res.status(404).json({ error: "Quest not found or not active" }); return; }
     const quest = questResult.rows[0];
 
