@@ -221,22 +221,33 @@ async function buildUserProfile(): Promise<void> {
 // ─── Smart Refresh ──────────────────────────────────────────────────────────
 // Called fire-and-forget whenever new logs or mini-logs are added.
 // Archives stale suggested quests and refills the pool for affected games.
-
-export async function smartRefresh(games: string[]): Promise<void> {
+// archiveAll=true: archive ALL suggested quests for the game (use when new logs change game state).
+// archiveAll=false (default): only archive quests older than 7 days (scheduled/manual cleanup).
+export async function smartRefresh(games: string[], archiveAll = false): Promise<void> {
   if (!games.length) return;
   try {
     await ensureTables();
 
-    // Archive suggested quests older than 7 days (keep but hide from main view)
-    await pool.query(`
-      UPDATE quests
-      SET status = 'archived', archived_at = NOW()
-      WHERE game = ANY($1::text[])
-        AND status = 'suggested'
-        AND created_at < NOW() - INTERVAL '7 days'
-    `, [games]);
+    if (archiveAll) {
+      // New log/mini-log recorded — game state has changed, all old suggestions are stale
+      await pool.query(`
+        UPDATE quests
+        SET status = 'archived', archived_at = NOW()
+        WHERE game = ANY($1::text[])
+          AND status = 'suggested'
+      `, [games]);
+    } else {
+      // Scheduled cleanup — only archive quests older than 7 days
+      await pool.query(`
+        UPDATE quests
+        SET status = 'archived', archived_at = NOW()
+        WHERE game = ANY($1::text[])
+          AND status = 'suggested'
+          AND created_at < NOW() - INTERVAL '7 days'
+      `, [games]);
+    }
 
-    // Ensure at least 2 fresh suggested quests exist per game
+    // Refill: ensure at least 2 fresh suggested quests per game
     for (const game of games) {
       const { rows } = await pool.query(
         `SELECT COUNT(*)::int AS cnt FROM quests WHERE game=$1 AND status='suggested'`,
@@ -853,7 +864,7 @@ router.post("/quests/:id/mini-logs", async (req, res) => {
 
     // Fire-and-forget smart refresh for this quest's game
     pool.query(`SELECT game FROM quests WHERE id=$1`, [id])
-      .then(({ rows }) => { if (rows[0]?.game) smartRefresh([rows[0].game]); })
+      .then(({ rows }) => { if (rows[0]?.game) smartRefresh([rows[0].game], true); })
       .catch(() => {});
   } catch (err) {
     res.status(500).json({ error: "Failed to add mini log", detail: String(err) });
@@ -915,7 +926,7 @@ router.post("/quests/:id/complete", async (req, res) => {
 
     // Rebuild profile and refresh quest pool in background after completion
     buildUserProfile().catch(err => console.error("profile rebuild after complete:", err));
-    smartRefresh([quest.game]).catch(err => console.error("smartRefresh after complete:", err));
+    smartRefresh([quest.game], true).catch(err => console.error("smartRefresh after complete:", err));
 
     res.json({ quest: { ...quest, status: 'completed' }, log: logResult.rows[0] });
   } catch (err) {
