@@ -566,37 +566,11 @@ router.post("/quests/generate", async (req, res) => {
 });
 
 // ─── GET /api/quests/suggested ─────────────────────────────────────────────
+// Pure DB read — no AI calls here. Generation happens only via smartRefresh
+// (triggered after log imports, mini-logs, quest completions).
 router.get("/quests/suggested", async (_req, res) => {
   try {
     await ensureTables();
-
-    const [gamesWithSuggestedRes, allGamesRes] = await Promise.all([
-      pool.query(`SELECT DISTINCT game FROM quests WHERE status='suggested'`),
-      pool.query(`SELECT DISTINCT game FROM log_entries ORDER BY game`),
-    ]);
-    const coveredGames = new Set(gamesWithSuggestedRes.rows.map((r: any) => r.game));
-    const uncoveredGames = allGamesRes.rows
-      .map((r: any) => r.game)
-      .filter((g: string) => !coveredGames.has(g));
-
-    if (uncoveredGames.length > 0) {
-      await Promise.all(uncoveredGames.map((g: string) => generateForGame(g, 1)));
-    }
-
-    const countRes = await pool.query(`SELECT COUNT(*)::int AS cnt FROM quests WHERE status='suggested'`);
-    if ((countRes.rows[0].cnt as number) < 3 && allGamesRes.rows.length > 0) {
-      const coveredNow = new Set(
-        (await pool.query(`SELECT DISTINCT game FROM quests WHERE status='suggested'`)).rows.map((r: any) => r.game)
-      );
-      const toBoost = allGamesRes.rows
-        .map((r: any) => r.game)
-        .filter((g: string) => coveredNow.has(g))
-        .slice(0, 3 - (countRes.rows[0].cnt as number));
-      if (toBoost.length > 0) {
-        await Promise.all(toBoost.map((g: string) => generateForGame(g, 1)));
-      }
-    }
-
     const result = await pool.query(
       `SELECT * FROM quests WHERE status='suggested' ORDER BY estimated_minutes ASC`
     );
