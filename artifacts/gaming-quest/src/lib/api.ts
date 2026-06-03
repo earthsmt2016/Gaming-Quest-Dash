@@ -427,13 +427,13 @@ export interface QuestGuide {
 }
 
 export async function fetchSuggestedQuests(): Promise<Quest[]> {
-  const res = await fetch(`${BASE}/quests/suggested`);
+  const res = await fetch(`${BASE}/quests/suggested`, { cache: 'no-store' });
   if (!res.ok) return [];
   return res.json();
 }
 
 export async function fetchActiveQuests(): Promise<Quest[]> {
-  const res = await fetch(`${BASE}/quests/active`);
+  const res = await fetch(`${BASE}/quests/active`, { cache: 'no-store' });
   if (!res.ok) return [];
   return res.json();
 }
