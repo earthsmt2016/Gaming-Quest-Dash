@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useContext } from 'react';
+import React, { useState, useCallback } from 'react';
 import { LogEntry, computeRecommendations, badgeFor } from '../lib/logParser';
 import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, fetchSubQuest, completeQuest, addMiniLog, triggerQuestRefresh, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
-import { QuestsContext } from '../context/QuestsContext';
+import { useQuestsContext } from '../context/QuestsContext';
 
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
@@ -115,7 +115,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   const [logNoteOpen, setLogNoteOpen] = useState<Set<number>>(new Set());
   const [completedInSession, setCompletedInSession] = useState<Set<number>>(new Set());
   const [subQuestDone, setSubQuestDone] = useState<Set<number>>(new Set());
-  const { refresh: refreshQuests } = useContext(QuestsContext);
+  const { refresh: refreshQuests } = useQuestsContext();
 
   const handleSubQuest = useCallback(async (questId: number, mins: number) => {
     setSubQuests(prev => ({ ...prev, [questId]: { loading: true } }));
