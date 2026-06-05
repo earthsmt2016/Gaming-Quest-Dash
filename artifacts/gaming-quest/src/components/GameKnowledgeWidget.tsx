@@ -276,6 +276,26 @@ function GameKnowledgeCard({
             <>
               <Bar pct={storyPct} color={pctColor(storyPct)} label="Story Completion" />
               <Bar pct={fullPct}  color={pctColor(fullPct)}  label="Full Completion" />
+
+              {/* time-based estimates */}
+              {(knowledge.time_story_est !== null || knowledge.time_full_est !== null) && (
+                <div style={{
+                  fontSize: 11, color: 'var(--muted)', background: 'var(--paper-2)',
+                  border: '1px solid var(--soft-line)', borderRadius: 'var(--radius-sm)',
+                  padding: '6px 10px', marginBottom: 8, display: 'flex', gap: 14, flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontWeight: 600 }}>⏱ Time estimate</span>
+                  {knowledge.time_story_est !== null && (
+                    <span>Story: <strong>{knowledge.time_story_est}%</strong></span>
+                  )}
+                  {knowledge.time_full_est !== null && (
+                    <span>Full: <strong>{knowledge.time_full_est}%</strong></span>
+                  )}
+                  <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>
+                    ({Math.round((knowledge.total_minutes_played ?? 0) / 60 * 10) / 10}h played)
+                  </span>
+                </div>
+              )}
             </>
           )}
 

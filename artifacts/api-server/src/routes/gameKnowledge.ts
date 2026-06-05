@@ -67,17 +67,24 @@ router.get("/games/:game/knowledge", async (req, res) => {
   try {
     await ensureTables();
     const game = decodeURIComponent(req.params.game);
-    const [knowledge, pending] = await Promise.all([
+    const [knowledge, pending, playtimeRow] = await Promise.all([
       pool.query(`SELECT * FROM game_knowledge WHERE game = $1`, [game]),
       pool.query(
         `SELECT * FROM game_progress_estimates WHERE game = $1 AND status = 'pending'
          ORDER BY created_at DESC`, [game]
       ),
+      pool.query(`SELECT SUM(minutes)::int as total_minutes FROM log_entries WHERE game = $1`, [game]),
     ]);
     if (!knowledge.rows.length) {
       return res.json({ game, hasKnowledge: false, pending: pending.rows });
     }
-    res.json({ ...knowledge.rows[0], hasKnowledge: true, pending: pending.rows });
+    const gk = knowledge.rows[0];
+    const totalMinutes = playtimeRow.rows[0]?.total_minutes ?? 0;
+    const estStoryMins = (gk.estimated_story_hours ?? 0) * 60;
+    const estFullMins  = (gk.estimated_full_hours  ?? 0) * 60;
+    const time_story_est = estStoryMins > 0 ? Math.min(99, Math.round(totalMinutes / estStoryMins * 100)) : null;
+    const time_full_est  = estFullMins  > 0 ? Math.min(99, Math.round(totalMinutes / estFullMins  * 100)) : null;
+    res.json({ ...gk, hasKnowledge: true, pending: pending.rows, total_minutes_played: totalMinutes, time_story_est, time_full_est });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -247,7 +254,8 @@ export async function triggerProgressInference(game: string): Promise<void> {
 
   // Skip if no knowledge map exists for this game
   const knowledgeCheck = await pool.query(
-    `SELECT story_percentage, full_percentage, story_milestones FROM game_knowledge WHERE game = $1`,
+    `SELECT story_percentage, full_percentage, story_milestones, remaining_story, remaining_full,
+            estimated_story_hours, estimated_full_hours FROM game_knowledge WHERE game = $1`,
     [game]
   );
   if (!knowledgeCheck.rows.length) return;
@@ -259,11 +267,17 @@ export async function triggerProgressInference(game: string): Promise<void> {
   );
   if (pendingCheck.rows.length) return;
 
-  const recentLogs = await pool.query(`
-    SELECT timestamp, action, minutes, type
-      FROM log_entries WHERE game = $1
-     ORDER BY timestamp::timestamptz DESC LIMIT 20
-  `, [game]);
+  const [recentLogs, playtimeRow] = await Promise.all([
+    pool.query(`
+      SELECT timestamp, action, minutes, type
+        FROM log_entries WHERE game = $1
+       ORDER BY timestamp::timestamptz DESC LIMIT 20
+    `, [game]),
+    pool.query(`
+      SELECT SUM(minutes)::int as total_minutes
+        FROM log_entries WHERE game = $1
+    `, [game]),
+  ]);
 
   if (!recentLogs.rows.length) return;
 
@@ -271,43 +285,76 @@ export async function triggerProgressInference(game: string): Promise<void> {
   const currentStory = gk.story_percentage ?? 0;
   const currentFull  = gk.full_percentage  ?? 0;
   const milestones   = gk.story_milestones ?? [];
+  const remainStory  = gk.remaining_story  ?? [];
+  const remainFull   = gk.remaining_full   ?? [];
+  const totalMinutes = playtimeRow.rows[0]?.total_minutes ?? 0;
+  const estStoryMins = (gk.estimated_story_hours ?? 0) * 60;
+  const estFullMins  = (gk.estimated_full_hours  ?? 0) * 60;
+
+  // Time-based estimate: clamp to 99 to leave room for AI to confirm completion
+  const timeStoryEst = estStoryMins > 0 ? Math.min(99, Math.round(totalMinutes / estStoryMins * 100)) : null;
+  const timeFullEst  = estFullMins  > 0 ? Math.min(99, Math.round(totalMinutes / estFullMins  * 100)) : null;
+
   const logLines = recentLogs.rows
     .map((r: any) => `- ${r.action} (${r.minutes}m, ${r.type})`)
     .join('\n');
 
   const milestoneList = Array.isArray(milestones) && milestones.length
-    ? milestones.map((m: any) => `  • ${m.title} → story ${m.story_pct}%, full ${m.full_pct}%`).join('\n')
+    ? milestones.map((m: any) => {
+        const done = m.story_pct <= currentStory;
+        return `  ${done ? '✓' : '•'} ${m.title} → story ${m.story_pct}%, full ${m.full_pct}%${done ? ' (already completed)' : ''}`;
+      }).join('\n')
     : '  (no milestone map yet — generate knowledge first for better accuracy)';
+
+  const remainStoryList = Array.isArray(remainStory) && remainStory.length
+    ? remainStory.map((r: any) => `  - ${r.title}: ${r.description ?? ''}`).join('\n')
+    : '  (none)';
+
+  const remainFullList = Array.isArray(remainFull) && remainFull.length
+    ? remainFull.map((r: any) => `  - ${r.title} [${r.category ?? 'other'}]: ${r.description ?? ''}`).join('\n')
+    : '  (none)';
+
+  const timeHint = timeStoryEst !== null
+    ? `\nTIME-BASED ESTIMATE (${totalMinutes}m played ÷ ${Math.round(estStoryMins)}m estimated): story ~${timeStoryEst}%${timeFullEst !== null ? `, full ~${timeFullEst}%` : ''}`
+    : '';
 
   const prompt = `You are a game progress analyst for "${game}".
 
 CURRENT TRACKED PROGRESS:
 - Story completion: ${currentStory}%
 - Full completion: ${currentFull}%
+${timeHint}
 
-STORY MILESTONE MAP:
+STORY MILESTONE MAP (✓ = already completed, • = still ahead):
 ${milestoneList}
+
+TASKS STILL REMAINING — STORY:
+${remainStoryList}
+
+TASKS STILL REMAINING — FULL COMPLETION:
+${remainFullList}
 
 RECENT ACTIVITY (newest first):
 ${logLines}
 
-Based on the recent activity, estimate whether progress has changed.
+Based on the recent activity AND the time-based estimate, suggest updated completion percentages.
 
 Respond ONLY with valid JSON (no markdown):
 {
-  "story_pct_suggested": number (0-100, new estimate — same as current if no change),
-  "full_pct_suggested": number (0-100, new estimate — same as current if no change),
-  "milestone_reached": "string or null (name of milestone just reached, if any)",
+  "story_pct_suggested": number (0-100, new estimate — use time-based as a floor if logs are sparse),
+  "full_pct_suggested": number (0-100, new estimate),
+  "milestone_reached": "string or null (name of milestone just reached or passed, if any)",
   "confidence": number (0-1),
-  "reasoning": "string (1-2 sentences explaining the suggestion)",
-  "has_update": boolean (true only if you believe progress actually changed)
+  "reasoning": "string (1-2 sentences explaining what drove the estimate)",
+  "has_update": boolean (true if the suggested values differ from current tracked values)
 }
 
 Rules:
-- Only suggest an update if the activity clearly indicates progress changed
-- Never decrease percentages
-- If nothing meaningful happened, set has_update: false with current values and confidence 0.3
-- Be specific: reference the actual activity that drove the estimate`;
+- A milestone is "reached" if its story_pct <= story_pct_suggested and it was marked • (not already done)
+- If recent logs mention completing something in REMAINING STORY/FULL COMPLETION lists, treat that as strong evidence
+- Use the time-based estimate as a minimum baseline when logs are sparse
+- Never decrease percentages below current values
+- has_update = true if EITHER story OR full would change`;
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4.1",
@@ -351,13 +398,14 @@ router.post("/games/:game/progress/infer", async (req, res) => {
     await ensureTables();
     const game = decodeURIComponent(req.params.game);
 
-    const [knowledge, recentLogs] = await Promise.all([
+    const [knowledge, recentLogs, playtimeRow] = await Promise.all([
       pool.query(`SELECT * FROM game_knowledge WHERE game = $1`, [game]),
       pool.query(`
         SELECT timestamp, action, minutes, type
           FROM log_entries WHERE game = $1
          ORDER BY timestamp::timestamptz DESC LIMIT 20
       `, [game]),
+      pool.query(`SELECT SUM(minutes)::int as total_minutes FROM log_entries WHERE game = $1`, [game]),
     ]);
 
     if (!recentLogs.rows.length) {
@@ -368,43 +416,75 @@ router.post("/games/:game/progress/infer", async (req, res) => {
     const currentStory = gk?.story_percentage ?? 0;
     const currentFull  = gk?.full_percentage  ?? 0;
     const milestones   = gk?.story_milestones ?? [];
+    const remainStory  = gk?.remaining_story  ?? [];
+    const remainFull   = gk?.remaining_full   ?? [];
+    const totalMinutes = playtimeRow.rows[0]?.total_minutes ?? 0;
+    const estStoryMins = (gk?.estimated_story_hours ?? 0) * 60;
+    const estFullMins  = (gk?.estimated_full_hours  ?? 0) * 60;
+
+    const timeStoryEst = estStoryMins > 0 ? Math.min(99, Math.round(totalMinutes / estStoryMins * 100)) : null;
+    const timeFullEst  = estFullMins  > 0 ? Math.min(99, Math.round(totalMinutes / estFullMins  * 100)) : null;
+
     const logLines = recentLogs.rows
       .map((r: any) => `- ${r.action} (${r.minutes}m, ${r.type})`)
       .join('\n');
 
     const milestoneList = Array.isArray(milestones) && milestones.length
-      ? milestones.map((m: any) => `  • ${m.title} → story ${m.story_pct}%, full ${m.full_pct}%`).join('\n')
-      : '  (no milestone map yet — generate knowledge first for better accuracy)';
+      ? milestones.map((m: any) => {
+          const done = m.story_pct <= currentStory;
+          return `  ${done ? '✓' : '•'} ${m.title} → story ${m.story_pct}%, full ${m.full_pct}%${done ? ' (already completed)' : ''}`;
+        }).join('\n')
+      : '  (no milestone map — generate knowledge first for better accuracy)';
+
+    const remainStoryList = Array.isArray(remainStory) && remainStory.length
+      ? remainStory.map((r: any) => `  - ${r.title}: ${r.description ?? ''}`).join('\n')
+      : '  (none)';
+
+    const remainFullList = Array.isArray(remainFull) && remainFull.length
+      ? remainFull.map((r: any) => `  - ${r.title} [${r.category ?? 'other'}]: ${r.description ?? ''}`).join('\n')
+      : '  (none)';
+
+    const timeHint = timeStoryEst !== null
+      ? `\nTIME-BASED ESTIMATE (${totalMinutes}m played ÷ ${Math.round(estStoryMins)}m estimated): story ~${timeStoryEst}%${timeFullEst !== null ? `, full ~${timeFullEst}%` : ''}`
+      : '';
 
     const prompt = `You are a game progress analyst for "${game}".
 
 CURRENT TRACKED PROGRESS:
 - Story completion: ${currentStory}%
 - Full completion: ${currentFull}%
+${timeHint}
 
-STORY MILESTONE MAP:
+STORY MILESTONE MAP (✓ = already completed, • = still ahead):
 ${milestoneList}
+
+TASKS STILL REMAINING — STORY:
+${remainStoryList}
+
+TASKS STILL REMAINING — FULL COMPLETION:
+${remainFullList}
 
 RECENT ACTIVITY (newest first):
 ${logLines}
 
-Based on the recent activity, estimate whether progress has changed.
+Based on the recent activity AND the time-based estimate, suggest updated completion percentages.
 
 Respond ONLY with valid JSON (no markdown):
 {
-  "story_pct_suggested": number (0-100, new estimate — same as current if no change),
-  "full_pct_suggested": number (0-100, new estimate — same as current if no change),
-  "milestone_reached": "string or null (name of milestone just reached, if any)",
+  "story_pct_suggested": number (0-100, new estimate — use time-based as a floor if logs are sparse),
+  "full_pct_suggested": number (0-100, new estimate),
+  "milestone_reached": "string or null (name of milestone just reached or passed, if any)",
   "confidence": number (0-1),
-  "reasoning": "string (1-2 sentences explaining the suggestion)",
-  "has_update": boolean (true only if you believe progress actually changed)
+  "reasoning": "string (1-2 sentences explaining what drove the estimate)",
+  "has_update": boolean (true if suggested values differ from current tracked values)
 }
 
 Rules:
-- Only suggest an update if the activity clearly indicates progress changed
-- Never decrease percentages
-- If nothing meaningful happened, set has_update: false with current values and confidence 0.3
-- Be specific: reference the actual activity that drove the estimate`;
+- A milestone is "reached" if its story_pct <= story_pct_suggested and it was marked • (not already done)
+- If recent logs mention completing something in REMAINING STORY/FULL COMPLETION lists, treat that as strong evidence
+- Use the time-based estimate as a minimum baseline when logs are sparse
+- Never decrease percentages below current values
+- has_update = true if EITHER story OR full would change`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1",

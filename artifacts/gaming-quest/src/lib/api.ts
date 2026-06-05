@@ -885,6 +885,9 @@ export interface GameKnowledge {
   generated_at: string | null;
   updated_at: string | null;
   pending: ProgressEstimate[];
+  total_minutes_played: number;
+  time_story_est: number | null;
+  time_full_est: number | null;
 }
 
 export interface ProgressEstimate {
