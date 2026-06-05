@@ -11,6 +11,7 @@ import ReportsPage from './components/ReportsPage';
 import QuestsPage from './components/QuestsPage';
 import ActiveQuestsWidget from './components/ActiveQuestsWidget';
 import CompanionChat from './components/CompanionChat';
+import CoachCard from './components/CoachCard';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
 import { QuestsProvider } from './context/QuestsContext';
@@ -420,6 +421,9 @@ export default function App() {
                       rangeLabel={rangeLabel}
                     />
                     <DailyCheckin logs={logs} manualCompletions={completions} paused={paused} />
+
+                    {/* AI Coach Card — personalised nightly recommendation */}
+                    <CoachCard />
 
                     {/* AI Companion Chat */}
                     <CompanionChat />

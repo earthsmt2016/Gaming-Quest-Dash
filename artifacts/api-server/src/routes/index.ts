@@ -13,6 +13,7 @@ import screenshotAnalysisRouter from "./screenshotAnalysis";
 import platformsRouter from "./platforms";
 import questsRouter from "./quests";
 import companionRouter from "./companion";
+import coachCardRouter from "./coachCard";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(screenshotAnalysisRouter);
 router.use(platformsRouter);
 router.use(questsRouter);
 router.use(companionRouter);
+router.use(coachCardRouter);
 
 export default router;

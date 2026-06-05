@@ -1,4 +1,6 @@
 - [Quest AI personalization](quest-ai-personalization.md) — profile is singleton (id=1 in user_profile); reasoning stored per quest; profile rebuilds are fire-and-forget after feedback/completion
+- [Coach Card AI](coach-card-ai.md) — POST /api/ai/coach-card generates nightly rec; GET /latest serves cached; GET /backlog-health is pure SQL; ai_recommendations table tracks fulfillment; log import auto-marks fulfilled within 24h
+- [log_entries timestamp casting](log-entries-timestamp.md) — timestamp column is TEXT, not TIMESTAMPTZ; must cast with timestamp::timestamptz in all WHERE/MAX/ORDER comparisons against intervals/NOW()
 - [AI Companion Chat](companion-chat.md) — ai_conversations table; POST /companion/chat injects full context per request (profile, quests, sessions); history trimmed to 100 rows; gpt-5.4 model; CompanionChat.tsx on dashboard below ActiveQuestsWidget
 - [JSX IIFE pattern](jsx-iife-pattern.md) — `{(() => { return ...; })()}` — no trailing `)` before the closing `}`, the IIFE call `()` already closes it
 - [Express route restart](express-route-pickup.md) — api-server uses nodemon/tsx but new routes registered at module load require a workflow restart to be picked up; HMR is frontend-only

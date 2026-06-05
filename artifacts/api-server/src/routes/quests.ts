@@ -108,6 +108,16 @@ async function ensureTables() {
   await pool.query(`
     ALTER TABLE quests ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ
   `);
+
+  // Phase 1: Expanded player intelligence profile columns
+  await pool.query(`ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS avg_sessions_per_week FLOAT NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS abandonment_rate FLOAT NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS coaching_summary TEXT`);
+  await pool.query(`ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS confidence_score FLOAT NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS active_game_count INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS burnout_risk_games JSONB NOT NULL DEFAULT '[]'`);
+  await pool.query(`ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS backlog_risk_games JSONB NOT NULL DEFAULT '[]'`);
+  await pool.query(`ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS playstyle_tags JSONB NOT NULL DEFAULT '[]'`);
 }
 
 ensureTables().catch(err => console.error("quests ensureTables:", err));
@@ -168,46 +178,122 @@ async function buildUserProfile(): Promise<void> {
   }
 
   const totalCompleted = Object.values(completionMap).reduce((s, v) => s + v, 0);
+  const totalRejected  = Object.values(rejectionMap).reduce((s, v) => s + v, 0);
+  const abandonmentRate = (totalCompleted + totalRejected) > 0
+    ? Math.round((totalRejected / (totalCompleted + totalRejected)) * 100) / 100
+    : 0;
 
-  // Generate personality summary using AI when there's meaningful history
+  // Sessions per week (last 28 days)
+  const weeklyStats = await pool.query(`
+    SELECT COUNT(*)::float / 4.0 AS avg_per_week
+    FROM log_entries WHERE timestamp::timestamptz > NOW() - INTERVAL '28 days'
+  `);
+  const avgSessionsPerWeek = Math.round((weeklyStats.rows[0]?.avg_per_week ?? 0) * 10) / 10;
+
+  // Active / backlog / burnout risk games
+  const gameActivity = await pool.query(`
+    SELECT game,
+           COUNT(*)::int   AS sessions,
+           MAX(timestamp::timestamptz) AS last_played,
+           SUM(minutes)::int AS total_minutes
+    FROM log_entries WHERE timestamp::timestamptz > NOW() - INTERVAL '90 days'
+    GROUP BY game
+  `);
+  const completedGamesQ = await pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] }));
+  const pausedGamesQ    = await pool.query(`SELECT game FROM paused_games`).catch(() => ({ rows: [] }));
+  const completedSet    = new Set(completedGamesQ.rows.map((r: any) => r.game));
+  const pausedSet       = new Set(pausedGamesQ.rows.map((r: any) => r.game));
+  const now = Date.now();
+
+  const activeGames = gameActivity.rows.filter((r: any) => !completedSet.has(r.game) && !pausedSet.has(r.game));
+  const backlogRisk = activeGames
+    .filter((r: any) => (now - new Date(r.last_played).getTime()) > 14 * 86400000)
+    .map((r: any) => r.game);
+  const burnoutRisk = activeGames
+    .filter((r: any) => r.sessions > 20 && (now - new Date(r.last_played).getTime()) < 7 * 86400000)
+    .map((r: any) => r.game);
+
+  // Confidence score: 0–1 based on data richness
+  const confidenceScore = Math.min(1, Math.round((Math.min(totalCompleted, 10) / 10) * 0.6
+    + (Math.min(avgSessionsPerWeek, 5) / 5) * 0.4) * 100) / 100;
+
+  // Playstyle tags
+  const playstyleTags: string[] = [];
+  if (preferredTypes.includes('challenge'))   playstyleTags.push('Challenger');
+  if (preferredTypes.includes('exploration')) playstyleTags.push('Explorer');
+  if (preferredTypes.includes('grind'))       playstyleTags.push('Grinder');
+  if (preferredTypes.includes('skill'))       playstyleTags.push('Skill-builder');
+  if (avgSessionMinutes <= 30)                playstyleTags.push('Quick-session player');
+  if (avgSessionMinutes >= 120)               playstyleTags.push('Long-session player');
+  if (abandonmentRate < 0.2 && totalCompleted >= 3) playstyleTags.push('High completer');
+
+  // Generate personality summary + coaching summary using AI when there's history
   let personalitySummary: string | null = null;
+  let coachingSummary: string | null = null;
   if (totalCompleted >= 2) {
-    const lines = [
+    const profileData = [
       `Quest completions by type: ${JSON.stringify(completionRates)}`,
       `Preferred difficulty: ${preferredDifficulty}`,
-      `Preferred types: ${preferredTypes.join(', ') || 'none established yet'}`,
-      `Avoided types: ${avoidedTypes.join(', ') || 'none identified yet'}`,
-      `Average session length: ~${avgSessionMinutes} minutes`,
-    ];
+      `Preferred types: ${preferredTypes.join(', ') || 'none'}`,
+      `Avoided types: ${avoidedTypes.join(', ') || 'none'}`,
+      `Avg session: ~${avgSessionMinutes}m`,
+      `Avg sessions/week: ${avgSessionsPerWeek}`,
+      `Abandonment rate: ${Math.round(abandonmentRate * 100)}%`,
+      `Active games: ${activeGames.length}`,
+      `Backlog risk: ${backlogRisk.join(', ') || 'none'}`,
+      `Playstyle tags: ${playstyleTags.join(', ') || 'none'}`,
+    ].join('\n');
     try {
       const resp = await openai.chat.completions.create({
         model: 'gpt-5.4',
-        max_completion_tokens: 120,
+        max_completion_tokens: 220,
         messages: [
           {
             role: 'system',
-            content: 'Analyze this gamer\'s quest history and write a 2-sentence personality profile capturing their playstyle. Use second person ("You are..."). Be specific and insightful.',
+            content: `Analyze this gamer's profile and write TWO things, separated by |||:
+1. A 2-sentence personality profile in second person ("You are...")
+2. A 1-sentence coaching insight starting with an action verb (e.g. "Focus on...", "Consider...", "Push through...")
+
+Example output:
+You are a focused skill-builder who thrives on short, challenging sessions. You consistently complete difficult quests and rarely abandon what you start. ||| Focus on clearing your backlog — 3 games haven't been touched in over 2 weeks.`,
           },
-          { role: 'user', content: lines.join('\n') },
+          { role: 'user', content: profileData },
         ],
       });
-      personalitySummary = resp.choices[0]?.message?.content?.trim() ?? null;
+      const content = resp.choices[0]?.message?.content?.trim() ?? '';
+      const parts = content.split('|||');
+      personalitySummary = parts[0]?.trim() ?? null;
+      coachingSummary    = parts[1]?.trim() ?? null;
     } catch {
-      // silently skip personality generation
+      // silently skip AI generation
     }
   }
 
   await pool.query(`
-    INSERT INTO user_profile (id, preferred_difficulty, preferred_types, avoided_types, avg_session_minutes, completion_rates, personality_summary, updated_at)
-    VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+    INSERT INTO user_profile (
+      id, preferred_difficulty, preferred_types, avoided_types,
+      avg_session_minutes, completion_rates, personality_summary,
+      avg_sessions_per_week, abandonment_rate, coaching_summary,
+      confidence_score, active_game_count, burnout_risk_games,
+      backlog_risk_games, playstyle_tags, updated_at
+    )
+    VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
     ON CONFLICT (id) DO UPDATE SET
-      preferred_difficulty = EXCLUDED.preferred_difficulty,
-      preferred_types      = EXCLUDED.preferred_types,
-      avoided_types        = EXCLUDED.avoided_types,
-      avg_session_minutes  = EXCLUDED.avg_session_minutes,
-      completion_rates     = EXCLUDED.completion_rates,
-      personality_summary  = COALESCE(EXCLUDED.personality_summary, user_profile.personality_summary),
-      updated_at           = NOW()
+      preferred_difficulty  = EXCLUDED.preferred_difficulty,
+      preferred_types       = EXCLUDED.preferred_types,
+      avoided_types         = EXCLUDED.avoided_types,
+      avg_session_minutes   = EXCLUDED.avg_session_minutes,
+      completion_rates      = EXCLUDED.completion_rates,
+      personality_summary   = COALESCE(EXCLUDED.personality_summary, user_profile.personality_summary),
+      avg_sessions_per_week = EXCLUDED.avg_sessions_per_week,
+      abandonment_rate      = EXCLUDED.abandonment_rate,
+      coaching_summary      = COALESCE(EXCLUDED.coaching_summary, user_profile.coaching_summary),
+      confidence_score      = EXCLUDED.confidence_score,
+      active_game_count     = EXCLUDED.active_game_count,
+      burnout_risk_games    = EXCLUDED.burnout_risk_games,
+      backlog_risk_games    = EXCLUDED.backlog_risk_games,
+      playstyle_tags        = EXCLUDED.playstyle_tags,
+      updated_at            = NOW()
   `, [
     preferredDifficulty,
     JSON.stringify(preferredTypes),
@@ -215,6 +301,14 @@ async function buildUserProfile(): Promise<void> {
     avgSessionMinutes,
     JSON.stringify(completionRates),
     personalitySummary,
+    avgSessionsPerWeek,
+    abandonmentRate,
+    coachingSummary,
+    confidenceScore,
+    activeGames.length,
+    JSON.stringify(burnoutRisk),
+    JSON.stringify(backlogRisk),
+    JSON.stringify(playstyleTags),
   ]);
 }
 
