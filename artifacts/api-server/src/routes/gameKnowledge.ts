@@ -141,17 +141,19 @@ Respond ONLY with valid JSON (no markdown):
   "confidence": number (0-1, how confident you are in this knowledge)
 }
 
-Rules:
-- story_milestones: 5-10 entries in chronological order
-- remaining_story: list 3-6 major story stages yet to complete (assume player is at ${currentPct}% story progress)
-- remaining_full: list 4-8 optional/completionist tasks
-- Be specific to the actual game — do not invent fictional content
-- If you are not certain about a game, lower the confidence score`;
+ACCURACY RULES — follow these strictly:
+- Use ONLY stage/level/chapter names you are certain exist in "${game}". Do NOT invent names that sound plausible.
+- If you are unsure of the exact name of a stage, use a broad descriptor ("Early story stages", "Mid-game chapter") rather than guessing a specific name.
+- story_milestones must reference real, named events or stages from the actual game in correct chronological order.
+- remaining_story at ${currentPct}% story progress: list only stages/chapters the player has not yet reached. If unsure of exact names, use broad stage descriptions ("Complete remaining story stages", "Defeat the final boss").
+- remaining_full: list real collectible/challenge categories specific to this game (e.g. "Collect all Chaos Emeralds", "Complete all S-Rank missions"). Do NOT invent generic names.
+- If you have low confidence in specific names for this game (e.g. it was released after 2023 or you have limited data), set confidence below 0.5 and keep milestone/task names broad and safe rather than specific and wrong.
+- Lower confidence score when you are unsure. Never fabricate specific content to appear confident.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-5.4",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
+      temperature: 0.1,
     });
 
     let data: any = {};
