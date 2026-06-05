@@ -533,6 +533,83 @@ Rules:
   }
 });
 
+// ─── Helper: trim remaining tasks after progress update ──────────────────────
+
+async function refreshRemainingTasks(game: string, newStoryPct: number, newFullPct: number): Promise<void> {
+  const { rows } = await pool.query(
+    `SELECT story_milestones, remaining_story, remaining_full FROM game_knowledge WHERE game = $1`, [game]
+  );
+  if (!rows.length) return;
+
+  const gk = rows[0];
+  const milestones: any[]    = gk.story_milestones ?? [];
+  const remainStory: any[]   = gk.remaining_story  ?? [];
+  const remainFull: any[]    = gk.remaining_full   ?? [];
+
+  if (!remainStory.length && !remainFull.length) return;
+
+  // Mark which milestones are now completed
+  const doneMilestones = milestones.filter(m => m.story_pct <= newStoryPct);
+  const doneTitles     = doneMilestones.map(m => m.title);
+
+  const milestoneBlock = milestones.map(m => {
+    const done = m.story_pct <= newStoryPct;
+    return `  ${done ? '✓' : '•'} ${m.title} (story ${m.story_pct}%, full ${m.full_pct}%)`;
+  }).join('\n');
+
+  const prompt = `You are tracking progress in "${game}".
+
+CURRENT PROGRESS: story ${newStoryPct}%, full completion ${newFullPct}%
+
+MILESTONE MAP (✓ = done, • = ahead):
+${milestoneBlock}
+
+CURRENT REMAINING STORY TASKS:
+${remainStory.map(r => `  - ${r.title}: ${r.description ?? ''}`).join('\n') || '  (none)'}
+
+CURRENT REMAINING FULL COMPLETION TASKS:
+${remainFull.map(r => `  - [${r.category ?? 'other'}] ${r.title}: ${r.description ?? ''}`).join('\n') || '  (none)'}
+
+Remove any tasks that are clearly completed given the current story/full percentage and the milestone map.
+Keep tasks that are still ahead. Preserve the original wording.
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "remaining_story": [{ "title": "...", "description": "..." }],
+  "remaining_full":  [{ "title": "...", "description": "...", "category": "..." }]
+}`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4.1",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.1,
+  });
+
+  let data: any = {};
+  try {
+    data = JSON.parse(completion.choices[0].message.content?.trim() ?? "{}");
+  } catch {
+    console.error(`[refreshRemaining] AI returned invalid JSON for ${game}`);
+    return;
+  }
+
+  if (!Array.isArray(data.remaining_story) && !Array.isArray(data.remaining_full)) return;
+
+  await pool.query(`
+    UPDATE game_knowledge SET
+      remaining_story = COALESCE($1::jsonb, remaining_story),
+      remaining_full  = COALESCE($2::jsonb, remaining_full),
+      updated_at      = NOW()
+    WHERE game = $3
+  `, [
+    data.remaining_story ? JSON.stringify(data.remaining_story) : null,
+    data.remaining_full  ? JSON.stringify(data.remaining_full)  : null,
+    game,
+  ]);
+
+  console.log(`[refreshRemaining] ${game}: ${data.remaining_story?.length ?? '?'} story, ${data.remaining_full?.length ?? '?'} full tasks remaining`);
+}
+
 // ─── POST /api/games/:game/progress/suggestions/:id/resolve ──────────────────
 router.post("/games/:game/progress/suggestions/:id/resolve", async (req, res) => {
   try {
@@ -573,6 +650,10 @@ router.post("/games/:game/progress/suggestions/:id/resolve", async (req, res) =>
           knowledge_source = CASE WHEN $4 = 'edit' THEN 'user' ELSE game_knowledge.knowledge_source END,
           updated_at       = NOW()
       `, [game, finalStory, finalFull, action]);
+
+      // Fire-and-forget: trim completed tasks from remaining lists
+      refreshRemainingTasks(game, finalStory, finalFull)
+        .catch(err => console.error(`[refreshRemaining] ${game}:`, err));
     }
 
     res.json({ ok: true, status: newStatus });
