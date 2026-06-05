@@ -747,3 +747,107 @@ export async function deleteMilestone(game: string, id: number): Promise<void> {
     method: 'DELETE',
   });
 }
+
+// ─── Goals ────────────────────────────────────────────────────────────────────
+
+export interface Goal {
+  id: number;
+  game: string;
+  title: string;
+  description: string | null;
+  goal_type: string;
+  status: string;
+  priority: string;
+  progress_type: string;
+  current_value: number;
+  target_value: number;
+  percentage: number;
+  notes: string | null;
+  created_at: string;
+  completed_at: string | null;
+  updated_at: string;
+  update_count: number;
+  last_updated: string | null;
+}
+
+export interface GoalSuggestion {
+  title: string;
+  description: string;
+  goal_type: string;
+  priority: string;
+  progress_type: string;
+  target_value: number;
+  reason: string;
+}
+
+export interface GoalAnalytics {
+  total: number;
+  completed: number;
+  in_progress: number;
+  not_started: number;
+  abandoned: number;
+  completion_rate: number | null;
+  avg_completion_hours: number | null;
+  by_type: { goal_type: string; count: number; completed: number }[];
+  longest_running: { title: string; game: string; days_running: number } | null;
+}
+
+export async function fetchGoals(filters?: { game?: string; status?: string }): Promise<Goal[]> {
+  const params = new URLSearchParams();
+  if (filters?.game)   params.set('game', filters.game);
+  if (filters?.status) params.set('status', filters.status);
+  const res = await fetch(`${BASE}/goals?${params}`);
+  if (!res.ok) throw new Error('Failed to fetch goals');
+  return res.json();
+}
+
+export async function createGoal(data: Partial<Goal> & { game: string; title: string }): Promise<Goal> {
+  const res = await fetch(`${BASE}/goals`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to create goal');
+  return res.json();
+}
+
+export async function updateGoal(id: number, data: Partial<Goal>): Promise<Goal> {
+  const res = await fetch(`${BASE}/goals/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update goal');
+  return res.json();
+}
+
+export async function updateGoalProgress(id: number, value: number, note?: string): Promise<Goal> {
+  const res = await fetch(`${BASE}/goals/${id}/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value, note }),
+  });
+  if (!res.ok) throw new Error('Failed to update goal progress');
+  return res.json();
+}
+
+export async function deleteGoal(id: number): Promise<void> {
+  await fetch(`${BASE}/goals/${id}`, { method: 'DELETE' });
+}
+
+export async function fetchGoalAnalytics(): Promise<GoalAnalytics> {
+  const res = await fetch(`${BASE}/goals/analytics`);
+  if (!res.ok) throw new Error('Failed to fetch goal analytics');
+  return res.json();
+}
+
+export async function fetchAIGoalSuggestions(game: string): Promise<GoalSuggestion[]> {
+  const res = await fetch(`${BASE}/ai/goal-suggestions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ game }),
+  });
+  if (!res.ok) throw new Error('Failed to fetch AI goal suggestions');
+  const data = await res.json();
+  return data.suggestions ?? [];
+}

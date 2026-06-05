@@ -15,6 +15,7 @@ import questsRouter from "./quests";
 import companionRouter from "./companion";
 import coachCardRouter from "./coachCard";
 import gameProgressRouter from "./gameProgress";
+import goalsRouter from "./goals";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(questsRouter);
 router.use(companionRouter);
 router.use(coachCardRouter);
 router.use(gameProgressRouter);
+router.use(goalsRouter);
 
 export default router;

@@ -14,6 +14,7 @@ import CompanionChat from './components/CompanionChat';
 import CoachCard from './components/CoachCard';
 import WeeklyAIReview from './components/WeeklyAIReview';
 import ProgressWidget from './components/ProgressWidget';
+import GoalsWidget from './components/GoalsWidget';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
 import { QuestsProvider } from './context/QuestsContext';
@@ -429,6 +430,9 @@ export default function App() {
 
                     {/* Game Progress Tracking */}
                     <ProgressWidget />
+
+                    {/* Personal Goals */}
+                    <GoalsWidget />
 
                     {/* AI Companion Chat */}
                     <CompanionChat />
