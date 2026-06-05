@@ -651,9 +651,24 @@ router.post("/games/:game/progress/suggestions/:id/resolve", async (req, res) =>
           updated_at       = NOW()
       `, [game, finalStory, finalFull, action]);
 
-      // Fire-and-forget: trim completed tasks from remaining lists
-      refreshRemainingTasks(game, finalStory, finalFull)
-        .catch(err => console.error(`[refreshRemaining] ${game}:`, err));
+      // Deterministic clear: at 100% completion there's nothing left
+      const clearStory = finalStory >= 100 ? '[]' : null;
+      const clearFull  = finalFull  >= 100 ? '[]' : null;
+      if (clearStory !== null || clearFull !== null) {
+        await pool.query(`
+          UPDATE game_knowledge SET
+            remaining_story = COALESCE($1::jsonb, remaining_story),
+            remaining_full  = COALESCE($2::jsonb, remaining_full),
+            updated_at      = NOW()
+          WHERE game = $3
+        `, [clearStory, clearFull, game]);
+      }
+
+      // Fire-and-forget: trim completed tasks from remaining lists (skipped if both cleared)
+      if (finalStory < 100 || finalFull < 100) {
+        refreshRemainingTasks(game, finalStory, finalFull)
+          .catch(err => console.error(`[refreshRemaining] ${game}:`, err));
+      }
     }
 
     res.json({ ok: true, status: newStatus });
