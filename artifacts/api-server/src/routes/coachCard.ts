@@ -88,7 +88,7 @@ router.post("/ai/coach-card", async (_req, res) => {
   try {
     await ensureCoachTables();
 
-    const [profile, recentLogs, quests, gameHistory, completions] = await Promise.all([
+    const [profile, recentLogs, quests, gameHistory, completions, progressData] = await Promise.all([
       pool.query(`SELECT * FROM user_profile WHERE id=1`),
       pool.query(`SELECT game, action, minutes, timestamp FROM log_entries ORDER BY timestamp::timestamptz DESC LIMIT 40`),
       pool.query(`SELECT game, title, status, difficulty, estimated_minutes FROM quests WHERE status IN ('active','suggested') ORDER BY status DESC`),
@@ -99,6 +99,7 @@ router.post("/ai/coach-card", async (_req, res) => {
         GROUP BY game ORDER BY last_played DESC
       `),
       pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] })),
+      pool.query(`SELECT game, current_percentage, status, estimated_hours_remaining FROM game_progress ORDER BY current_percentage DESC`).catch(() => ({ rows: [] })),
     ]);
 
     const p = profile.rows[0] ?? {};
@@ -123,6 +124,15 @@ router.post("/ai/coach-card", async (_req, res) => {
       .map((l: any) => `${new Date(l.timestamp).toLocaleDateString()} — ${l.game}: ${l.action} (${l.minutes}m)`)
       .join('\n');
 
+    const progressLines = progressData.rows.length > 0
+      ? progressData.rows
+          .filter((g: any) => !completedSet.has(g.game))
+          .map((g: any) => {
+            const hrs = g.estimated_hours_remaining ? `, ~${g.estimated_hours_remaining}h remaining` : '';
+            return `${g.game}: ${g.current_percentage}% complete (${g.status}${hrs})`;
+          }).join('\n')
+      : '(no progress data set yet)';
+
     const systemPrompt = `You are a personal gaming strategist coach. Give ONE sharp, data-backed recommendation for what the player should play tonight.
 
 PLAYER PROFILE:
@@ -136,6 +146,9 @@ ${recentActivity || '(none)'}
 
 ACTIVE GAMES (last 90 days):
 ${gameLines || '(no active games tracked yet)'}
+
+GAME PROGRESS (completion tracking):
+${progressLines}
 
 QUESTS:
 ${questLines || '(no quests)'}

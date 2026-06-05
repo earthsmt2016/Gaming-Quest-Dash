@@ -654,3 +654,96 @@ export async function clearCompanionHistory(game?: string): Promise<void> {
   const url = game ? `${BASE}/companion/history?game=${encodeURIComponent(game)}` : `${BASE}/companion/history`;
   await fetch(url, { method: 'DELETE' });
 }
+
+// ─── Game Progress ─────────────────────────────────────────────────────────────
+
+export interface GameProgressRow {
+  game: string;
+  current_percentage: number;
+  status: string;
+  estimated_hours_remaining: number | null;
+  notes: string | null;
+  last_updated_at: string | null;
+  total_minutes: number;
+  session_count: number;
+  last_played: string | null;
+  milestone_count: number;
+  milestones_completed: number;
+}
+
+export interface ProgressHistoryEntry {
+  id: number;
+  game: string;
+  percentage: number;
+  delta: number | null;
+  notes: string | null;
+  recorded_at: string;
+}
+
+export interface ProgressMilestone {
+  id: number;
+  game: string;
+  title: string;
+  description: string | null;
+  category: string;
+  completed_at: string | null;
+  progress_value: number | null;
+  created_at: string;
+}
+
+export interface GameProgressDetail extends GameProgressRow {
+  history: ProgressHistoryEntry[];
+  milestones: ProgressMilestone[];
+  velocity_per_hour: number | null;
+  estimated_completion_hours: number | null;
+  estimated_completion_date: string | null;
+  total_minutes_30d: number;
+}
+
+export async function fetchAllProgress(): Promise<GameProgressRow[]> {
+  try {
+    const res = await fetch(`${BASE}/progress`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
+export async function fetchGameProgress(game: string): Promise<GameProgressDetail | null> {
+  try {
+    const res = await fetch(`${BASE}/progress/${encodeURIComponent(game)}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+export async function updateGameProgress(
+  game: string,
+  data: { percentage: number; status?: string; estimated_hours_remaining?: number | null; notes?: string }
+): Promise<GameProgressRow> {
+  const res = await fetch(`${BASE}/progress/${encodeURIComponent(game)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update progress');
+  return res.json();
+}
+
+export async function addMilestone(
+  game: string,
+  data: { title: string; description?: string; category?: string; progress_value?: number }
+): Promise<ProgressMilestone> {
+  const res = await fetch(`${BASE}/progress/${encodeURIComponent(game)}/milestone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to add milestone');
+  return res.json();
+}
+
+export async function deleteMilestone(game: string, id: number): Promise<void> {
+  await fetch(`${BASE}/progress/${encodeURIComponent(game)}/milestone/${id}`, {
+    method: 'DELETE',
+  });
+}
