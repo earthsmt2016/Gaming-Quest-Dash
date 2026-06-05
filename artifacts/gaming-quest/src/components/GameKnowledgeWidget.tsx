@@ -341,15 +341,29 @@ function GameKnowledgeCard({
               </button>
               {milestoneOpen && (
                 <div style={{ marginTop: 6 }}>
-                  {milestones.map((m, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--soft-line)', alignItems: 'center' }}>
-                      <div style={{ width: 32, height: 4, borderRadius: 2, background: 'var(--soft-line)', flexShrink: 0 }}>
-                        <div style={{ height: '100%', width: `${m.story_pct}%`, background: pctColor(m.story_pct), borderRadius: 2 }} />
+                  {milestones.map((m, i) => {
+                    const done = m.story_pct <= storyPct;
+                    return (
+                      <div key={i} style={{
+                        display: 'flex', gap: 8, padding: '5px 0',
+                        borderBottom: '1px solid var(--soft-line)', alignItems: 'center',
+                        opacity: done ? 0.55 : 1,
+                      }}>
+                        <span style={{ fontSize: 13, flexShrink: 0, color: done ? 'var(--success)' : 'var(--muted)' }}>
+                          {done ? '✓' : '○'}
+                        </span>
+                        <span style={{
+                          fontSize: 12, flex: 1, color: 'var(--ink)',
+                          textDecoration: done ? 'line-through' : 'none',
+                        }}>
+                          {m.title}
+                        </span>
+                        <span style={{ fontSize: 10, color: done ? 'var(--success)' : 'var(--muted)', flexShrink: 0, fontWeight: done ? 700 : 400 }}>
+                          {m.story_pct}%
+                        </span>
                       </div>
-                      <span style={{ fontSize: 12, flex: 1, color: 'var(--ink)' }}>{m.title}</span>
-                      <span style={{ fontSize: 10, color: 'var(--muted)', flexShrink: 0 }}>{m.story_pct}%</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
