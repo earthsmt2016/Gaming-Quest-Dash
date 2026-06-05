@@ -851,3 +851,117 @@ export async function fetchAIGoalSuggestions(game: string): Promise<GoalSuggesti
   const data = await res.json();
   return data.suggestions ?? [];
 }
+
+// ─── Game Knowledge ───────────────────────────────────────────────────────────
+
+export interface KnowledgeMilestone {
+  title: string;
+  description: string;
+  story_pct: number;
+  full_pct: number;
+  confidence: number;
+}
+
+export interface RemainingItem {
+  title: string;
+  description: string;
+  category?: string;
+}
+
+export interface GameKnowledge {
+  game: string;
+  hasKnowledge: boolean;
+  genre: string | null;
+  story_summary: string | null;
+  story_percentage: number;
+  full_percentage: number;
+  estimated_story_hours: number | null;
+  estimated_full_hours: number | null;
+  story_milestones: KnowledgeMilestone[];
+  remaining_story: RemainingItem[];
+  remaining_full: RemainingItem[];
+  knowledge_source: string;
+  confidence: number;
+  generated_at: string | null;
+  updated_at: string | null;
+  pending: ProgressEstimate[];
+}
+
+export interface ProgressEstimate {
+  id: number;
+  game: string;
+  trigger_type: string;
+  trigger_context: string | null;
+  story_pct_current: number;
+  full_pct_current: number;
+  story_pct_suggested: number;
+  full_pct_suggested: number;
+  milestone_reached: string | null;
+  confidence: number;
+  reasoning: string | null;
+  status: string;
+  created_at: string;
+}
+
+export async function fetchGameKnowledge(game: string): Promise<GameKnowledge> {
+  const res = await fetch(`${BASE}/games/${encodeURIComponent(game)}/knowledge`);
+  if (!res.ok) throw new Error('Failed to fetch game knowledge');
+  return res.json();
+}
+
+export async function generateGameKnowledge(game: string): Promise<GameKnowledge> {
+  const res = await fetch(`${BASE}/games/${encodeURIComponent(game)}/knowledge/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to generate game knowledge');
+  return res.json();
+}
+
+export async function updateGameKnowledge(
+  game: string,
+  data: { story_percentage?: number; full_percentage?: number }
+): Promise<GameKnowledge> {
+  const res = await fetch(`${BASE}/games/${encodeURIComponent(game)}/knowledge`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update game knowledge');
+  return res.json();
+}
+
+export async function inferGameProgress(game: string): Promise<{
+  game: string; has_update: boolean; reasoning: string; confidence: number; suggestion?: ProgressEstimate;
+}> {
+  const res = await fetch(`${BASE}/games/${encodeURIComponent(game)}/progress/infer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to infer progress');
+  return res.json();
+}
+
+export async function resolveProgressSuggestion(
+  game: string,
+  id: number,
+  action: 'accept' | 'reject' | 'edit',
+  overrides?: { story_pct?: number; full_pct?: number }
+): Promise<{ ok: boolean; status: string }> {
+  const res = await fetch(
+    `${BASE}/games/${encodeURIComponent(game)}/progress/suggestions/${id}/resolve`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...overrides }),
+    }
+  );
+  if (!res.ok) throw new Error('Failed to resolve suggestion');
+  return res.json();
+}
+
+export async function fetchPendingSuggestions(): Promise<ProgressEstimate[]> {
+  const res = await fetch(`${BASE}/games/pending-suggestions`);
+  if (!res.ok) throw new Error('Failed to fetch pending suggestions');
+  return res.json();
+}

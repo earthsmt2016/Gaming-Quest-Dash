@@ -16,6 +16,7 @@ import companionRouter from "./companion";
 import coachCardRouter from "./coachCard";
 import gameProgressRouter from "./gameProgress";
 import goalsRouter from "./goals";
+import gameKnowledgeRouter from "./gameKnowledge";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(companionRouter);
 router.use(coachCardRouter);
 router.use(gameProgressRouter);
 router.use(goalsRouter);
+router.use(gameKnowledgeRouter);
 
 export default router;

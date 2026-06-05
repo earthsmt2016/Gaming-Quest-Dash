@@ -88,7 +88,7 @@ router.post("/ai/coach-card", async (_req, res) => {
   try {
     await ensureCoachTables();
 
-    const [profile, recentLogs, quests, gameHistory, completions, progressData] = await Promise.all([
+    const [profile, recentLogs, quests, gameHistory, completions, progressData, knowledgeData] = await Promise.all([
       pool.query(`SELECT * FROM user_profile WHERE id=1`),
       pool.query(`SELECT game, action, minutes, timestamp FROM log_entries ORDER BY timestamp::timestamptz DESC LIMIT 40`),
       pool.query(`SELECT game, title, status, difficulty, estimated_minutes FROM quests WHERE status IN ('active','suggested') ORDER BY status DESC`),
@@ -100,6 +100,7 @@ router.post("/ai/coach-card", async (_req, res) => {
       `),
       pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] })),
       pool.query(`SELECT game, current_percentage, status, estimated_hours_remaining FROM game_progress ORDER BY current_percentage DESC`).catch(() => ({ rows: [] })),
+      pool.query(`SELECT game, story_percentage, full_percentage, estimated_story_hours, estimated_full_hours FROM game_knowledge`).catch(() => ({ rows: [] })),
     ]);
 
     const p = profile.rows[0] ?? {};
@@ -133,6 +134,18 @@ router.post("/ai/coach-card", async (_req, res) => {
           }).join('\n')
       : '(no progress data set yet)';
 
+    const knowledgeMap = new Map(knowledgeData.rows.map((r: any) => [r.game, r]));
+    const knowledgeLines = knowledgeData.rows.length > 0
+      ? knowledgeData.rows
+          .filter((g: any) => !completedSet.has(g.game))
+          .map((g: any) => {
+            const storyHrs = g.estimated_story_hours ? `~${g.estimated_story_hours}h story` : '';
+            const fullHrs  = g.estimated_full_hours  ? `~${g.estimated_full_hours}h full`  : '';
+            const timeEst  = [storyHrs, fullHrs].filter(Boolean).join(', ');
+            return `${g.game}: story ${g.story_percentage}%, full completion ${g.full_percentage}%${timeEst ? ` (${timeEst})` : ''}`;
+          }).join('\n')
+      : '(no AI knowledge maps generated yet)';
+
     const systemPrompt = `You are a personal gaming strategist coach. Give ONE sharp, data-backed recommendation for what the player should play tonight.
 
 PLAYER PROFILE:
@@ -147,8 +160,11 @@ ${recentActivity || '(none)'}
 ACTIVE GAMES (last 90 days):
 ${gameLines || '(no active games tracked yet)'}
 
-GAME PROGRESS (completion tracking):
+GAME PROGRESS (manual tracking):
 ${progressLines}
+
+AI GAME KNOWLEDGE (story vs full completion):
+${knowledgeLines}
 
 QUESTS:
 ${questLines || '(no quests)'}
