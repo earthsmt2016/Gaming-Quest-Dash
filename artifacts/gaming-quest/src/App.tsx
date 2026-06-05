@@ -13,8 +13,6 @@ import ActiveQuestsWidget from './components/ActiveQuestsWidget';
 import CompanionChat from './components/CompanionChat';
 import CoachCard from './components/CoachCard';
 import WeeklyAIReview from './components/WeeklyAIReview';
-import ProgressWidget from './components/ProgressWidget';
-import GoalsWidget from './components/GoalsWidget';
 import GameKnowledgeWidget from './components/GameKnowledgeWidget';
 import GameLibrary from './components/GameLibrary';
 import EditLogModal from './components/EditLogModal';
@@ -428,12 +426,6 @@ export default function App() {
 
                     {/* AI Coach Card — personalised nightly recommendation */}
                     <CoachCard />
-
-                    {/* Game Progress Tracking */}
-                    <ProgressWidget />
-
-                    {/* Personal Goals */}
-                    <GoalsWidget />
 
                     {/* AI Game Knowledge */}
                     <GameKnowledgeWidget />
