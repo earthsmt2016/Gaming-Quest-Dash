@@ -240,20 +240,124 @@ router.patch("/games/:game/knowledge", async (req, res) => {
   }
 });
 
+// ─── Shared inference logic (also called fire-and-forget after log inserts) ───
+
+export async function triggerProgressInference(game: string): Promise<void> {
+  await ensureTables();
+
+  // Skip if no knowledge map exists for this game
+  const knowledgeCheck = await pool.query(
+    `SELECT story_percentage, full_percentage, story_milestones FROM game_knowledge WHERE game = $1`,
+    [game]
+  );
+  if (!knowledgeCheck.rows.length) return;
+
+  // Skip if there's already a pending suggestion (avoid spamming)
+  const pendingCheck = await pool.query(
+    `SELECT id FROM game_progress_estimates WHERE game = $1 AND status = 'pending' LIMIT 1`,
+    [game]
+  );
+  if (pendingCheck.rows.length) return;
+
+  const recentLogs = await pool.query(`
+    SELECT timestamp, action, minutes, type
+      FROM log_entries WHERE game = $1
+     ORDER BY timestamp::timestamptz DESC LIMIT 20
+  `, [game]);
+
+  if (!recentLogs.rows.length) return;
+
+  const gk = knowledgeCheck.rows[0];
+  const currentStory = gk.story_percentage ?? 0;
+  const currentFull  = gk.full_percentage  ?? 0;
+  const milestones   = gk.story_milestones ?? [];
+  const logLines = recentLogs.rows
+    .map((r: any) => `- ${r.action} (${r.minutes}m, ${r.type})`)
+    .join('\n');
+
+  const milestoneList = Array.isArray(milestones) && milestones.length
+    ? milestones.map((m: any) => `  • ${m.title} → story ${m.story_pct}%, full ${m.full_pct}%`).join('\n')
+    : '  (no milestone map yet — generate knowledge first for better accuracy)';
+
+  const prompt = `You are a game progress analyst for "${game}".
+
+CURRENT TRACKED PROGRESS:
+- Story completion: ${currentStory}%
+- Full completion: ${currentFull}%
+
+STORY MILESTONE MAP:
+${milestoneList}
+
+RECENT ACTIVITY (newest first):
+${logLines}
+
+Based on the recent activity, estimate whether progress has changed.
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "story_pct_suggested": number (0-100, new estimate — same as current if no change),
+  "full_pct_suggested": number (0-100, new estimate — same as current if no change),
+  "milestone_reached": "string or null (name of milestone just reached, if any)",
+  "confidence": number (0-1),
+  "reasoning": "string (1-2 sentences explaining the suggestion)",
+  "has_update": boolean (true only if you believe progress actually changed)
+}
+
+Rules:
+- Only suggest an update if the activity clearly indicates progress changed
+- Never decrease percentages
+- If nothing meaningful happened, set has_update: false with current values and confidence 0.3
+- Be specific: reference the actual activity that drove the estimate`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4.1",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.2,
+  });
+
+  let data: any = {};
+  try {
+    data = JSON.parse(completion.choices[0].message.content?.trim() ?? "{}");
+  } catch {
+    console.error(`[inference] AI returned invalid JSON for ${game}`);
+    return;
+  }
+
+  if (!data.has_update) return;
+
+  await pool.query(`
+    INSERT INTO game_progress_estimates
+      (game, trigger_type, trigger_context, story_pct_current, full_pct_current,
+       story_pct_suggested, full_pct_suggested, milestone_reached, confidence, reasoning, status)
+    VALUES ($1, 'log_inference', $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+  `, [
+    game,
+    logLines.slice(0, 500),
+    currentStory,
+    currentFull,
+    Math.max(currentStory, data.story_pct_suggested ?? currentStory),
+    Math.max(currentFull,  data.full_pct_suggested  ?? currentFull),
+    data.milestone_reached ?? null,
+    data.confidence ?? 0.5,
+    data.reasoning ?? null,
+  ]);
+
+  console.log(`[inference] Queued progress suggestion for ${game}: story ${currentStory}→${data.story_pct_suggested}%, full ${currentFull}→${data.full_pct_suggested}%`);
+}
+
 // ─── POST /api/games/:game/progress/infer ────────────────────────────────────
 router.post("/games/:game/progress/infer", async (req, res) => {
   try {
     await ensureTables();
     const game = decodeURIComponent(req.params.game);
 
-    const [knowledge, recentLogs, currentProg] = await Promise.all([
+    const [knowledge, recentLogs] = await Promise.all([
       pool.query(`SELECT * FROM game_knowledge WHERE game = $1`, [game]),
       pool.query(`
         SELECT timestamp, action, minutes, type
           FROM log_entries WHERE game = $1
          ORDER BY timestamp::timestamptz DESC LIMIT 20
       `, [game]),
-      pool.query(`SELECT * FROM game_knowledge WHERE game = $1`, [game]),
     ]);
 
     if (!recentLogs.rows.length) {
