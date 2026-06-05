@@ -141,14 +141,13 @@ Respond ONLY with valid JSON (no markdown):
   "confidence": number (0-1, how confident you are in this knowledge)
 }
 
-ACCURACY RULES — follow these strictly:
-- Use ONLY stage/level/chapter names you are certain exist in "${game}". Do NOT invent names that sound plausible.
-- If you are unsure of the exact name of a stage, use a broad descriptor ("Early story stages", "Mid-game chapter") rather than guessing a specific name.
-- story_milestones must reference real, named events or stages from the actual game in correct chronological order.
-- remaining_story at ${currentPct}% story progress: list only stages/chapters the player has not yet reached. If unsure of exact names, use broad stage descriptions ("Complete remaining story stages", "Defeat the final boss").
-- remaining_full: list real collectible/challenge categories specific to this game (e.g. "Collect all Chaos Emeralds", "Complete all S-Rank missions"). Do NOT invent generic names.
-- If you have low confidence in specific names for this game (e.g. it was released after 2023 or you have limited data), set confidence below 0.5 and keep milestone/task names broad and safe rather than specific and wrong.
-- Lower confidence score when you are unsure. Never fabricate specific content to appear confident.`;
+ACCURACY RULES:
+- Be as specific as possible using real names from the actual game. Vague placeholders like "Complete remaining story chapters" or "Defeat the final boss" are only acceptable as an absolute last resort when you genuinely have no idea what the real content is called.
+- story_milestones: use the actual chapter/act/stage/boss names from "${game}" in chronological order. If the game uses numbered episodes or named chapters, use those real names.
+- remaining_story: name the specific stages or chapters still ahead at ${currentPct}% progress. Use the game's own terminology (e.g. "The Dark Awakens Chapter 5–8", "Complete the Mishima Saga", not just "Complete remaining story chapters").
+- remaining_full: name the real optional content categories for this specific game (e.g. for a fighting game: "Complete all Character Episodes", "Reach Dan X in Ranked", "Unlock all Customisation items" — not just "Achievements/Trophies").
+- Only if you genuinely don't know a specific name should you fall back to a descriptive placeholder — and in that case lower the confidence score to reflect it.
+- Do NOT invent stage names that don't exist. If you know the game, be specific. If you don't know, be honest with a low confidence score and broad-but-accurate description.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-5.4",
