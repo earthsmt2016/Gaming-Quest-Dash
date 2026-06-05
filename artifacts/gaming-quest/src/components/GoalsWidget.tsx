@@ -80,11 +80,12 @@ function ProgressBar({ pct, color }: { pct: number; color: string }) {
 }
 
 function GoalRow({
-  goal, onUpdate, onDelete,
+  goal, onUpdate, onDelete, showGame = false,
 }: {
   goal: Goal;
   onUpdate: (id: number, data: Partial<Goal>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  showGame?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [progInput, setProgInput] = useState(String(goal.current_value));
@@ -148,6 +149,12 @@ function GoalRow({
               fontSize: 10, color: 'var(--muted)', flexShrink: 0,
             }}>{typeLabel(goal.goal_type)}</span>
           </div>
+
+          {showGame && (
+            <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, marginTop: 2 }}>
+              {goal.game}
+            </div>
+          )}
 
           {goal.description && (
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{goal.description}</div>
@@ -691,7 +698,7 @@ export default function GoalsWidget() {
                 </div>
               ))
             : displayed.map(g => (
-                <GoalRow key={g.id} goal={g} onUpdate={handleUpdate} onDelete={handleDelete} />
+                <GoalRow key={g.id} goal={g} onUpdate={handleUpdate} onDelete={handleDelete} showGame />
               ))
           }
 
