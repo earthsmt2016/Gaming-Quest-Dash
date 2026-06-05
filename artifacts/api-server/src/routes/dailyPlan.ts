@@ -20,12 +20,21 @@ interface ActiveQuestInput {
   difficulty: string;
 }
 
+const SESSION_MODE_PROMPTS: Record<string, string> = {
+  quick_win:   'Session mode: QUICK WIN. Prioritise games/quests that can be completed or meaningfully advanced in the available time. Prefer quests close to completion, games with short active quests, and tasks that give a clear sense of accomplishment. Avoid time sinks.',
+  story_push:  'Session mode: STORY PUSH. Prioritise games with active narrative quests or significant story milestones upcoming. Pick the game the player is deepest into and push the story forward — name the exact upcoming story beat in the "why".',
+  grind:       'Session mode: GRIND/FARM. Prioritise games where the player is working toward a resource, rank, or completion percentage target. Name the specific grind (e.g., "farm X more Y tokens", "reach rank Z"). Maximise one or two games rather than spreading thin.',
+  chill:       'Session mode: CHILL. Prioritise relaxing, low-pressure sessions. Avoid boss-fight stages or high-difficulty quests. Prefer games with exploration, collectibles, or enjoyable grinding. The tone in "why" should feel easy and inviting.',
+  competitive: 'Session mode: COMPETITIVE. Prioritise rank-up, rated matches, or competitive modes. Focus on one game for maximum match count. Name the target rank or rating change in the "why".',
+};
+
 router.post("/daily-plan", async (req, res) => {
-  const { availableMinutes, dayOfWeek, games, activeQuests } = req.body as {
+  const { availableMinutes, dayOfWeek, games, activeQuests, sessionMode } = req.body as {
     availableMinutes: number;
     dayOfWeek: string;
     games: GameInput[];
     activeQuests?: ActiveQuestInput[];
+    sessionMode?: string;
   };
 
   if (!availableMinutes || !Array.isArray(games) || games.length === 0) {
@@ -86,7 +95,11 @@ router.post("/daily-plan", async (req, res) => {
     ? `\n- Games with active quests (marked 🎯) represent specific goals the player is working toward — give them strong priority so the player can make quest progress this session.`
     : "";
 
-  const systemPrompt = `You are a sharp daily gaming session planner. Given a player's active games and available time, you create an optimal, specific session plan.
+  const modeLine = sessionMode && SESSION_MODE_PROMPTS[sessionMode]
+    ? `\n\n${SESSION_MODE_PROMPTS[sessionMode]}`
+    : "";
+
+  const systemPrompt = `You are a sharp daily gaming session planner. Given a player's active games and available time, you create an optimal, specific session plan.${modeLine}
 
 Selection rules:
 - Pick at most ${maxGames} game${maxGames > 1 ? "s" : ""} (based on available time: ${availableMinutes} min)

@@ -188,6 +188,13 @@ Respond ONLY with valid JSON, no markdown:
        card.confidence_score ?? 0.5]
     );
 
+    // Phase 10: Persist key insights to ai_insights table (fire-and-forget)
+    const insightContent = `Tonight's pick: ${card.game} (${card.suggested_minutes}m) — ${(card.why ?? []).join(' | ')}`;
+    pool.query(
+      `INSERT INTO ai_insights (type, content, game) VALUES ('recommendation', $1, $2)`,
+      [insightContent, card.game]
+    ).catch(() => {});
+
     res.json({ ...card, id: saved.rows[0].id, created_at: saved.rows[0].created_at });
   } catch (err) {
     console.error("coach-card error:", err);
@@ -236,7 +243,116 @@ router.get("/ai/recommendations", async (_req, res) => {
   }
 });
 
-// Export fulfillment helper for use in logEntries
+// ─── POST /api/ai/weekly-review (Phase 8) ──────────────────────────────────
+router.post("/ai/weekly-review", async (req, res) => {
+  try {
+    await ensureCoachTables();
+
+    const [weekLogs, topGames, questActivity, profile] = await Promise.all([
+      pool.query(`
+        SELECT game, action, minutes, timestamp::timestamptz as ts
+        FROM log_entries
+        WHERE timestamp::timestamptz >= date_trunc('week', NOW())
+        ORDER BY timestamp::timestamptz ASC
+      `),
+      pool.query(`
+        SELECT game, COUNT(*)::int as sessions, SUM(minutes)::int as total_minutes
+        FROM log_entries
+        WHERE timestamp::timestamptz >= date_trunc('week', NOW())
+        GROUP BY game ORDER BY total_minutes DESC
+      `),
+      pool.query(`
+        SELECT COUNT(*)::int as cnt FROM quests
+        WHERE status='completed' AND completed_at >= date_trunc('week', NOW())
+      `),
+      pool.query(`SELECT personality_summary, coaching_summary, playstyle_tags, avg_sessions_per_week FROM user_profile WHERE id=1`),
+    ]);
+
+    const totalMinutes = weekLogs.rows.reduce((s: number, r: any) => s + (r.minutes || 0), 0);
+    const sessionCount = weekLogs.rows.length;
+    const gamesPlayed = new Set(weekLogs.rows.map((r: any) => r.game)).size;
+    const questCompleted = questActivity.rows[0]?.cnt ?? 0;
+
+    const topGamesStr = topGames.rows.slice(0, 5)
+      .map((g: any) => `${g.game}: ${g.sessions} sessions, ${g.total_minutes}m`)
+      .join('\n');
+
+    const sessionList = weekLogs.rows.slice(0, 15)
+      .map((r: any) => `${new Date(r.ts).toLocaleDateString()} — ${r.game}: ${r.action} (${r.minutes}m)`)
+      .join('\n');
+
+    const p = profile.rows[0] ?? {};
+
+    const systemPrompt = `You are a personal gaming coach writing a brief weekly review. Be warm, specific, and insightful.
+
+PLAYER: ${p.personality_summary ?? 'Gaming enthusiast'}
+COACHING NOTE: ${p.coaching_summary ?? 'Keep building your backlog down'}
+
+THIS WEEK:
+Total playtime: ${totalMinutes}m (${Math.round(totalMinutes / 60 * 10) / 10}h)
+Sessions: ${sessionCount}
+Games played: ${gamesPlayed}
+Quests completed: ${questCompleted}
+
+Top games this week:
+${topGamesStr || '(no sessions logged)'}
+
+Session log:
+${sessionList || '(no sessions)'}
+
+Write a weekly review as valid JSON, no markdown:
+{
+  "narrative": "<3-4 sentences reviewing the week. Be specific — name games, session counts, milestones. Acknowledge patterns. Use second person ('You').>",
+  "highlights": ["<specific highlight 1>", "<specific highlight 2>"],
+  "next_week_focus": "<1 actionable sentence about what to prioritise next week, citing specific games or goals>",
+  "mood": "<one of: great | good | quiet | mixed>"
+}`;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5.4',
+      max_completion_tokens: 350,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: 'Generate my weekly review.' },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content?.trim() ?? '';
+    let review: any = null;
+    try { review = JSON.parse(raw); } catch {
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (m) try { review = JSON.parse(m[0]); } catch { /* ignore */ }
+    }
+
+    if (!review) { res.status(500).json({ error: "AI returned invalid response" }); return; }
+
+    // Save the review as an insight
+    pool.query(
+      `INSERT INTO ai_insights (type, content) VALUES ('weekly_review', $1)`,
+      [review.narrative]
+    ).catch(() => {});
+
+    res.json({ ...review, total_minutes: totalMinutes, session_count: sessionCount, games_played: gamesPlayed, quests_completed: questCompleted });
+  } catch (err) {
+    console.error("weekly-review error:", err);
+    res.status(500).json({ error: "Failed to generate weekly review", detail: String(err) });
+  }
+});
+
+// ─── GET /api/ai/insights (Phase 10) ───────────────────────────────────────
+router.get("/ai/insights", async (_req, res) => {
+  try {
+    await ensureCoachTables();
+    const result = await pool.query(
+      `SELECT * FROM ai_insights ORDER BY created_at DESC LIMIT 15`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch insights", detail: String(err) });
+  }
+});
+
+// ─── Export fulfillment helper for use in logEntries ────────────────────────
 export async function markRecommendationFulfilled(games: string[]): Promise<void> {
   try {
     await pool.query(`

@@ -247,15 +247,37 @@ export async function fetchDailyPlan(
   availableMinutes: number,
   dayOfWeek: string,
   games: DailyPlanGame[],
-  activeQuests?: ActiveQuestContext[]
+  activeQuests?: ActiveQuestContext[],
+  sessionMode?: string
 ): Promise<DailyPlanPick[]> {
   const res = await fetch(`${BASE}/daily-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ availableMinutes, dayOfWeek, games, activeQuests }),
+    body: JSON.stringify({ availableMinutes, dayOfWeek, games, activeQuests, sessionMode }),
   });
   if (!res.ok) return [];
   return (await res.json()).picks ?? [];
+}
+
+export interface WeeklyAIReview {
+  narrative: string;
+  highlights: string[];
+  next_week_focus: string;
+  mood: 'great' | 'good' | 'quiet' | 'mixed';
+  total_minutes: number;
+  session_count: number;
+  games_played: number;
+  quests_completed: number;
+}
+
+export async function fetchWeeklyAIReview(): Promise<WeeklyAIReview> {
+  const res = await fetch(`${BASE}/ai/weekly-review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error('Failed to generate weekly review');
+  return res.json();
 }
 
 export async function fetchSubQuest(

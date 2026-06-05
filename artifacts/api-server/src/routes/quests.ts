@@ -227,6 +227,20 @@ async function buildUserProfile(): Promise<void> {
   if (avgSessionMinutes >= 120)               playstyleTags.push('Long-session player');
   if (abandonmentRate < 0.2 && totalCompleted >= 3) playstyleTags.push('High completer');
 
+  // Phase 4: Recommendation follow-through rate (behavioral learning)
+  const recStats = await pool.query(`
+    SELECT COUNT(*)::int as total,
+           SUM(CASE WHEN fulfilled THEN 1 ELSE 0 END)::int as fulfilled_count
+    FROM ai_recommendations WHERE created_at > NOW() - INTERVAL '30 days'
+  `).catch(() => ({ rows: [{ total: 0, fulfilled_count: 0 }] }));
+  const recTotal = recStats.rows[0]?.total ?? 0;
+  const recFulfilled = recStats.rows[0]?.fulfilled_count ?? 0;
+  const followRate = recTotal >= 3 ? Math.round((recFulfilled / recTotal) * 100) : null;
+  if (followRate !== null && followRate >= 70 && !playstyleTags.includes('Follows recommendations'))
+    playstyleTags.push('Follows recommendations');
+  if (followRate !== null && followRate <= 20 && !playstyleTags.includes('Independent planner'))
+    playstyleTags.push('Independent planner');
+
   // Generate personality summary + coaching summary using AI when there's history
   let personalitySummary: string | null = null;
   let coachingSummary: string | null = null;
@@ -242,7 +256,8 @@ async function buildUserProfile(): Promise<void> {
       `Active games: ${activeGames.length}`,
       `Backlog risk: ${backlogRisk.join(', ') || 'none'}`,
       `Playstyle tags: ${playstyleTags.join(', ') || 'none'}`,
-    ].join('\n');
+      followRate !== null ? `Recommendation follow-through: ${followRate}% (${recFulfilled}/${recTotal} in last 30 days)` : '',
+    ].filter(Boolean).join('\n');
     try {
       const resp = await openai.chat.completions.create({
         model: 'gpt-5.4',
@@ -991,6 +1006,20 @@ router.post("/quests/:id/complete", async (req, res) => {
        VALUES ($1, $2, $3, $4, $5)`,
       [new Date().toISOString(), quest.game, actionText, time_taken_minutes, quest.type]
     );
+
+    // Phase 7: Quest difficulty calibration — flag if time taken differs significantly from estimate
+    if (time_taken_minutes > 0 && quest.estimated_minutes > 0) {
+      const ratio = time_taken_minutes / quest.estimated_minutes;
+      let calibrationNote: string | null = null;
+      if (ratio >= 1.8) calibrationNote = `Took ${time_taken_minutes}m vs ${quest.estimated_minutes}m estimated — harder than expected`;
+      else if (ratio <= 0.45) calibrationNote = `Took ${time_taken_minutes}m vs ${quest.estimated_minutes}m estimated — easier than expected`;
+      if (calibrationNote) {
+        pool.query(
+          `INSERT INTO ai_insights (type, content, game) VALUES ('difficulty_calibration', $1, $2)`,
+          [calibrationNote, quest.game]
+        ).catch(() => {});
+      }
+    }
 
     // Rebuild profile and refresh quest pool in background after completion
     buildUserProfile().catch(err => console.error("profile rebuild after complete:", err));

@@ -12,6 +12,14 @@ const QUICK_TIMES = [
   { label: '4h', value: 240 },
 ];
 
+const SESSION_MODES = [
+  { id: 'quick_win',   emoji: '⚡', label: 'Quick Win',   desc: 'Short, completable tasks' },
+  { id: 'story_push',  emoji: '📖', label: 'Story Push',  desc: 'Advance the narrative' },
+  { id: 'grind',       emoji: '⚙️', label: 'Grind',       desc: 'Farm resources or rank' },
+  { id: 'chill',       emoji: '😌', label: 'Chill',       desc: 'Relaxed, low-pressure' },
+  { id: 'competitive', emoji: '🏆', label: 'Competitive', desc: 'Rated matches & ranks' },
+];
+
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const PICK_NUMERALS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧'];
@@ -108,6 +116,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   const [customStr, setCustomStr] = useState('');
   const [useCustom, setUseCustom] = useState(false);
   const [plan, setPlan] = useState<PlanState>({ status: 'idle' });
+  const [sessionMode, setSessionMode] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [questRecs, setQuestRecs] = useState<{ fitting: Quest[]; partial: Quest[] } | null>(null);
   const [subQuests, setSubQuests] = useState<Record<number, { loading: boolean; title?: string; goal?: string }>>({});
@@ -206,7 +215,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
         game: q.game, title: q.title,
         estimated_minutes: q.estimated_minutes, difficulty: q.difficulty,
       }));
-      const picks = await fetchDailyPlan(mins, dayOfWeek, activeGames, activeQuestData);
+      const picks = await fetchDailyPlan(mins, dayOfWeek, activeGames, activeQuestData, sessionMode ?? undefined);
       if (picks.length > 0) {
         setPlan({ status: 'ai', mins, picks });
         planGameNames = picks.map(p => p.game);
@@ -440,6 +449,33 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                     <span style={{ fontSize: '13px', color: 'var(--muted)' }}>minutes</span>
                   </div>
                 )}
+                {/* Session mode chips */}
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>
+                    Session mood (optional)
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {SESSION_MODES.map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => setSessionMode(prev => prev === m.id ? null : m.id)}
+                        title={m.desc}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                          padding: '5px 10px', borderRadius: '20px', cursor: 'pointer',
+                          fontSize: '12px', fontWeight: 600, fontFamily: 'inherit',
+                          border: sessionMode === m.id ? '1.5px solid var(--accent)' : '1.5px solid var(--line)',
+                          background: sessionMode === m.id ? 'var(--accent)' : 'var(--paper)',
+                          color: sessionMode === m.id ? '#fff' : 'var(--text)',
+                          transition: 'all 0.12s',
+                        }}
+                      >
+                        <span>{m.emoji}</span> {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <button
                   className="btn primary"
                   onClick={handleSubmit}

@@ -41,18 +41,31 @@ router.post("/screenshot-analyze", async (req, res) => {
             },
             {
               type: "text",
-              text: `You are a gaming log assistant. Analyze this screenshot and extract a log entry.${gamesHint}
+              text: `You are a gaming log assistant. Analyze this screenshot and extract a detailed log entry.${gamesHint}
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
   "game": "<game title — exact name if you can read it, else best guess>",
-  "action": "<brief description of what happened: boss fight, completed level, ranked up, etc. Max 60 chars>",
-  "type": "<one of: progress | boss | complete | rank-up | purchase>",
+  "action": "<specific description of what happened — name the achievement, boss, level, or event if visible. Max 80 chars>",
+  "type": "<one of: progress | boss | complete | rank-up | purchase | achievement | milestone | competitive>",
   "minutes": <estimated session length as integer, 0 if unclear>,
-  "confidence": <0.0 to 1.0>
+  "confidence": <0.0 to 1.0>,
+  "detected_event": "<specific event name if visible: achievement name, boss name, level name, rank reached — or null>",
+  "score": "<visible score/rating/percentage as string, or null>",
+  "rank": "<visible rank/tier/league as string, or null>"
 }
 
-Type rules: use "boss" if a boss fight/boss health bar is visible; "complete" if credits/mission complete screen; "rank-up" if rank/rating change visible; "purchase" if first launch/store screen; otherwise "progress".`,
+Type rules:
+- "boss": boss fight screen or boss health bar visible
+- "complete": credits, mission complete, chapter complete, or game over (victory) screen
+- "rank-up": rank/rating/tier change screen, promotion screen, or new rank badge visible
+- "purchase": game store screen, first launch, or DLC installed
+- "achievement": achievement unlock popup or trophy/achievement screen
+- "milestone": level up, skill unlock, progression milestone (NOT a full completion)
+- "competitive": match result screen, leaderboard, multiplayer end screen, ELO/MMR change
+- "progress": everything else (in-game exploration, inventory, map, gameplay)
+
+Extract "detected_event" as the specific named thing (e.g. "Platinum Trophy", "Defeated Margit", "Reached Diamond III", "Completed Chapter 4"). Use null if no specific named event is visible.`,
             },
           ],
         },
@@ -75,6 +88,9 @@ Type rules: use "boss" if a boss fight/boss health bar is visible; "complete" if
       type: String(parsed.type ?? "progress"),
       minutes: Number(parsed.minutes ?? 0),
       confidence: Number(parsed.confidence ?? 0.5),
+      detected_event: parsed.detected_event ? String(parsed.detected_event) : null,
+      score: parsed.score ? String(parsed.score) : null,
+      rank: parsed.rank ? String(parsed.rank) : null,
     });
   } catch (err) {
     res.status(500).json({ error: "AI analysis failed", detail: String(err) });
