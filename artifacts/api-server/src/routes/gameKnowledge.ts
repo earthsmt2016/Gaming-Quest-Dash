@@ -142,17 +142,16 @@ Respond ONLY with valid JSON (no markdown):
 }
 
 ACCURACY RULES:
-- Be as specific as possible using real names from the actual game. Vague placeholders like "Complete remaining story chapters" or "Defeat the final boss" are only acceptable as an absolute last resort when you genuinely have no idea what the real content is called.
-- story_milestones: use the actual chapter/act/stage/boss names from "${game}" in chronological order. If the game uses numbered episodes or named chapters, use those real names.
-- remaining_story: name the specific stages or chapters still ahead at ${currentPct}% progress. Use the game's own terminology (e.g. "The Dark Awakens Chapter 5–8", "Complete the Mishima Saga", not just "Complete remaining story chapters").
-- remaining_full: name the real optional content categories for this specific game (e.g. for a fighting game: "Complete all Character Episodes", "Reach Dan X in Ranked", "Unlock all Customisation items" — not just "Achievements/Trophies").
-- Only if you genuinely don't know a specific name should you fall back to a descriptive placeholder — and in that case lower the confidence score to reflect it.
-- Do NOT invent stage names that don't exist. If you know the game, be specific. If you don't know, be honest with a low confidence score and broad-but-accurate description.`;
+- Use the real names from "${game}". Never invent names that don't exist in the game.
+- story_milestones: use actual named chapters, acts, stages, or bosses in order. One milestone per named section — never bundle multiple chapters into a single entry like "Chapters 1-8".
+- remaining_story: each remaining chapter or stage is its own separate item. If the game has e.g. 8 chapters and the player is at 0%, list each chapter individually. Never write "Complete remaining chapters" as a catch-all.
+- remaining_full: use the actual mode/content names from this game. For a fighting game: character episode names, actual ranked tier goals, specific arcade modes. For a platformer: the real collectible names and challenge mode names. Not "Achievements/Trophies" as a blanket entry — be specific to this game's trophy list.
+- If you genuinely don't know the exact name of something, omit it rather than guessing — and lower the overall confidence score.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-5.4",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.1,
+      temperature: 0.2,
     });
 
     let data: any = {};
