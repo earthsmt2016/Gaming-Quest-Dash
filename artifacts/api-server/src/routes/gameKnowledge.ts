@@ -141,17 +141,16 @@ Respond ONLY with valid JSON (no markdown):
   "confidence": number (0-1, how confident you are in this knowledge)
 }
 
-ACCURACY RULES:
-- Use the real names from "${game}". Never invent names that don't exist in the game.
-- story_milestones: use actual named chapters, acts, stages, or bosses in order. One milestone per named section — never bundle multiple chapters into a single entry like "Chapters 1-8".
-- remaining_story: each remaining chapter or stage is its own separate item. If the game has e.g. 8 chapters and the player is at 0%, list each chapter individually. Never write "Complete remaining chapters" as a catch-all.
-- remaining_full: use the actual mode/content names from this game. For a fighting game: character episode names, actual ranked tier goals, specific arcade modes. For a platformer: the real collectible names and challenge mode names. Not "Achievements/Trophies" as a blanket entry — be specific to this game's trophy list.
-- If you genuinely don't know the exact name of something, omit it rather than guessing — and lower the overall confidence score.`;
+Rules:
+- story_milestones: 5-10 entries in chronological order using the real stage/chapter/boss names from the game
+- remaining_story: list each remaining story stage or chapter as its own separate item using the game's actual names (e.g. "Complete the First Warp Room", "Defeat Dingodile") — never bundle ranges or use catch-alls
+- remaining_full: list real optional content using this game's actual names (specific collectibles, challenge modes, character episodes, etc.)
+- Be specific to the actual game — use real names you know exist. If you are not certain about a specific name, omit it and lower the confidence score rather than inventing something plausible-sounding`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.4",
+      model: "gpt-4.1",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
+      temperature: 0.3,
     });
 
     let data: any = {};
