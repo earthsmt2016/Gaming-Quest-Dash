@@ -30,11 +30,17 @@ function fmtMins(m: number): string {
   return rem ? `${h}h ${rem}m` : `${h}h`;
 }
 
-function healthColor(score: number): string {
-  if (score >= 80) return '#2e7d32';
-  if (score >= 60) return '#f57f17';
-  if (score >= 40) return '#e65100';
-  return '#b71c1c';
+function healthCssVar(score: number): string {
+  if (score >= 80) return 'var(--success)';
+  if (score >= 60) return 'var(--warning)';
+  if (score >= 40) return 'var(--warning)';
+  return 'var(--danger)';
+}
+
+function confidenceCssVar(score: number): string {
+  if (score >= 0.7) return 'var(--success)';
+  if (score >= 0.4) return 'var(--warning)';
+  return 'var(--danger)';
 }
 
 function confidenceLabel(score: number): string {
@@ -43,7 +49,6 @@ function confidenceLabel(score: number): string {
   return 'Limited data';
 }
 
-// Cache coach card for 30 minutes to avoid excess AI calls
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export default function CoachCard() {
@@ -52,9 +57,7 @@ export default function CoachCard() {
   const [loading, setLoading]   = useState(false);
   const [loadingH, setLoadingH] = useState(true);
   const [error, setError]       = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
 
-  // Load backlog health (cheap — pure SQL)
   useEffect(() => {
     fetch(`${BASE}/backlog-health`)
       .then(r => r.ok ? r.json() : null)
@@ -63,13 +66,11 @@ export default function CoachCard() {
       .finally(() => setLoadingH(false));
   }, []);
 
-  // On mount: load latest cached recommendation (no AI call)
   useEffect(() => {
     fetch(`${BASE}/ai/coach-card/latest`)
       .then(r => r.ok ? r.json() : null)
       .then((d: CoachRec | null) => {
         if (!d) return;
-        // Use cache if fresh (< 30 min)
         const age = Date.now() - new Date(d.created_at).getTime();
         if (age < CACHE_TTL_MS) setRec(d);
       })
@@ -82,8 +83,7 @@ export default function CoachCard() {
     try {
       const r = await fetch(`${BASE}/ai/coach-card`, { method: 'POST' });
       if (!r.ok) throw new Error('Failed');
-      const d = await r.json();
-      setRec(d);
+      setRec(await r.json());
     } catch {
       setError('Could not generate recommendation — try again.');
     } finally {
@@ -91,88 +91,90 @@ export default function CoachCard() {
     }
   }, []);
 
-  const isStale = rec ? (Date.now() - new Date(rec.created_at).getTime()) > CACHE_TTL_MS : true;
+  const isStale = rec
+    ? (Date.now() - new Date(rec.created_at).getTime()) > CACHE_TTL_MS
+    : true;
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%)',
-      border: '1px solid #e94560',
+      border: '1px solid var(--line)',
       borderRadius: 'var(--radius)',
+      background: 'var(--paper)',
+      boxShadow: 'var(--shadow)',
       overflow: 'hidden',
-      boxShadow: '0 4px 24px rgba(233,69,96,0.15)',
     }}>
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px 10px',
-        borderBottom: '1px solid rgba(233,69,96,0.25)',
+        padding: '14px 16px 12px',
+        borderBottom: '1px solid var(--soft-line)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '18px' }}>🏆</span>
-          <span style={{ fontSize: '13px', fontWeight: 800, color: '#fff', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            AI Coach
-          </span>
-          {health && !loadingH && (
-            <span style={{
-              fontSize: '10px', fontWeight: 700, color: '#fff',
-              background: healthColor(health.health_score),
-              borderRadius: '20px', padding: '2px 8px', marginLeft: '4px',
-            }}>
-              Backlog {health.label} · {health.health_score}/100
-            </span>
-          )}
+          <div style={{
+            width: 32, height: 32, background: 'var(--accent)',
+            borderRadius: 8, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: 16, flexShrink: 0,
+          }}>🏆</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)', letterSpacing: '0.04em', textTransform: 'uppercase', lineHeight: 1.2 }}>
+              AI Coach
+            </div>
+            {health && !loadingH && (
+              <div style={{ fontSize: 11, fontWeight: 600, color: healthCssVar(health.health_score), marginTop: 1 }}>
+                Backlog {health.label} · {health.health_score}/100
+              </div>
+            )}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {rec && (
-            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)' }}>
+            <span style={{ fontSize: 10, color: 'var(--muted)' }}>
               {isStale ? 'Stale' : 'Fresh'} · {new Date(rec.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
           <button
             onClick={generate}
             disabled={loading}
-            style={{
-              background: loading ? 'rgba(233,69,96,0.3)' : '#e94560',
-              color: '#fff', border: 'none', borderRadius: '20px',
-              padding: '4px 12px', cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '11px', fontWeight: 700, fontFamily: 'inherit',
-              transition: 'background 0.2s',
-            }}
+            className="btn primary"
+            style={{ fontSize: 11, minHeight: 30, padding: '0 12px', opacity: loading ? 0.65 : 1 }}
           >
             {loading ? '⚙️ Thinking…' : rec ? '↻ Refresh' : '✨ Get Recommendation'}
           </button>
         </div>
       </div>
 
-      {/* Backlog risks */}
+      {/* ── Backlog risks ── */}
       {health?.risks && health.risks.length > 0 && (
         <div style={{
-          padding: '7px 16px', background: 'rgba(233,69,96,0.1)',
-          borderBottom: '1px solid rgba(233,69,96,0.15)',
+          padding: '7px 16px',
+          background: 'var(--paper-2)',
+          borderBottom: '1px solid var(--soft-line)',
           display: 'flex', gap: '12px', flexWrap: 'wrap' as const,
         }}>
           {health.risks.map((r, i) => (
-            <span key={i} style={{ fontSize: '11px', color: '#ff6b8a', fontWeight: 600 }}>
+            <span key={i} style={{ fontSize: 11, color: 'var(--warning)', fontWeight: 600 }}>
               ⚠️ {r}
             </span>
           ))}
         </div>
       )}
 
-      {/* Body */}
+      {/* ── Body ── */}
       <div style={{ padding: '14px 16px' }}>
         {error && (
-          <div style={{ fontSize: '12px', color: '#ff6b8a', padding: '8px 0' }}>{error}</div>
+          <div style={{ fontSize: 12, color: 'var(--danger)', padding: '8px 0' }}>{error}</div>
         )}
 
         {!rec && !loading && !error && (
-          <div style={{ textAlign: 'center', padding: '20px 0', color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
-            Hit <strong style={{ color: 'rgba(255,255,255,0.6)' }}>Get Recommendation</strong> for tonight's personalised pick
+          <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)', fontSize: 13 }}>
+            Hit <strong style={{ color: 'var(--ink)' }}>Get Recommendation</strong> for tonight's personalised pick
           </div>
         )}
 
         {loading && !rec && (
-          <div style={{ textAlign: 'center', padding: '20px 0', color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>
+          <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)', fontSize: 13 }}>
+            <div style={{ fontSize: 22, marginBottom: 6 }}>🤔</div>
             Analysing your play history…
           </div>
         )}
@@ -180,66 +182,84 @@ export default function CoachCard() {
         {rec && (
           <>
             {/* Headline */}
-            <div style={{ fontSize: '13px', color: '#e94560', fontWeight: 700, marginBottom: '10px', fontStyle: 'italic' }}>
+            <div style={{
+              fontSize: 13, color: 'var(--accent)', fontWeight: 700,
+              fontStyle: 'italic', marginBottom: 10,
+            }}>
               "{rec.headline}"
             </div>
 
             {/* Primary recommendation */}
             <div style={{
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: '10px', padding: '12px 14px', marginBottom: '10px',
+              background: 'var(--paper-2)',
+              border: '1px solid var(--soft-line)',
+              borderLeft: '3px solid var(--accent)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '12px 14px',
+              marginBottom: 10,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <div style={{ fontSize: '16px', fontWeight: 800, color: '#fff' }}>{rec.game}</div>
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', marginBottom: 8,
+              }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
+                  {rec.game}
+                </div>
                 <div style={{
-                  fontSize: '13px', fontWeight: 700, color: '#4ade80',
-                  background: 'rgba(74,222,128,0.12)', borderRadius: '20px', padding: '3px 10px',
+                  fontSize: 13, fontWeight: 700, color: 'var(--accent)',
+                  background: 'var(--accent-soft)',
+                  borderRadius: 20, padding: '3px 10px',
                 }}>
                   {fmtMins(rec.suggested_minutes)}
                 </div>
               </div>
 
-              {/* Why bullets */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {(Array.isArray(rec.why) ? rec.why : []).map((reason, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
-                    <span style={{ color: '#e94560', fontSize: '11px', marginTop: '2px', flexShrink: 0 }}>▸</span>
-                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', lineHeight: 1.4 }}>{reason}</span>
+                  <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--accent)', fontSize: 11, marginTop: 2, flexShrink: 0 }}>▸</span>
+                    <span style={{ fontSize: 12, color: 'var(--ink)', lineHeight: 1.5 }}>{reason}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Alternative + confidence */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' as const }}>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' as const }}>
               {rec.alternative_game && (
                 <div style={{
                   flex: 1, minWidth: 0,
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '8px', padding: '8px 10px',
+                  background: 'var(--paper-2)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '8px 10px',
                 }}>
-                  <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '2px' }}>
-                    Alternative
-                  </div>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.85)', marginBottom: '2px' }}>
+                  <div className="eyebrow" style={{ marginBottom: 3 }}>Alternative</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>
                     {rec.alternative_game}
                   </div>
                   {rec.alternative_why && (
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
                       {rec.alternative_why}
                     </div>
                   )}
                 </div>
               )}
+
               <div style={{
                 flexShrink: 0, textAlign: 'center',
-                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '8px', padding: '8px 12px',
+                background: 'var(--paper-2)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '8px 14px',
               }}>
-                <div style={{ fontSize: '18px', fontWeight: 800, color: rec.confidence_score >= 0.7 ? '#4ade80' : rec.confidence_score >= 0.4 ? '#facc15' : '#ff6b8a' }}>
+                <div style={{
+                  fontSize: 20, fontWeight: 800,
+                  color: confidenceCssVar(rec.confidence_score),
+                }}>
                   {Math.round(rec.confidence_score * 100)}%
                 </div>
-                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                   {confidenceLabel(rec.confidence_score)}
                 </div>
               </div>
@@ -247,7 +267,7 @@ export default function CoachCard() {
 
             {/* Fulfilled badge */}
             {rec.fulfilled && (
-              <div style={{ marginTop: '8px', fontSize: '11px', color: '#4ade80', fontWeight: 600 }}>
+              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>
                 ✅ Followed — session logged for this game
               </div>
             )}
