@@ -10,6 +10,8 @@ interface CoachRec {
   why: string[];
   alternative_game: string | null;
   alternative_why: string | null;
+  alternative_minutes: number | null;
+  alternative_quest: string | null;
   confidence_score: number;
   created_at: string;
   fulfilled: boolean;
@@ -199,18 +201,23 @@ export default function CoachCard() {
               marginBottom: 10,
             }}>
               <div style={{
-                display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', marginBottom: 8,
+                display: 'flex', alignItems: 'flex-start',
+                justifyContent: 'space-between', marginBottom: 8, gap: 8,
               }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)', flex: 1, minWidth: 0 }}>
                   {rec.game}
                 </div>
-                <div style={{
-                  fontSize: 13, fontWeight: 700, color: 'var(--accent)',
-                  background: 'var(--accent-soft)',
-                  borderRadius: 20, padding: '3px 10px',
-                }}>
-                  {fmtMins(rec.suggested_minutes)}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700, color: 'var(--accent)',
+                    background: 'var(--accent-soft)',
+                    borderRadius: 20, padding: '3px 10px',
+                  }}>
+                    {fmtMins(rec.suggested_minutes)}
+                  </div>
+                  <div style={{ fontSize: 10, color: confidenceCssVar(rec.confidence_score), fontWeight: 600 }}>
+                    {Math.round(rec.confidence_score * 100)}% {confidenceLabel(rec.confidence_score)}
+                  </div>
                 </div>
               </div>
 
@@ -224,46 +231,47 @@ export default function CoachCard() {
               </div>
             </div>
 
-            {/* Alternative + confidence */}
-            <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' as const }}>
-              {rec.alternative_game && (
-                <div style={{
-                  flex: 1, minWidth: 0,
-                  background: 'var(--paper-2)',
-                  border: '1px solid var(--line)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '8px 10px',
-                }}>
-                  <div className="eyebrow" style={{ marginBottom: 3 }}>Alternative</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>
+            {/* Alternative */}
+            {rec.alternative_game && (
+              <div style={{
+                background: 'var(--paper-2)',
+                border: '1px solid var(--soft-line)',
+                borderLeft: '3px solid var(--muted)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '10px 14px',
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                  If you want a change of pace
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: rec.alternative_quest || rec.alternative_why ? 6 : 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', flex: 1, minWidth: 0 }}>
                     {rec.alternative_game}
                   </div>
-                  {rec.alternative_why && (
-                    <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
-                      {rec.alternative_why}
+                  {rec.alternative_minutes && (
+                    <div style={{
+                      fontSize: 12, fontWeight: 700, color: 'var(--muted)',
+                      background: 'var(--paper)', border: '1px solid var(--line)',
+                      borderRadius: 20, padding: '2px 9px', flexShrink: 0,
+                    }}>
+                      {fmtMins(rec.alternative_minutes)}
                     </div>
                   )}
                 </div>
-              )}
-
-              <div style={{
-                flexShrink: 0, textAlign: 'center',
-                background: 'var(--paper-2)',
-                border: '1px solid var(--line)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '8px 14px',
-              }}>
-                <div style={{
-                  fontSize: 20, fontWeight: 800,
-                  color: confidenceCssVar(rec.confidence_score),
-                }}>
-                  {Math.round(rec.confidence_score * 100)}%
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                  {confidenceLabel(rec.confidence_score)}
-                </div>
+                {rec.alternative_quest && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: rec.alternative_why ? 4 : 0 }}>
+                    <span style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2, flexShrink: 0 }}>▸</span>
+                    <span style={{ fontSize: 12, color: 'var(--ink)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                      {rec.alternative_quest}
+                    </span>
+                  </div>
+                )}
+                {rec.alternative_why && (
+                  <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
+                    {rec.alternative_why}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
             {/* Fulfilled badge */}
             {rec.fulfilled && (

@@ -20,6 +20,8 @@ async function ensureCoachTables() {
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE ai_recommendations ADD COLUMN IF NOT EXISTS alternative_minutes INTEGER`);
+  await pool.query(`ALTER TABLE ai_recommendations ADD COLUMN IF NOT EXISTS alternative_quest TEXT`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ai_insights (
       id         SERIAL PRIMARY KEY,
@@ -173,7 +175,10 @@ Rules for your response:
 - Pick the game most deserving of play tonight based on the data
 - Each "why" bullet must cite a specific data point (days since played, quest availability, session count, etc.)
 - suggested_minutes should fit the player's avg session length
-- alternative must be a DIFFERENT game — something shorter/lighter
+- alternative must be a DIFFERENT game — a shorter/lighter change-of-pace option
+- alternative_minutes should fit in a noticeably shorter session than suggested_minutes
+- alternative_quest must be a specific named quest or objective in the alternative game (not generic)
+- alternative_why is 1 punchy sentence explaining why it's a good change of pace right now
 - confidence_score: 0.0–1.0 based on how much data you have (low if very little history)
 
 Respond ONLY with valid JSON, no markdown:
@@ -183,7 +188,9 @@ Respond ONLY with valid JSON, no markdown:
   "suggested_minutes": <number>,
   "why": ["<bullet 1 citing data>", "<bullet 2>", "<bullet 3>"],
   "alternative_game": "<different game or null>",
-  "alternative_why": "<1 sentence>",
+  "alternative_minutes": <number or null>,
+  "alternative_quest": "<specific named quest/objective in alternative_game, or null>",
+  "alternative_why": "<1 punchy sentence — why this is a good change-of-pace pick right now>",
   "confidence_score": <0.0–1.0>
 }`;
 
@@ -209,11 +216,12 @@ Respond ONLY with valid JSON, no markdown:
     }
 
     const saved = await pool.query(
-      `INSERT INTO ai_recommendations (game, headline, suggested_minutes, reasoning, alternative_game, alternative_why, confidence_score)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+      `INSERT INTO ai_recommendations (game, headline, suggested_minutes, reasoning, alternative_game, alternative_why, alternative_minutes, alternative_quest, confidence_score)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, created_at`,
       [card.game, card.headline, card.suggested_minutes ?? 60,
        JSON.stringify(card.why ?? []),
        card.alternative_game ?? null, card.alternative_why ?? null,
+       card.alternative_minutes ?? null, card.alternative_quest ?? null,
        card.confidence_score ?? 0.5]
     );
 
@@ -249,6 +257,8 @@ router.get("/ai/coach-card/latest", async (_req, res) => {
       why: r.reasoning,
       alternative_game: r.alternative_game,
       alternative_why: r.alternative_why,
+      alternative_minutes: r.alternative_minutes,
+      alternative_quest: r.alternative_quest,
       confidence_score: r.confidence_score,
       created_at: r.created_at,
       fulfilled: r.fulfilled,
