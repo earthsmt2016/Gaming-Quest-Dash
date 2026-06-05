@@ -261,7 +261,7 @@ function SuggestionsPanel({
 }: {
   game: string;
   games: string[];
-  onAccept: (s: GoalSuggestion) => void;
+  onAccept: (s: GoalSuggestion, game: string) => void;
   onClose: () => void;
 }) {
   const [selectedGame, setSelectedGame] = useState(game || (games[0] ?? ''));
@@ -287,7 +287,7 @@ function SuggestionsPanel({
 
   function accept(i: number) {
     setAccepted(a => new Set([...a, i]));
-    onAccept({ ...suggestions[i], } as GoalSuggestion);
+    onAccept(suggestions[i], selectedGame);
   }
 
   return (
@@ -529,9 +529,9 @@ export default function GoalsWidget() {
     setGoals(gs => [created, ...gs]);
   }
 
-  async function handleAcceptSuggestion(s: GoalSuggestion) {
+  async function handleAcceptSuggestion(s: GoalSuggestion, game: string) {
     const created = await createGoal({
-      game: suggestGame || games[0] || '',
+      game,
       title: s.title,
       description: s.description,
       goal_type: s.goal_type,
@@ -643,7 +643,7 @@ export default function GoalsWidget() {
             <SuggestionsPanel
               game={suggestGame}
               games={games}
-              onAccept={s => { handleAcceptSuggestion(s); }}
+              onAccept={(s, game) => handleAcceptSuggestion(s, game)}
               onClose={() => setShowSuggest(false)}
             />
           )}
