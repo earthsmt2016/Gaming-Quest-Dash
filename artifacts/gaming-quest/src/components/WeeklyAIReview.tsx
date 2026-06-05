@@ -7,11 +7,11 @@ function fmtMins(m: number): string {
   return rem ? `${h}h ${rem}m` : `${h}h`;
 }
 
-const MOOD_CONFIG = {
-  great: { emoji: '🔥', label: 'Great week', color: '#2e7d32', bg: 'rgba(46,125,50,0.1)' },
-  good:  { emoji: '✅', label: 'Good week',  color: '#1565c0', bg: 'rgba(21,101,192,0.1)' },
-  quiet: { emoji: '😴', label: 'Quiet week', color: '#6d4c41', bg: 'rgba(109,76,65,0.1)' },
-  mixed: { emoji: '🎲', label: 'Mixed week', color: '#e65100', bg: 'rgba(230,81,0,0.1)' },
+const MOOD_CONFIG: Record<string, { emoji: string; label: string; cssVar: string }> = {
+  great: { emoji: '🔥', label: 'Great week', cssVar: 'var(--success)' },
+  good:  { emoji: '✅', label: 'Good week',  cssVar: 'var(--accent)'  },
+  quiet: { emoji: '😴', label: 'Quiet week', cssVar: 'var(--muted)'   },
+  mixed: { emoji: '🎲', label: 'Mixed week', cssVar: 'var(--warning)' },
 };
 
 export default function WeeklyAIReview() {
@@ -43,28 +43,35 @@ export default function WeeklyAIReview() {
       boxShadow: 'var(--shadow)',
       overflow: 'hidden',
     }}>
-      {/* Header */}
+      {/* Header — matches DailyCheckin / CoachCard collapsed style */}
       <div
+        onClick={() => setOpen(o => !o)}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 16px', cursor: 'pointer', userSelect: 'none',
+          transition: 'background 0.12s',
         }}
-        onClick={() => setOpen(o => !o)}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper-2)')}
+        onMouseLeave={e => (e.currentTarget.style.background = '')}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: 32, height: 32, background: 'var(--accent)',
-            borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0,
+            borderRadius: 8, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: 16, flexShrink: 0,
           }}>📊</div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', lineHeight: 1.2 }}>
               AI Weekly Review
               {mood && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 3,
-                  fontSize: 10, fontWeight: 700, color: mood.color,
-                  background: mood.bg, border: `1px solid ${mood.color}33`,
-                  borderRadius: 4, padding: '2px 6px', marginLeft: 8, verticalAlign: 'middle',
+                  fontSize: 10, fontWeight: 700,
+                  color: mood.cssVar,
+                  background: 'var(--accent-soft)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 4, padding: '2px 7px',
+                  marginLeft: 8, verticalAlign: 'middle',
                 }}>
                   {mood.emoji} {mood.label}
                 </span>
@@ -83,53 +90,59 @@ export default function WeeklyAIReview() {
       </div>
 
       {open && (
-        <div style={{ borderTop: '1px solid var(--soft-line, var(--line))', padding: '14px 16px' }}>
+        <div style={{ borderTop: '1px solid var(--soft-line)', padding: '14px 16px' }}>
+
+          {/* ── Idle prompt ── */}
           {!review && !loading && (
             <>
-              <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+              <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 12px' }}>
                 Get an AI-written review of your gaming week — what you accomplished, patterns observed, and what to focus on next.
-              </div>
-              <button
-                className="btn primary"
-                onClick={handleGenerate}
-                style={{ fontSize: 13 }}
-              >
+              </p>
+              <button className="btn primary" onClick={handleGenerate} style={{ fontSize: 13 }}>
                 ✦ Generate this week's review
               </button>
-              {error && <div style={{ fontSize: 12, color: '#c0392b', marginTop: 8 }}>{error}</div>}
+              {error && (
+                <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 8 }}>{error}</div>
+              )}
             </>
           )}
 
+          {/* ── Loading ── */}
           {loading && (
-            <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)', fontSize: 13 }}>
-              <div style={{ fontSize: 24, marginBottom: 8 }}>🤔</div>
+            <div style={{
+              textAlign: 'center', padding: '20px 0',
+              color: 'var(--muted)', fontSize: 13,
+            }}>
+              <div style={{ fontSize: 22, marginBottom: 6 }}>🤔</div>
               Analysing your week…
             </div>
           )}
 
+          {/* ── Review content ── */}
           {review && !loading && (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
               {/* Narrative */}
               <div style={{
-                fontSize: 14, lineHeight: 1.6, color: 'var(--text)',
-                padding: '12px 14px', background: 'var(--paper-2)',
-                borderRadius: 8, marginBottom: 12,
+                fontSize: 14, lineHeight: 1.65, color: 'var(--ink)',
+                padding: '12px 14px',
+                background: 'var(--paper-2)',
+                border: '1px solid var(--soft-line)',
                 borderLeft: '3px solid var(--accent)',
+                borderRadius: 'var(--radius-sm)',
               }}>
                 {review.narrative}
               </div>
 
               {/* Highlights */}
               {review.highlights?.length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
-                    Highlights
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 6 }}>Highlights</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                     {review.highlights.map((h, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                        <span style={{ color: 'var(--accent)', fontSize: 11, marginTop: 2, flexShrink: 0 }}>★</span>
-                        <span style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4 }}>{h}</span>
+                      <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
+                        <span style={{ color: 'var(--accent)', fontSize: 10, marginTop: 3, flexShrink: 0 }}>★</span>
+                        <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.45 }}>{h}</span>
                       </div>
                     ))}
                   </div>
@@ -138,30 +151,52 @@ export default function WeeklyAIReview() {
 
               {/* Next week focus */}
               <div style={{
-                fontSize: 13, color: 'var(--text)', padding: '10px 12px',
-                background: '#f0f9f4', border: '1px solid #b7e4c7',
-                borderRadius: 8, display: 'flex', gap: 8, alignItems: 'flex-start',
+                display: 'flex', gap: 8, alignItems: 'flex-start',
+                padding: '10px 12px',
+                background: 'var(--accent-soft)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--radius-sm)',
               }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>🎯</span>
+                <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>🎯</span>
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#2d6a4f', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>
+                  <div className="eyebrow" style={{ color: 'var(--accent)', marginBottom: 3 }}>
                     Next week
                   </div>
-                  {review.next_week_focus}
+                  <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.45 }}>
+                    {review.next_week_focus}
+                  </span>
                 </div>
               </div>
 
-              <button
-                onClick={handleGenerate}
-                style={{
-                  marginTop: 12, background: 'none', border: '1px solid var(--line)',
-                  borderRadius: 6, fontSize: 11, padding: '4px 10px',
-                  cursor: 'pointer', color: 'var(--muted)', fontFamily: 'inherit',
-                }}
-              >
-                ↻ Regenerate
-              </button>
-            </>
+              {/* Regenerate */}
+              <div>
+                <button
+                  onClick={handleGenerate}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--line)',
+                    borderRadius: 999,
+                    fontSize: 12,
+                    padding: '4px 12px',
+                    cursor: 'pointer',
+                    color: 'var(--muted)',
+                    fontFamily: 'inherit',
+                    fontWeight: 600,
+                    transition: 'border-color 0.12s, color 0.12s',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--accent)';
+                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--accent)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--line)';
+                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted)';
+                  }}
+                >
+                  ↻ Regenerate
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
