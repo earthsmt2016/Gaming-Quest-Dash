@@ -56,7 +56,8 @@ router.get("/backlog-health", async (_req, res) => {
     const isMobile = (game: string) => MOBILE_PLATFORMS.has(platformMap.get(game) ?? '');
 
     const now = Date.now();
-    const active = allGames.rows.filter((r: any) => !completedSet.has(r.game) && !pausedSet.has(r.game))
+    const allActive = allGames.rows
+      .filter((r: any) => !completedSet.has(r.game) && !pausedSet.has(r.game))
       .map((r: any) => ({
         game: r.game,
         last_played: new Date(r.last_played),
@@ -66,44 +67,37 @@ router.get("/backlog-health", async (_req, res) => {
         mobile: isMobile(r.game),
       }));
 
-    // Mobile: neglect threshold 28 days (not 14); excluded from rotation count; counts as 0.5 in backlog
+    // ── Console games only drive the health score ──────────────────────────
+    const consoleActive  = allActive.filter(r => !r.mobile);
+    const mobileActive   = allActive.filter(r => r.mobile);
+
     const CONSOLE_NEGLECT_DAYS = 14;
     const MOBILE_NEGLECT_DAYS  = 28;
+    const CONSOLE_BACKLOG_LIMIT = 6;
 
-    const neglected = active.filter(r =>
-      r.days_idle > (r.mobile ? MOBILE_NEGLECT_DAYS : CONSOLE_NEGLECT_DAYS)
-    ).sort((a, b) => b.days_idle - a.days_idle); // most idle first
+    const consoleNeglected = consoleActive
+      .filter(r => r.days_idle > CONSOLE_NEGLECT_DAYS)
+      .sort((a, b) => b.days_idle - a.days_idle);
 
-    // Rotation: console-only games played this week
-    const rotatingConsole = active.filter(r => !r.mobile && r.sessions_this_week > 0)
-      .sort((a, b) => b.sessions_this_week - a.sessions_this_week);
+    const rotatingConsole = consoleActive
+      .filter(r => r.sessions_this_week > 0)
+      .sort((a, b) => a.sessions_this_week - b.sessions_this_week);
     const rotatingCount = rotatingConsole.length;
 
-    // Backlog: mobile counts as 0.5
-    const backlogWeight = active.reduce((sum, r) => sum + (r.mobile ? 0.5 : 1), 0);
-    const BACKLOG_LIMIT = 6;
-
-    const neglectPenalty  = Math.min(35, neglected.length * 5);
+    const neglectPenalty  = Math.min(35, consoleNeglected.length * 5);
     const rotationPenalty = Math.min(15, Math.max(0, rotatingCount - 3) * 5);
-    const backlogPenalty  = Math.min(30, Math.max(0, Math.floor(backlogWeight) - BACKLOG_LIMIT) * 4);
+    const backlogPenalty  = Math.min(30, Math.max(0, consoleActive.length - CONSOLE_BACKLOG_LIMIT) * 4);
 
     let score = 100 - neglectPenalty - rotationPenalty - backlogPenalty;
     score = Math.max(0, Math.min(100, Math.round(score)));
-
     const label = score >= 80 ? 'Healthy' : score >= 60 ? 'Fair' : score >= 40 ? 'At Risk' : 'Critical';
 
-    // Build penalty breakdown with actionable tips
+    // Console penalty breakdown
     const penalties: { label: string; deduction: number; tip: string }[] = [];
     if (neglectPenalty > 0) {
-      const consoleNeglected = neglected.filter(r => !r.mobile).length;
-      const mobileNeglected  = neglected.filter(r => r.mobile).length;
-      const parts = [
-        consoleNeglected > 0 ? `${consoleNeglected} console (14+ days)` : null,
-        mobileNeglected  > 0 ? `${mobileNeglected} mobile (28+ days)` : null,
-      ].filter(Boolean).join(', ');
-      const toRecover = Math.min(neglected.length, 4);
+      const toRecover = Math.min(consoleNeglected.length, 4);
       penalties.push({
-        label: `${neglected.length} game${neglected.length > 1 ? 's' : ''} idle — ${parts}`,
+        label: `${consoleNeglected.length} console game${consoleNeglected.length > 1 ? 's' : ''} not played in 14+ days`,
         deduction: neglectPenalty,
         tip: `Put ${toRecover}+ on hold → recover up to +${toRecover * 5} pts`,
       });
@@ -116,39 +110,52 @@ router.get("/backlog-health", async (_req, res) => {
       });
     }
     if (backlogPenalty > 0) {
-      const extra = Math.floor(backlogWeight) - BACKLOG_LIMIT;
+      const extra = consoleActive.length - CONSOLE_BACKLOG_LIMIT;
       penalties.push({
-        label: `${active.length} active games — ${Math.floor(backlogWeight)} weighted (ideal: ≤${BACKLOG_LIMIT})`,
+        label: `${consoleActive.length} active console games (ideal: ≤${CONSOLE_BACKLOG_LIMIT})`,
         deduction: backlogPenalty,
         tip: `Put ${extra} game${extra > 1 ? 's' : ''} on hold → +${backlogPenalty} pts`,
       });
     }
 
-    // Neglected: already sorted most-idle first
-    // Rotating: sorted by fewest sessions first (easiest to drop)
-    const rotatingGamesSorted = [...rotatingConsole].sort((a, b) => a.sessions_this_week - b.sessions_this_week);
-
-    // Active game list (non-neglected), oldest-played first — most natural to bench
-    const neglectedSet = new Set(neglected.map(r => r.game));
-    const activeGameList = active
-      .filter(r => !neglectedSet.has(r.game))
+    // Console active list for backlog panel (non-neglected, oldest-played first)
+    const consoleNeglectedSet = new Set(consoleNeglected.map(r => r.game));
+    const consoleActiveList = consoleActive
+      .filter(r => !consoleNeglectedSet.has(r.game))
       .sort((a, b) => a.last_played.getTime() - b.last_played.getTime());
+
+    // ── Mobile section — separate counts, no score impact ──────────────────
+    const mobileNeglected = mobileActive
+      .filter(r => r.days_idle > MOBILE_NEGLECT_DAYS)
+      .sort((a, b) => b.days_idle - a.days_idle);
+
+    const mobileHealthy = mobileActive
+      .filter(r => r.days_idle <= MOBILE_NEGLECT_DAYS)
+      .sort((a, b) => b.sessions_this_week - a.sessions_this_week);
 
     type GameEntry = { game: string; days_idle?: number; sessions_this_week?: number; platform: string | null; mobile: boolean };
 
     res.json({
       health_score: score,
       label,
-      active_games: active.length,
+      // console
+      console_active: consoleActive.length,
       paused_games: pausedSet.size,
       completed_games: completedSet.size,
-      neglected_count: neglected.length,
-      neglected_games: neglected as GameEntry[],
-      rotating_this_week: rotatingCount,
-      rotating_games: rotatingGamesSorted as GameEntry[],
-      active_game_list: activeGameList as GameEntry[],
-      risks: [],
+      neglected_games: consoleNeglected as GameEntry[],
+      rotating_games: rotatingConsole as GameEntry[],
+      active_game_list: consoleActiveList as GameEntry[],
       penalties,
+      // mobile (separate section)
+      mobile_active: mobileActive.length,
+      mobile_neglected_count: mobileNeglected.length,
+      mobile_neglected_games: mobileNeglected as GameEntry[],
+      mobile_healthy_games: mobileHealthy as GameEntry[],
+      // legacy compat
+      active_games: allActive.length,
+      neglected_count: consoleNeglected.length,
+      rotating_this_week: rotatingCount,
+      risks: [],
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to compute backlog health", detail: String(err) });

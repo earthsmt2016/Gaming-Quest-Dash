@@ -66,13 +66,18 @@ interface GameEntry {
 interface BacklogHealth {
   health_score: number;
   label: string;
+  console_active: number;
   active_games: number;
   neglected_count: number;
   neglected_games: GameEntry[];
   rotating_games: GameEntry[];
   active_game_list: GameEntry[];
-  risks: string[];
   penalties: HealthPenalty[];
+  // mobile — separate section
+  mobile_active: number;
+  mobile_neglected_count: number;
+  mobile_neglected_games: GameEntry[];
+  mobile_healthy_games: GameEntry[];
 }
 
 function fmtMins(m: number): string {
@@ -380,6 +385,97 @@ export default function CoachCard() {
                     Fix all issues above to reach {Math.min(100, health.health_score + (health.penalties ?? []).reduce((a, p) => a + p.deduction, 0))}/100
                   </div>
                 </>
+              )}
+
+              {/* ── Mobile section — separate, no score impact ── */}
+              {(health.mobile_active ?? 0) > 0 && (
+                <div style={{
+                  marginTop: 10,
+                  background: 'var(--paper-2)',
+                  border: '1px solid var(--soft-line)',
+                  borderLeft: '3px solid #5b8dee',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '8px 10px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>
+                      📱 Mobile — {health.mobile_active} active
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic' }}>doesn't affect score</span>
+                  </div>
+
+                  {/* Neglected mobile games */}
+                  {(health.mobile_neglected_count ?? 0) > 0 && (
+                    <>
+                      <div style={{ fontSize: 11, color: '#b45309', fontWeight: 600, marginBottom: 5 }}>
+                        ⚠️ {health.mobile_neglected_count} not touched in 28+ days — consider shelving
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+                        {(health.mobile_neglected_games ?? []).map(entry => {
+                          const ps = pauseStates[entry.game] ?? 'idle';
+                          return (
+                            <div key={entry.game} style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                              background: 'var(--paper)', border: '1px solid var(--line)',
+                              borderRadius: 'var(--radius-sm)', padding: '4px 8px',
+                              opacity: ps === 'done' ? 0.6 : 1,
+                            }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{
+                                  fontSize: 12, fontWeight: 600,
+                                  color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
+                                  textDecoration: ps === 'done' ? 'line-through' : 'none',
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
+                                  {entry.game}
+                                </div>
+                                <div style={{ fontSize: 10, color: 'var(--muted)' }}>{entry.days_idle}d idle</div>
+                              </div>
+                              <button
+                                onClick={() => { if (ps === 'idle') handlePause(entry.game); }}
+                                disabled={ps !== 'idle'}
+                                style={{
+                                  background: ps === 'done' ? 'var(--success)' : ps === 'error' ? 'var(--danger)' : '#f57c00',
+                                  color: '#fff', border: 'none', borderRadius: 6,
+                                  padding: '3px 8px', fontSize: 11, fontWeight: 700,
+                                  fontFamily: 'inherit', cursor: ps === 'idle' ? 'pointer' : 'default',
+                                  flexShrink: 0, whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {ps === 'loading' ? '…' : ps === 'done' ? '✓ On hold' : ps === 'error' ? '✗ Failed' : '⏸ Shelve'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Active mobile games */}
+                  {(health.mobile_healthy_games ?? []).length > 0 && (
+                    <>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, fontStyle: 'italic' }}>
+                        Active — most played this week first
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {(health.mobile_healthy_games ?? []).map(entry => (
+                          <div key={entry.game} style={{
+                            fontSize: 11, background: '#eff6ff',
+                            border: '1px solid #bfdbfe', borderRadius: 6,
+                            padding: '3px 8px', color: '#1e40af', fontWeight: 600,
+                          }}>
+                            {entry.game}
+                            {entry.sessions_this_week! > 0 && (
+                              <span style={{ fontWeight: 400, opacity: 0.7, marginLeft: 4 }}>
+                                {entry.sessions_this_week}×
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}
