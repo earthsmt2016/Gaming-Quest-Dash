@@ -6,6 +6,13 @@ type PauseState = 'idle' | 'loading' | 'done' | 'error';
 
 type PlatformMode = 'any' | 'mobile' | 'xbox';
 
+function sessionTimeLabel(): string {
+  const h = new Date().getHours();
+  if (h >= 5  && h < 12) return 'This morning';
+  if (h >= 12 && h < 17) return 'This afternoon';
+  return 'Tonight';
+}
+
 const PLATFORM_MODES: { id: PlatformMode; label: string; icon: string; sub: string }[] = [
   { id: 'any',    label: 'Any',    icon: '🎲', sub: 'Surprise me' },
   { id: 'mobile', label: 'Mobile', icon: '📱', sub: 'Paid & Arcade' },
@@ -358,7 +365,7 @@ export default function CoachCard() {
         {/* Platform mode toggle */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 7 }}>
-            Tonight I feel like…
+            {sessionTimeLabel()} I feel like…
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             {PLATFORM_MODES.map(m => {
@@ -395,7 +402,7 @@ export default function CoachCard() {
 
         {!rec && !loading && !error && (
           <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: 13 }}>
-            Hit <strong style={{ color: 'var(--ink)' }}>Get Recommendation</strong> for tonight's pick
+            Hit <strong style={{ color: 'var(--ink)' }}>Get Recommendation</strong> for {sessionTimeLabel().toLowerCase()}'s pick
             {platformMode !== 'any' && (
               <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
                 {' '}({platformMode === 'mobile' ? '📱 Mobile' : '🎮 Xbox'} only)

@@ -5,6 +5,13 @@ import { useQuestsContext } from '../context/QuestsContext';
 
 type PlatformMode = 'any' | 'mobile' | 'xbox';
 
+function sessionTimeLabel(): string {
+  const h = new Date().getHours();
+  if (h >= 5  && h < 12) return 'This morning';
+  if (h >= 12 && h < 17) return 'This afternoon';
+  return 'Tonight';
+}
+
 const PLATFORM_MODES: { id: PlatformMode; icon: string; label: string; sub: string }[] = [
   { id: 'any',    icon: '🎲', label: 'Any',    sub: 'Surprise me' },
   { id: 'mobile', icon: '📱', label: 'Mobile', sub: 'Paid & Arcade' },
@@ -427,7 +434,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                 {/* Platform toggle */}
                 <div style={{ marginBottom: '14px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>
-                    Tonight I feel like…
+                    {sessionTimeLabel()} I feel like…
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     {PLATFORM_MODES.map(m => {
