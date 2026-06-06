@@ -73,11 +73,15 @@ interface BacklogHealth {
   rotating_games: GameEntry[];
   active_game_list: GameEntry[];
   penalties: HealthPenalty[];
-  // mobile — separate section
+  // mobile — own health score
   mobile_active: number;
+  mobile_score: number;
+  mobile_label: string;
+  mobile_penalties: HealthPenalty[];
   mobile_neglected_count: number;
   mobile_neglected_games: GameEntry[];
-  mobile_healthy_games: GameEntry[];
+  mobile_rotating_games: GameEntry[];
+  mobile_active_list: GameEntry[];
 }
 
 function fmtMins(m: number): string {
@@ -387,96 +391,123 @@ export default function CoachCard() {
                 </>
               )}
 
-              {/* ── Mobile section — separate, no score impact ── */}
-              {(health.mobile_active ?? 0) > 0 && (
-                <div style={{
-                  marginTop: 10,
-                  background: 'var(--paper-2)',
-                  border: '1px solid var(--soft-line)',
-                  borderLeft: '3px solid #5b8dee',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '8px 10px',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>
-                      📱 Mobile — {health.mobile_active} active
-                    </span>
-                    <span style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic' }}>doesn't affect score</span>
-                  </div>
+              {/* ── Mobile health score — mirrors console section ── */}
+              {(health.mobile_active ?? 0) > 0 && (() => {
+                const mScore  = health.mobile_score ?? 100;
+                const mLabel  = health.mobile_label ?? 'Healthy';
+                const mColor  = healthCssVar(mScore);
+                const mPens   = health.mobile_penalties ?? [];
+                const mMaxPossible = Math.min(100, mScore + mPens.reduce((a, p) => a + p.deduction, 0));
 
-                  {/* Neglected mobile games */}
-                  {(health.mobile_neglected_count ?? 0) > 0 && (
-                    <>
-                      <div style={{ fontSize: 11, color: '#b45309', fontWeight: 600, marginBottom: 5 }}>
-                        ⚠️ {health.mobile_neglected_count} not touched in 28+ days — consider shelving
+                const getMobileList = (p: HealthPenalty): GameEntry[] => {
+                  if (p.label.includes('not opened'))   return health.mobile_neglected_games ?? [];
+                  if (p.label.includes('this week'))    return health.mobile_rotating_games  ?? [];
+                  if (p.label.includes('active mobile'))return health.mobile_active_list     ?? [];
+                  return [];
+                };
+                const mobileRowHint = (p: HealthPenalty) => {
+                  if (p.label.includes('not opened'))    return 'Most idle listed first — highest priority to shelve';
+                  if (p.label.includes('this week'))     return 'Fewest sessions listed first — easiest to drop';
+                  if (p.label.includes('active mobile')) return 'Oldest-opened listed first — easiest to shelve';
+                  return null;
+                };
+                const mobileStatLabel = (p: HealthPenalty, entry: GameEntry) => {
+                  if (p.label.includes('not opened') && entry.days_idle != null)        return `${entry.days_idle}d idle`;
+                  if (p.label.includes('this week') && entry.sessions_this_week != null) return `${entry.sessions_this_week}× this week`;
+                  if (p.label.includes('active mobile') && entry.days_idle != null)     return `${entry.days_idle}d idle`;
+                  return null;
+                };
+
+                return (
+                  <div style={{ marginTop: 14, borderTop: '1px solid var(--soft-line)', paddingTop: 12 }}>
+                    {/* Mobile score bar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>📱 Mobile backlog</span>
+                      <div style={{ flex: 1, height: 6, background: 'var(--line)', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${mScore}%`, background: mColor, borderRadius: 3, transition: 'width 0.4s' }} />
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
-                        {(health.mobile_neglected_games ?? []).map(entry => {
-                          const ps = pauseStates[entry.game] ?? 'idle';
+                      <span style={{ fontSize: 12, fontWeight: 800, color: mColor, minWidth: 36, textAlign: 'right' }}>{mScore}/100</span>
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>{mLabel}</span>
+                    </div>
+
+                    {mPens.length === 0 ? (
+                      <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>✓ Mobile library is in great shape</div>
+                    ) : (
+                      <>
+                        {mPens.map((p, i) => {
+                          const gameList = getMobileList(p);
+                          const hasGames = gameList.length > 0;
+                          const accentColor = p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)';
                           return (
-                            <div key={entry.game} style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                              background: 'var(--paper)', border: '1px solid var(--line)',
-                              borderRadius: 'var(--radius-sm)', padding: '4px 8px',
-                              opacity: ps === 'done' ? 0.6 : 1,
+                            <div key={i} style={{
+                              background: 'var(--paper-2)', border: '1px solid var(--soft-line)',
+                              borderLeft: `3px solid ${accentColor}`, borderRadius: 'var(--radius-sm)',
+                              padding: '8px 10px', marginBottom: 6,
                             }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{
-                                  fontSize: 12, fontWeight: 600,
-                                  color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
-                                  textDecoration: ps === 'done' ? 'line-through' : 'none',
-                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                }}>
-                                  {entry.game}
-                                </div>
-                                <div style={{ fontSize: 10, color: 'var(--muted)' }}>{entry.days_idle}d idle</div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                                <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 600 }}>{p.label}</span>
+                                <span style={{ fontSize: 11, fontWeight: 800, color: accentColor, flexShrink: 0, marginLeft: 8 }}>−{p.deduction} pts</span>
                               </div>
-                              <button
-                                onClick={() => { if (ps === 'idle') handlePause(entry.game); }}
-                                disabled={ps !== 'idle'}
-                                style={{
-                                  background: ps === 'done' ? 'var(--success)' : ps === 'error' ? 'var(--danger)' : '#f57c00',
-                                  color: '#fff', border: 'none', borderRadius: 6,
-                                  padding: '3px 8px', fontSize: 11, fontWeight: 700,
-                                  fontFamily: 'inherit', cursor: ps === 'idle' ? 'pointer' : 'default',
-                                  flexShrink: 0, whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {ps === 'loading' ? '…' : ps === 'done' ? '✓ On hold' : ps === 'error' ? '✗ Failed' : '⏸ Shelve'}
-                              </button>
+                              <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600, marginBottom: hasGames ? 8 : 0 }}>
+                                💡 {p.tip}
+                              </div>
+                              {hasGames && (
+                                <>
+                                  {mobileRowHint(p) && (
+                                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, fontStyle: 'italic' }}>
+                                      {mobileRowHint(p)}
+                                    </div>
+                                  )}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                    {gameList.map(entry => {
+                                      const ps = pauseStates[entry.game] ?? 'idle';
+                                      const stat = mobileStatLabel(p, entry);
+                                      return (
+                                        <div key={entry.game} style={{
+                                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                                          background: 'var(--paper)', border: '1px solid var(--line)',
+                                          borderRadius: 'var(--radius-sm)', padding: '5px 8px',
+                                          opacity: ps === 'done' ? 0.6 : 1, transition: 'opacity 0.2s',
+                                        }}>
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{
+                                              fontSize: 12, fontWeight: 600,
+                                              color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
+                                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                              textDecoration: ps === 'done' ? 'line-through' : 'none',
+                                            }}>{entry.game}</div>
+                                            {stat && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>{stat}</div>}
+                                          </div>
+                                          <button
+                                            onClick={() => { if (ps === 'idle') handlePause(entry.game); }}
+                                            disabled={ps !== 'idle'}
+                                            style={{
+                                              background: ps === 'done' ? 'var(--success)' : ps === 'error' ? 'var(--danger)' : '#f57c00',
+                                              color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px',
+                                              fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                                              cursor: ps === 'idle' ? 'pointer' : 'default', flexShrink: 0,
+                                              opacity: ps === 'loading' ? 0.65 : 1, transition: 'background 0.15s', whiteSpace: 'nowrap',
+                                            }}
+                                          >
+                                            {ps === 'loading' ? '…' : ps === 'done' ? '✓ Shelved' : ps === 'error' ? '✗ Failed' : '⏸ Shelve'}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           );
                         })}
-                      </div>
-                    </>
-                  )}
-
-                  {/* Active mobile games */}
-                  {(health.mobile_healthy_games ?? []).length > 0 && (
-                    <>
-                      <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, fontStyle: 'italic' }}>
-                        Active — most played this week first
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {(health.mobile_healthy_games ?? []).map(entry => (
-                          <div key={entry.game} style={{
-                            fontSize: 11, background: '#eff6ff',
-                            border: '1px solid #bfdbfe', borderRadius: 6,
-                            padding: '3px 8px', color: '#1e40af', fontWeight: 600,
-                          }}>
-                            {entry.game}
-                            {entry.sessions_this_week! > 0 && (
-                              <span style={{ fontWeight: 400, opacity: 0.7, marginLeft: 4 }}>
-                                {entry.sessions_this_week}×
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+                          Fix all issues above to reach {mMaxPossible}/100
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

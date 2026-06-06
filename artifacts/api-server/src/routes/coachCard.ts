@@ -124,14 +124,57 @@ router.get("/backlog-health", async (_req, res) => {
       .filter(r => !consoleNeglectedSet.has(r.game))
       .sort((a, b) => a.last_played.getTime() - b.last_played.getTime());
 
-    // ── Mobile section — separate counts, no score impact ──────────────────
+    // ── Mobile health score — same structure, mobile-appropriate limits ──────
+    const MOBILE_ROTATION_LIMIT = 5;
+    const MOBILE_BACKLOG_LIMIT  = 8;
+
     const mobileNeglected = mobileActive
       .filter(r => r.days_idle > MOBILE_NEGLECT_DAYS)
       .sort((a, b) => b.days_idle - a.days_idle);
 
-    const mobileHealthy = mobileActive
-      .filter(r => r.days_idle <= MOBILE_NEGLECT_DAYS)
-      .sort((a, b) => b.sessions_this_week - a.sessions_this_week);
+    const rotatingMobile = mobileActive
+      .filter(r => r.sessions_this_week > 0)
+      .sort((a, b) => a.sessions_this_week - b.sessions_this_week);
+    const mobileRotatingCount = rotatingMobile.length;
+
+    const mobileNeglectPenalty  = Math.min(35, mobileNeglected.length * 5);
+    const mobileRotationPenalty = Math.min(15, Math.max(0, mobileRotatingCount - MOBILE_ROTATION_LIMIT) * 5);
+    const mobileBacklogPenalty  = Math.min(30, Math.max(0, mobileActive.length - MOBILE_BACKLOG_LIMIT) * 4);
+
+    let mobileScore = 100 - mobileNeglectPenalty - mobileRotationPenalty - mobileBacklogPenalty;
+    mobileScore = Math.max(0, Math.min(100, Math.round(mobileScore)));
+    const mobileLabel = mobileScore >= 80 ? 'Healthy' : mobileScore >= 60 ? 'Fair' : mobileScore >= 40 ? 'At Risk' : 'Critical';
+
+    const mobilePenalties: { label: string; deduction: number; tip: string }[] = [];
+    if (mobileNeglectPenalty > 0) {
+      const toRecover = Math.min(mobileNeglected.length, 4);
+      mobilePenalties.push({
+        label: `${mobileNeglected.length} mobile game${mobileNeglected.length > 1 ? 's' : ''} not opened in 28+ days`,
+        deduction: mobileNeglectPenalty,
+        tip: `Shelve ${toRecover}+ → recover up to +${toRecover * 5} pts`,
+      });
+    }
+    if (mobileRotationPenalty > 0) {
+      mobilePenalties.push({
+        label: `Playing ${mobileRotatingCount} mobile games this week (ideal: ≤${MOBILE_ROTATION_LIMIT})`,
+        deduction: mobileRotationPenalty,
+        tip: `Focus on ${MOBILE_ROTATION_LIMIT} games this week → +${mobileRotationPenalty} pts`,
+      });
+    }
+    if (mobileBacklogPenalty > 0) {
+      const extra = mobileActive.length - MOBILE_BACKLOG_LIMIT;
+      mobilePenalties.push({
+        label: `${mobileActive.length} active mobile games (ideal: ≤${MOBILE_BACKLOG_LIMIT})`,
+        deduction: mobileBacklogPenalty,
+        tip: `Shelve ${extra} game${extra > 1 ? 's' : ''} → +${mobileBacklogPenalty} pts`,
+      });
+    }
+
+    // Mobile game lists for penalty display
+    const mobileNeglectedSet = new Set(mobileNeglected.map(r => r.game));
+    const mobileActiveList = mobileActive
+      .filter(r => !mobileNeglectedSet.has(r.game))
+      .sort((a, b) => a.last_played.getTime() - b.last_played.getTime());
 
     type GameEntry = { game: string; days_idle?: number; sessions_this_week?: number; platform: string | null; mobile: boolean };
 
@@ -146,11 +189,15 @@ router.get("/backlog-health", async (_req, res) => {
       rotating_games: rotatingConsole as GameEntry[],
       active_game_list: consoleActiveList as GameEntry[],
       penalties,
-      // mobile (separate section)
+      // mobile (own health score)
       mobile_active: mobileActive.length,
+      mobile_score: mobileScore,
+      mobile_label: mobileLabel,
+      mobile_penalties: mobilePenalties,
       mobile_neglected_count: mobileNeglected.length,
       mobile_neglected_games: mobileNeglected as GameEntry[],
-      mobile_healthy_games: mobileHealthy as GameEntry[],
+      mobile_rotating_games: rotatingMobile as GameEntry[],
+      mobile_active_list: mobileActiveList as GameEntry[],
       // legacy compat
       active_games: allActive.length,
       neglected_count: consoleNeglected.length,
