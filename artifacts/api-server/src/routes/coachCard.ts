@@ -241,10 +241,14 @@ router.post("/ai/coach-card", async (req, res) => {
       bActive.length > 5 ? `- ${bActive.length} active games (ideal ≤5): -${Math.max(0, bActive.length - 5) * 5} pts` : null,
     ].filter(Boolean).join('\n');
 
+    const avgMin = p.avg_session_minutes ?? 60;
+    const mobileSessionRange = `15–45 min`;
+    const consoleSessionRange = `${Math.max(45, Math.round(avgMin * 0.75))}–${Math.max(90, Math.round(avgMin * 1.5))} min`;
+
     const platformConstraint = platform_mode === 'mobile'
-      ? `\n⚠️ PLATFORM FILTER: The player wants to play MOBILE tonight (📱 Mobile Paid or 🍏 Apple Arcade). You MUST recommend only games tagged with a mobile platform above. The alternative must also be a mobile game.`
+      ? `\n⚠️ PLATFORM FILTER — MOBILE: Recommend only games tagged with a mobile platform above. The alternative must also be a mobile game.\n⏱️ SESSION LENGTH — MOBILE: Mobile games are played in short bursts. suggested_minutes MUST be between 15 and 45. alternative_minutes MUST also be between 15 and 45. Do NOT suggest 60+ minute mobile sessions.`
       : platform_mode === 'xbox'
-      ? `\n⚠️ PLATFORM FILTER: The player wants to play XBOX tonight (🎮 Xbox Paid or ☁️ Xbox Game Pass). You MUST recommend only games tagged with an xbox platform above. The alternative must also be an Xbox game.`
+      ? `\n⚠️ PLATFORM FILTER — XBOX: Recommend only games tagged with an Xbox platform above. The alternative must also be an Xbox game.\n⏱️ SESSION LENGTH — XBOX: Console sessions suit longer play. suggested_minutes should be in the range ${consoleSessionRange} based on the player's avg session of ~${avgMin} min. alternative_minutes should be at least 45.`
       : '';
 
     const systemPrompt = `You are a personal gaming strategist coach. Give ONE sharp, data-backed recommendation for what the player should play tonight.
@@ -279,9 +283,9 @@ Rules for your response:
 - If a PLATFORM FILTER is active, ONLY pick games from that platform list — do not break this rule
 - If backlog health is Critical or At Risk, at least one "why" bullet should reference a neglected game or suggest putting an idle game on hold
 - Each "why" bullet must cite a specific data point (days since played, quest availability, session count, etc.)
-- suggested_minutes should fit the player's avg session length
+- suggested_minutes: follow the SESSION LENGTH rule above if a platform filter is active; otherwise use the player's avg session (~${avgMin} min)
 - alternative must be a DIFFERENT game — a shorter/lighter change-of-pace option
-- alternative_minutes should fit in a noticeably shorter session than suggested_minutes
+- alternative_minutes: follow the SESSION LENGTH rule if a platform filter is active; otherwise noticeably shorter than suggested_minutes
 - alternative_quest must be a specific named quest or objective in the alternative game (not generic)
 - alternative_why is 1 punchy sentence explaining why it's a good change of pace right now
 - confidence_score: 0.0–1.0 based on how much data you have (low if very little history)
