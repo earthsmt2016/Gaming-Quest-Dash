@@ -167,10 +167,11 @@ router.get('/radar/discover', async (_req, res) => {
     const existing = await pool.query('SELECT LOWER(name) as lname FROM game_radar');
     const existingNames = new Set(existing.rows.map((r: any) => r.lname as string));
 
+    const today = new Date().toISOString().slice(0, 10);
     const response = await (openai as any).responses.create({
       model: 'gpt-4.1',
       tools: [{ type: 'web_search_preview' }],
-      input: `Search the web right now for the most anticipated upcoming video games announced for 2025 and 2026. Include a mix of big AAA titles and notable indie games. For each, find the latest confirmed or announced release date from official sources or gaming news. Return ONLY a valid JSON array (no markdown, no explanation): [{"name": "exact game title", "release_date": "YYYY-MM-DD or null", "platforms": ["PS5", "Xbox", "PC", "Switch", "Mobile"], "description": "one sentence about the game"}]. Include 10 games.`,
+      input: `Today is ${today}. Search multiple gaming news sites (IGN, Eurogamer, GameSpot, VGC, Nintendo Life, PlayStation Blog, Xbox Wire, Steam store) right now for upcoming video games that have NOT yet released — release dates must be on or after ${today}. Find at least 15 games including: major AAA titles (GTA VI, etc.), mid-size games, and notable indie games (like Rayman Legends Retold, Hollow Knight: Silksong, etc.). Include confirmed release dates AND announced-window games (e.g. "Q3 2026"). For each, find the most accurate release date from official sources. Return ONLY a valid JSON array with no markdown: [{"name": "exact official game title", "release_date": "YYYY-MM-DD or null if only window announced", "platforms": ["PS5","Xbox Series X|S","PC","Switch","iOS","Android"], "description": "one sentence — genre and hook"}]. Only include games not yet released as of ${today}.`,
     });
 
     const text: string = response.output_text ?? '';

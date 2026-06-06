@@ -629,7 +629,7 @@ export default function RadarPage() {
                   if (!a.release_date && !b.release_date) return 0;
                   if (!a.release_date) return 1;
                   if (!b.release_date) return -1;
-                  return b.release_date.localeCompare(a.release_date);
+                  return a.release_date.localeCompare(b.release_date);
                 }).map((dg, i) => {
                   const isAdding = addingFromDiscover.has(dg.name);
                   const isAdded = addedFromDiscover.has(dg.name) || games.some(g => g.name.toLowerCase() === dg.name.toLowerCase());
