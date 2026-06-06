@@ -54,7 +54,9 @@ router.get("/backlog-health", async (_req, res) => {
     const platformMap   = new Map<string, string>(platforms.rows.map((r: any) => [r.game, r.platform]));
     const weekMap       = new Map<string, number>(weekSessions.rows.map((r: any) => [r.game, r.sessions_this_week]));
 
-    const isMobile = (game: string) => MOBILE_PLATFORMS.has(platformMap.get(game) ?? '');
+    const isMobile = (game: string) =>
+      MOBILE_PLATFORMS.has(platformMap.get(game) ?? '') ||
+      /\bmobile\b/i.test(game);
 
     const now = Date.now();
     const allActive = allGames.rows
@@ -212,7 +214,7 @@ router.get("/backlog-health", async (_req, res) => {
   }
 });
 
-const MOBILE_PLATFORMS = new Set(['mobile_paid', 'apple_arcade']);
+const MOBILE_PLATFORMS = new Set(['mobile_paid', 'apple_arcade', 'mobile', 'ios', 'android']);
 const XBOX_PLATFORMS   = new Set(['xbox_paid', 'xbox_gamepass']);
 
 const PLATFORM_LABELS: Record<string, string> = {
