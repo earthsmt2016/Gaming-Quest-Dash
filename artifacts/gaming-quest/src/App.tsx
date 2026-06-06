@@ -15,6 +15,7 @@ import CoachCard from './components/CoachCard';
 import WeeklyAIReview from './components/WeeklyAIReview';
 import GameKnowledgeWidget from './components/GameKnowledgeWidget';
 import GameLibrary from './components/GameLibrary';
+import RadarPage from './components/RadarPage';
 import EditLogModal from './components/EditLogModal';
 import { QuestsProvider } from './context/QuestsContext';
 import {
@@ -40,7 +41,7 @@ import {
   triggerQuestRefresh,
 } from './lib/api';
 
-export type Page = 'dashboard' | 'log' | 'games' | 'quests' | 'reports';
+export type Page = 'dashboard' | 'log' | 'games' | 'quests' | 'reports' | 'radar';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -592,6 +593,9 @@ export default function App() {
                     <PeriodDownload onDownload={handleDownloadCustom} pdfGenerating={pdfGenerating} />
                   </>
                 )}
+
+                {/* ── Radar ── */}
+                {activePage === 'radar' && <RadarPage />}
               </>
             )}
           </main>

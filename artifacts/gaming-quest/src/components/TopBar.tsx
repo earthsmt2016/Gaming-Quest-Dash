@@ -7,6 +7,7 @@ const NAV: { id: Page; label: string; short: string }[] = [
   { id: 'games',     label: 'Games',      short: 'Games' },
   { id: 'quests',    label: 'Quests',     short: 'Quests' },
   { id: 'reports',   label: 'Reports',    short: 'Reports' },
+  { id: 'radar',     label: 'Radar',      short: 'Radar' },
 ];
 
 interface TopBarProps {
