@@ -269,9 +269,9 @@ export default function CoachCard() {
               ) : (
                 <>
                   {health.penalties.map((p, i) => {
-                    const isNeglect  = p.label.includes('idle') && (health.neglected_games ?? []).length > 0;
+                    const isNeglect  = p.label.includes('not played') && (health.neglected_games ?? []).length > 0;
                     const isRotation = p.label.includes('this week') && (health.rotating_games ?? []).length > 0;
-                    const isBacklog  = p.label.includes('weighted') && (health.active_game_list ?? []).length > 0;
+                    const isBacklog  = p.label.includes('active console') && (health.active_game_list ?? []).length > 0;
                     const gameList: GameEntry[] = isNeglect  ? (health.neglected_games ?? [])
                                                 : isRotation ? (health.rotating_games ?? [])
                                                 : isBacklog  ? (health.active_game_list ?? [])
