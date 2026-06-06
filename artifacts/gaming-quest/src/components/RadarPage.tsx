@@ -408,11 +408,17 @@ export default function RadarPage() {
 
   useEffect(() => { loadGames(); }, [loadGames]);
 
-  const loadDiscover = async () => {
+  const loadDiscover = async (force = false) => {
     setDiscoverLoading(true);
     setDiscoverError('');
     try {
-      const r = await fetch(`${BASE}/radar/discover`);
+      const url = `${BASE}/radar/discover${force ? '?force=1' : ''}`;
+      const r = await fetch(url);
+      if (r.status === 429) {
+        const body = await r.json().catch(() => ({}));
+        setDiscoverError(body.message ?? 'Web search is rate-limited — please wait a minute and try again.');
+        return;
+      }
       if (!r.ok) throw new Error(`Failed (${r.status})`);
       setDiscoverGames(await r.json());
     } catch (e: any) {
@@ -423,7 +429,7 @@ export default function RadarPage() {
   const toggleDiscover = () => {
     const next = !discoverOpen;
     setDiscoverOpen(next);
-    if (next && discoverGames.length === 0 && !discoverLoading) loadDiscover();
+    if (next && discoverGames.length === 0 && !discoverLoading) loadDiscover(false);
   };
 
   const handleAdd = async () => {
@@ -596,7 +602,7 @@ export default function RadarPage() {
                 🌐 Recently announced games
               </div>
               <button
-                onClick={loadDiscover}
+                onClick={() => loadDiscover(true)}
                 disabled={discoverLoading}
                 style={{
                   fontSize: 11, fontWeight: 700, fontFamily: 'inherit',

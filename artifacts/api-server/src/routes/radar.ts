@@ -160,25 +160,56 @@ router.get('/radar', async (_req, res) => {
   }
 });
 
+// ─── In-memory cache for discover results (30 min TTL) ────────────────────
+let discoverCache: { games: any[]; fetchedAt: number } | null = null;
+const DISCOVER_TTL_MS = 30 * 60 * 1000;
+
 // ─── GET /api/radar/discover — AI web search for upcoming games ────────────
-router.get('/radar/discover', async (_req, res) => {
+router.get('/radar/discover', async (req, res) => {
+  const force = req.query.force === '1';
   try {
     await ensureTable();
+
+    // Return cache if fresh and not forced
+    if (!force && discoverCache && Date.now() - discoverCache.fetchedAt < DISCOVER_TTL_MS) {
+      const existing = await pool.query('SELECT LOWER(name) as lname FROM game_radar');
+      const existingNames = new Set(existing.rows.map((r: any) => r.lname as string));
+      return res.json(discoverCache.games.filter((g: any) =>
+        !existingNames.has((g.name as string).toLowerCase())
+      ));
+    }
+
     const existing = await pool.query('SELECT LOWER(name) as lname FROM game_radar');
     const existingNames = new Set(existing.rows.map((r: any) => r.lname as string));
 
     const today = new Date().toISOString().slice(0, 10);
-    const response = await (openai as any).responses.create({
-      model: 'gpt-4.1',
-      tools: [{ type: 'web_search_preview' }],
-      input: `Today is ${today}. Search multiple gaming news sites (IGN, Eurogamer, GameSpot, VGC, Nintendo Life, PlayStation Blog, Xbox Wire, Steam store) right now for upcoming video games that have NOT yet released — release dates must be on or after ${today}. Find at least 15 games including: major AAA titles (GTA VI, etc.), mid-size games, and notable indie games (like Rayman Legends Retold, Hollow Knight: Silksong, etc.). Include confirmed release dates AND announced-window games (e.g. "Q3 2026"). For each, find the most accurate release date from official sources. Return ONLY a valid JSON array with no markdown: [{"name": "exact official game title", "release_date": "YYYY-MM-DD or null if only window announced", "platforms": ["PS5","Xbox Series X|S","PC","Switch","iOS","Android"], "description": "one sentence — genre and hook"}]. Only include games not yet released as of ${today}.`,
-    });
+    let response: any;
+    try {
+      response = await (openai as any).responses.create({
+        model: 'gpt-4.1',
+        tools: [{ type: 'web_search_preview' }],
+        input: `Today is ${today}. Search multiple gaming news sites (IGN, Eurogamer, GameSpot, VGC, Nintendo Life, PlayStation Blog, Xbox Wire, Steam store) right now for upcoming video games that have NOT yet released — release dates must be on or after ${today}. Find at least 15 games including: major AAA titles (GTA VI, etc.), mid-size games, and notable indie games (like Rayman Legends Retold, Hollow Knight: Silksong, etc.). Include confirmed release dates AND announced-window games (e.g. "Q3 2026"). For each, find the most accurate release date from official sources. Return ONLY a valid JSON array with no markdown: [{"name": "exact official game title", "release_date": "YYYY-MM-DD or null if only window announced", "platforms": ["PS5","Xbox Series X|S","PC","Switch","iOS","Android"], "description": "one sentence — genre and hook"}]. Only include games not yet released as of ${today}.`,
+      });
+    } catch (aiErr: any) {
+      if (aiErr?.status === 429) {
+        // If we have a stale cache, return it rather than nothing
+        if (discoverCache) {
+          return res.json(discoverCache.games.filter((g: any) =>
+            !existingNames.has((g.name as string).toLowerCase())
+          ));
+        }
+        return res.status(429).json({ error: 'rate_limited', message: 'Web search is rate-limited right now — please try again in a minute.' });
+      }
+      throw aiErr;
+    }
 
     const text: string = response.output_text ?? '';
     const m = text.match(/\[[\s\S]*\]/);
     if (!m) { res.json([]); return; }
 
     const games: any[] = JSON.parse(m[0]);
+    discoverCache = { games, fetchedAt: Date.now() };
+
     const filtered = games.filter(g =>
       g.name && !existingNames.has((g.name as string).toLowerCase())
     );
