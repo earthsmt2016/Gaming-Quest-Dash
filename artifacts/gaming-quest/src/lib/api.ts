@@ -191,6 +191,14 @@ export async function setGamePlatform(game: string, platform: string): Promise<v
   if (!res.ok) throw new Error('Failed to set platform');
 }
 
+export async function fetchUntaggedActiveGames(): Promise<string[]> {
+  try {
+    const res = await fetch(`${BASE}/platforms/active-untagged`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
 export async function fetchGuides(): Promise<Record<string, string>> {
   try {
     const res = await fetch(`${BASE}/guides`);

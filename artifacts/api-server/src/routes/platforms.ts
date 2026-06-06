@@ -46,4 +46,26 @@ router.put("/platforms/:game", async (req, res) => {
   }
 });
 
+// GET /api/platforms/active-untagged — active games (not completed/paused) with no platform tag
+router.get("/platforms/active-untagged", async (_req, res) => {
+  try {
+    await ensureTable();
+    const result = await pool.query(`
+      SELECT le.game
+      FROM log_entries le
+      LEFT JOIN game_platforms gp  ON gp.game  = le.game
+      LEFT JOIN game_completions gc ON gc.game = le.game
+      LEFT JOIN game_pauses gpa     ON gpa.game = le.game
+      WHERE gp.game IS NULL
+        AND gc.game IS NULL
+        AND gpa.game IS NULL
+      GROUP BY le.game
+      ORDER BY MAX(le.timestamp::timestamptz) DESC
+    `);
+    res.json(result.rows.map((r: any) => r.game));
+  } catch {
+    res.status(500).json({ error: "Failed to fetch untagged games" });
+  }
+});
+
 export default router;
