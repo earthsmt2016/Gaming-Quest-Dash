@@ -32,8 +32,16 @@ const TOOLS: any[] = [
   {
     type: 'function',
     function: {
+      name: 'get_backlog_health',
+      description: 'Get detailed backlog health data: health score, neglected games, active game count, paused games, and specific per-game recommendations. Call this at the start of any conversation about what to play, backlog management, or when the player seems unsure what to focus on.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_game_stats',
-      description: 'Get session statistics (session count, total minutes, avg session length) for a specific game or all games over a recent time period. Use when the player asks about how much they\'ve played a game.',
+      description: 'Get session statistics (session count, total minutes, avg session length) for a specific game or all games over a recent time period.',
       parameters: {
         type: 'object',
         properties: {
@@ -60,7 +68,7 @@ const TOOLS: any[] = [
     type: 'function',
     function: {
       name: 'get_top_games',
-      description: 'Get a breakdown of time played per game. Great for charts showing gaming distribution. Use when asked about most played games or time breakdown.',
+      description: 'Get a breakdown of time played per game. Great for charts showing gaming distribution.',
       parameters: {
         type: 'object',
         properties: {
@@ -73,7 +81,7 @@ const TOOLS: any[] = [
     type: 'function',
     function: {
       name: 'get_session_history',
-      description: 'Get recent individual gaming sessions with dates, actions, and durations. Use for trend analysis or when the player asks about specific recent sessions.',
+      description: 'Get recent individual gaming sessions with dates, actions, and durations.',
       parameters: {
         type: 'object',
         properties: {
@@ -87,11 +95,11 @@ const TOOLS: any[] = [
     type: 'function',
     function: {
       name: 'execute_script',
-      description: 'Write and execute a JavaScript or Python script on the server. Use for calculations, data analysis, generating formatted output, or testing automation logic. Always show the code to the player before or after running it.',
+      description: 'Write and execute a JavaScript or Python script on the server for calculations or data analysis.',
       parameters: {
         type: 'object',
         properties: {
-          language: { type: 'string', enum: ['javascript', 'python'], description: 'Programming language to use.' },
+          language: { type: 'string', enum: ['javascript', 'python'] },
           code: { type: 'string', description: 'The complete script code to run.' },
         },
         required: ['language', 'code'],
@@ -102,6 +110,77 @@ const TOOLS: any[] = [
 
 async function executeTool(name: string, args: Record<string, any>): Promise<string> {
   try {
+    if (name === 'get_backlog_health') {
+      const [allGamesRes, recentRes, paused14Res, pausedRes, completionsRes, lastPlayedRes] = await Promise.all([
+        pool.query(`SELECT DISTINCT game FROM log_entries`),
+        pool.query(`SELECT DISTINCT game FROM log_entries WHERE timestamp::timestamptz > NOW() - INTERVAL '14 days'`),
+        pool.query(`SELECT DISTINCT game FROM log_entries WHERE timestamp::timestamptz > NOW() - INTERVAL '30 days'`),
+        pool.query(`SELECT game FROM game_pauses`),
+        pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT game, MAX(timestamp::timestamptz) as last_session, SUM(minutes) as total_minutes, COUNT(*) as session_count FROM log_entries GROUP BY game`),
+      ]);
+
+      const completedSet = new Set(completionsRes.rows.map((r: any) => r.game));
+      const pausedSet = new Set(pausedRes.rows.map((r: any) => r.game));
+      const recentSet = new Set(recentRes.rows.map((r: any) => r.game));
+      const recent30Set = new Set(paused14Res.rows.map((r: any) => r.game));
+
+      const activeBacklog: string[] = allGamesRes.rows
+        .map((r: any) => r.game)
+        .filter((g: string) => !completedSet.has(g) && !pausedSet.has(g));
+
+      const gameMap: Record<string, any> = {};
+      for (const r of lastPlayedRes.rows) {
+        gameMap[r.game] = r;
+      }
+
+      const activeDetails = activeBacklog
+        .map(g => {
+          const info = gameMap[g] ?? {};
+          const daysSince = info.last_session
+            ? Math.floor((Date.now() - new Date(info.last_session).getTime()) / 86400000)
+            : 999;
+          return {
+            game: g,
+            days_since_last_session: daysSince,
+            total_hours: Math.round(Number(info.total_minutes ?? 0) / 60 * 10) / 10,
+            session_count: Number(info.session_count ?? 0),
+          };
+        })
+        .sort((a, b) => b.days_since_last_session - a.days_since_last_session);
+
+      const neglected14 = activeDetails.filter(g => g.days_since_last_session >= 14);
+      const neglected30 = activeDetails.filter(g => g.days_since_last_session >= 30);
+      const currentlyActive = activeDetails.filter(g => g.days_since_last_session < 14);
+
+      const neglectPenalty = Math.min(neglected14.length * 5, 35);
+      const backlogPenalty = Math.min(Math.max(activeBacklog.length - 6, 0) * 4, 30);
+      const rotationPenalty = Math.min(Math.max(currentlyActive.length - 3, 0) * 5, 15);
+      const healthScore = Math.max(0, 100 - neglectPenalty - backlogPenalty - rotationPenalty);
+      const healthLabel = healthScore >= 80 ? 'Healthy' : healthScore >= 60 ? 'Fair' : healthScore >= 40 ? 'At Risk' : 'Critical';
+
+      const recommendations: Array<{ action: string; game: string; reason: string }> = [];
+      for (const g of neglected30.slice(0, 3)) {
+        recommendations.push({ action: 'put_on_hold', game: g.game, reason: `Not played in ${g.days_since_last_session} days — either commit to it or bench it` });
+      }
+      for (const g of neglected14.filter(x => x.days_since_last_session < 30).slice(0, 2)) {
+        recommendations.push({ action: 'put_on_hold', game: g.game, reason: `No sessions in ${g.days_since_last_session} days — losing momentum` });
+      }
+
+      return JSON.stringify({
+        health_score: healthScore,
+        health_label: healthLabel,
+        active_backlog_count: activeBacklog.length,
+        completed_count: completedSet.size,
+        paused_games: pausedRes.rows.map((r: any) => r.game),
+        currently_active_games: currentlyActive.map(g => g.game),
+        neglected_14d: neglected14,
+        neglected_30d: neglected30,
+        all_active_details: activeDetails,
+        recommendations,
+      });
+    }
+
     if (name === 'get_game_stats') {
       const days = Number(args.days ?? 30);
       const since = new Date(Date.now() - days * 86400000).toISOString();
@@ -194,19 +273,43 @@ async function buildContext(game?: string): Promise<string> {
   const gc = game ? 'AND game=$1' : '';
   const gcWhere = game ? 'WHERE game=$1' : '';
 
-  const [profileRes, activeRes, logsRes, sessionRes] = await Promise.all([
+  const [profileRes, activeRes, logsRes, sessionRes, pausedRes, completionsRes, allGamesRes, recentGamesRes] = await Promise.all([
     pool.query(`SELECT * FROM user_profile WHERE id=1`),
     pool.query(`SELECT game, title, type, difficulty, progress, target, xp_reward FROM quests WHERE status='active' ${gc} ORDER BY accepted_at DESC LIMIT 5`, gp),
     pool.query(`SELECT game, title, difficulty, xp_earned, time_taken_minutes, completed_at FROM quest_logs ${gcWhere} ORDER BY completed_at DESC LIMIT 5`, gp),
     pool.query(`SELECT game, action, minutes, type, timestamp FROM log_entries ${gcWhere} ORDER BY timestamp DESC LIMIT 12`, gp),
+    pool.query(`SELECT game FROM game_pauses`),
+    pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] as any[] })),
+    pool.query(`SELECT DISTINCT game FROM log_entries`),
+    pool.query(`SELECT DISTINCT game FROM log_entries WHERE timestamp::timestamptz > NOW() - INTERVAL '14 days'`),
   ]);
 
   const profile = profileRes.rows[0];
   const activeQuests = activeRes.rows;
   const completedLogs = logsRes.rows;
   const sessions = sessionRes.rows;
-  const games = [...new Set(sessions.map((r: any) => r.game))];
+
+  const completedSet = new Set(completionsRes.rows.map((r: any) => r.game));
+  const pausedSet = new Set(pausedRes.rows.map((r: any) => r.game));
+  const recentSet = new Set(recentGamesRes.rows.map((r: any) => r.game));
+  const activeBacklog = allGamesRes.rows.map((r: any) => r.game).filter((g: string) => !completedSet.has(g) && !pausedSet.has(g));
+  const neglected = activeBacklog.filter((g: string) => !recentSet.has(g));
+
+  const neglectPenalty = Math.min(neglected.length * 5, 35);
+  const backlogPenalty = Math.min(Math.max(activeBacklog.length - 6, 0) * 4, 30);
+  const activePlaying = activeBacklog.filter((g: string) => recentSet.has(g));
+  const rotationPenalty = Math.min(Math.max(activePlaying.length - 3, 0) * 5, 15);
+  const healthScore = Math.max(0, 100 - neglectPenalty - backlogPenalty - rotationPenalty);
+  const healthLabel = healthScore >= 80 ? '✅ Healthy' : healthScore >= 60 ? '⚠️ Fair' : healthScore >= 40 ? '🔴 At Risk' : '💀 Critical';
+
   const lines: string[] = [];
+
+  // Backlog health snapshot — always at the top so AI has instant awareness
+  lines.push(`BACKLOG HEALTH: ${healthScore}/100 (${healthLabel})`);
+  lines.push(`  Active backlog: ${activeBacklog.length} games | Currently playing: ${activePlaying.join(', ') || 'none'}`);
+  if (neglected.length > 0) lines.push(`  ⚠️ NEGLECTED (14d+): ${neglected.join(', ')}`);
+  if (pausedSet.size > 0) lines.push(`  ⏸ Paused: ${[...pausedSet].join(', ')}`);
+  lines.push('');
 
   if (game) lines.push(`GAME FOCUS: ${game}\n`);
 
@@ -220,8 +323,6 @@ async function buildContext(game?: string): Promise<string> {
     lines.push(`  Avg session: ~${profile.avg_session_minutes} minutes`);
     if (profile.personality_summary) lines.push(`  Personality: ${profile.personality_summary}`);
   }
-
-  lines.push(`\nGAMES IN RECENT SESSIONS: ${games.join(', ') || 'none logged yet'}`);
 
   if (activeQuests.length) {
     lines.push(`\nACTIVE QUESTS:`);
@@ -252,37 +353,42 @@ async function buildContext(game?: string): Promise<string> {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT_BASE = `You are an elite AI gaming companion — part personal coach, part strategist, part friend. You have a PhD-level understanding of game design, mechanics, and player psychology. You deeply know this specific player through their history and profile.
+const SYSTEM_PROMPT_BASE = `You are an elite AI gaming companion — part personal coach, part strategist, part friend. Your #1 mission is to help this player maintain a healthy backlog and ensure every game they touch is actually progressing.
 
-Your personality: warm, enthusiastic about games, insightful, and direct. You never give generic advice — everything is tailored to THIS player's actual data.
+Your personality: warm, enthusiastic, direct, slightly opinionated. You're not afraid to say "you haven't touched that game in 6 weeks — let's be real about whether you'll ever go back."
 
-You have live tools to query the player's gaming database. USE THEM proactively — whenever the player asks about their stats, sessions, progress, or time played, call the relevant tool first. Do not estimate from context alone.
+**BACKLOG MANAGEMENT IS YOUR PRIMARY JOB.** On any open-ended question ("what should I play?", "how am I doing?", "any advice?"), ALWAYS start by calling get_backlog_health and then give specific, actionable guidance based on the real data.
 
-CHARTS: When data is better shown visually, embed a chart using this exact format on its own line:
+You have live tools to query the player's gaming database. USE THEM proactively.
+
+CHARTS: Embed charts when data is better shown visually:
 [CHART:{"type":"bar","title":"Time Played (last 30d)","labels":["Game A","Game B"],"values":[120,45],"unit":"minutes"}]
+Chart types: "bar", "line", "pie", "donut". Labels and values must be the same length.
+Only produce charts from real tool data, never invented.
 
-Chart types:
-- "bar" — horizontal bars, best for comparing games or categories
-- "line" — line over time, best for session trends (use date labels like "Mon", "Jun 1")
-- "pie" — circular, best for showing proportional share across a few items
-- "donut" — like pie but with a hole, great for time-split breakdowns
-Rules:
-- labels and values must be the same length.
-- unit examples: "minutes", "sessions", "XP", "hours" — "minutes" values will be auto-converted to hours in the UI.
-- You can mix chart + text in one message. Put the chart on its own line between paragraphs.
-- Only produce a chart when you have real data from a tool call. Never invent chart data.
+GAME ACTIONS: You can embed interactive action buttons directly in your response. Use these to let the player act on your recommendations immediately — no navigation needed.
 
-SCRIPT EXECUTION: You can write AND run scripts using the execute_script tool.
-- Use it for: calculations on player data, generating reports, testing automation scripts
-- Supported: javascript, python
-- Always include the code in a fenced code block in your reply so the player can download it
-- After running, summarise the output clearly — don't just paste raw numbers
+Format (one per line, between paragraphs):
+[ACTION:{"type":"put_on_hold","game":"EXACT_GAME_NAME","label":"Put on hold","detail":"Not played in 45 days"}]
+[ACTION:{"type":"remove_hold","game":"EXACT_GAME_NAME","label":"Take off hold","detail":"Ready to resume?"}]
+[ACTION:{"type":"mark_complete","game":"EXACT_GAME_NAME","label":"Mark as complete","detail":"You've put 40h in"}]
 
-Rules:
-- Always reference the player's actual game history when relevant
-- Be specific: "you've logged 4 sessions in Mario Kart Tour this week" not "you play a lot"
+Action rules:
+- ALWAYS use [ACTION:...] blocks when recommending a game be put on hold, resumed, or marked done
+- Use put_on_hold when: neglected 14+ days AND the player has 5+ active games
+- Use mark_complete when: the player seems genuinely done with a game
+- Use remove_hold when: suggesting a paused game worth returning to
+- game field MUST be the exact game name from the player's data — copy it precisely
+- Always write a sentence BEFORE the action button explaining your reasoning
+- You can include multiple action buttons in one response when the situation warrants it
+
+SCRIPT EXECUTION: You can write and run scripts via execute_script for calculations or data analysis.
+
+Core rules:
+- Always reference actual data ("you've logged 4 sessions this week") not vague generalizations
+- Be direct about neglected games — don't soften it
 - Keep responses conversational, not wall-of-text
-- When suggesting quests or strategies, be concrete and actionable`;
+- Prioritize the player's backlog health score improving over everything else`;
 
 function makeSystemPrompt(context: string, game?: string): string {
   const gameLine = game ? `\n\nYou are currently in the ${game} chat context. Focus your answers on this game unless asked otherwise.` : '';
@@ -315,12 +421,12 @@ router.post("/companion/chat", async (req, res) => {
       { role: 'user', content: message.trim() },
     ];
 
-    // Tool-calling loop (max 3 rounds)
+    // Tool-calling loop (max 4 rounds)
     let finalReply = '';
-    for (let round = 0; round < 3; round++) {
+    for (let round = 0; round < 4; round++) {
       const response = await openai.chat.completions.create({
         model: 'gpt-5.4',
-        max_completion_tokens: 1500,
+        max_completion_tokens: 1800,
         messages,
         tools: TOOLS,
         tool_choice: 'auto',
@@ -334,7 +440,6 @@ router.post("/companion/chat", async (req, res) => {
         break;
       }
 
-      // Execute all tool calls
       messages.push({ role: 'assistant', content: msg.content ?? null, tool_calls: msg.tool_calls });
       for (const tc of msg.tool_calls) {
         let args: Record<string, any> = {};
@@ -348,13 +453,11 @@ router.post("/companion/chat", async (req, res) => {
       finalReply = "I ran into an issue fetching your data. Try asking again!";
     }
 
-    // Save both turns
     await pool.query(
       `INSERT INTO ai_conversations (role, content, game_context) VALUES ($1,$2,$3), ($4,$5,$6)`,
       ['user', message.trim(), game ?? null, 'assistant', finalReply, game ?? null]
     );
 
-    // Trim to last 100 rows per game context
     await pool.query(`
       DELETE FROM ai_conversations WHERE id NOT IN (
         SELECT id FROM ai_conversations WHERE (game_context IS NOT DISTINCT FROM $1) ORDER BY created_at DESC LIMIT 100

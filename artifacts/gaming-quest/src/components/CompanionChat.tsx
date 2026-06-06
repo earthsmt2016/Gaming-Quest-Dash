@@ -4,7 +4,10 @@ import {
   LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
-import { sendCompanionMessage, fetchCompanionHistory, clearCompanionHistory, fetchGames, CompanionMessage } from '../lib/api';
+import {
+  sendCompanionMessage, fetchCompanionHistory, clearCompanionHistory, fetchGames,
+  togglePaused, toggleCompletion, CompanionMessage,
+} from '../lib/api';
 
 // ─── Download helpers ─────────────────────────────────────────────────────────
 
@@ -41,15 +44,15 @@ function downloadChartSvg(container: HTMLElement | null, title: string) {
 }
 
 const QUICK_ACTIONS = [
-  { label: '📊 Show my game breakdown', message: 'Show me a chart of how my time is split across games this month.' },
-  { label: '🎮 What should I play today?', message: 'Based on my history and active quests, what should I play today and for how long?' },
-  { label: '⚔️ Quest progress', message: 'How am I doing on my active quests? Give me a detailed status.' },
-  { label: '📈 Session trends', message: 'Analyze my recent gaming sessions — what patterns do you see?' },
+  { label: '🏥 Backlog health check', message: 'Check my backlog health — what games should I put down or focus on?' },
+  { label: '🎮 What to play today?', message: 'Based on my backlog health and active quests, what should I play today?' },
+  { label: '📊 Time breakdown', message: 'Show me a chart of how my time is split across games this month.' },
+  { label: '⚔️ Quest status', message: 'How am I doing on my active quests? Give me a detailed status.' },
 ];
 
 const CHART_COLORS = ['#6a1b9a', '#1565c0', '#00897b', '#f57c00', '#c62828', '#558b2f', '#6a1b9a', '#283593'];
 
-// ─── Chart types ───────────────────────────────────────────────────────────────
+// ─── Block types ──────────────────────────────────────────────────────────────
 
 interface ChartSpec {
   type: 'bar' | 'pie' | 'donut' | 'line';
@@ -59,40 +62,61 @@ interface ChartSpec {
   unit?: string;
 }
 
+interface ActionSpec {
+  type: 'put_on_hold' | 'remove_hold' | 'mark_complete';
+  game: string;
+  label?: string;
+  detail?: string;
+}
+
+type BlockKind = 'text' | 'chart' | 'action';
+interface ContentBlock { kind: BlockKind; content: string }
+
 /**
- * Robust parser: tracks brace depth so JSON arrays inside [CHART:{...}]
- * don't break extraction. The naive regex /\[CHART:(.*?)\]/ stops at the
- * first ] inside the JSON (e.g. labels:[…]).
+ * Depth-tracking parser — handles [CHART:{...}] and [ACTION:{...}] blocks
+ * without breaking on nested JSON arrays/objects.
  */
-function parseContentBlocks(text: string): Array<{ kind: 'text' | 'chart'; content: string }> {
-  const blocks: Array<{ kind: 'text' | 'chart'; content: string }> = [];
-  const MARKER = '[CHART:';
+function parseContentBlocks(text: string): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  const MARKERS: Array<{ kind: BlockKind; prefix: string }> = [
+    { kind: 'chart', prefix: '[CHART:' },
+    { kind: 'action', prefix: '[ACTION:' },
+  ];
   let remaining = text;
 
   while (true) {
-    const markerIdx = remaining.indexOf(MARKER);
-    if (markerIdx === -1) {
+    let earliestIdx = -1;
+    let earliestMarker: typeof MARKERS[0] | null = null;
+
+    for (const m of MARKERS) {
+      const idx = remaining.indexOf(m.prefix);
+      if (idx !== -1 && (earliestIdx === -1 || idx < earliestIdx)) {
+        earliestIdx = idx;
+        earliestMarker = m;
+      }
+    }
+
+    if (earliestIdx === -1 || !earliestMarker) {
       const leftover = remaining.trim();
       if (leftover) blocks.push({ kind: 'text', content: leftover });
       break;
     }
 
-    const textBefore = remaining.slice(0, markerIdx).trim();
+    const textBefore = remaining.slice(0, earliestIdx).trim();
     if (textBefore) blocks.push({ kind: 'text', content: textBefore });
 
-    // Walk forward tracking brace depth to find the end of the JSON object
-    const jsonStart = markerIdx + MARKER.length;
+    const jsonStart = earliestIdx + earliestMarker.prefix.length;
     let depth = 0;
     let jsonEnd = -1;
+
     for (let i = jsonStart; i < remaining.length; i++) {
       const ch = remaining[i];
       if (ch === '{') depth++;
       else if (ch === '}') {
         depth--;
         if (depth === 0) {
-          // Expect a closing ] immediately after the JSON object
           if (remaining[i + 1] === ']') {
-            blocks.push({ kind: 'chart', content: remaining.slice(jsonStart, i + 1) });
+            blocks.push({ kind: earliestMarker.kind, content: remaining.slice(jsonStart, i + 1) });
             jsonEnd = i + 2;
           }
           break;
@@ -101,8 +125,7 @@ function parseContentBlocks(text: string): Array<{ kind: 'text' | 'chart'; conte
     }
 
     if (jsonEnd === -1) {
-      // Malformed — treat rest as plain text
-      const rest = remaining.slice(markerIdx).trim();
+      const rest = remaining.slice(earliestIdx).trim();
       if (rest) blocks.push({ kind: 'text', content: rest });
       break;
     }
@@ -112,6 +135,8 @@ function parseContentBlocks(text: string): Array<{ kind: 'text' | 'chart'; conte
 
   return blocks;
 }
+
+// ─── InlineChart ──────────────────────────────────────────────────────────────
 
 function InlineChart({ spec }: { spec: ChartSpec }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,19 +168,11 @@ function InlineChart({ spec }: { spec: ChartSpec }) {
         {chartHeader}
         <ResponsiveContainer width="100%" height={240}>
           <PieChart>
-            <Pie
-              data={data} dataKey="value" nameKey="name"
-              cx="50%" cy="45%" outerRadius={80} innerRadius={inner}
-            >
+            <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="45%" outerRadius={80} innerRadius={inner}>
               {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
             </Pie>
             <Tooltip formatter={(v: number) => [fmt(v), '']} />
-            <Legend
-              iconType="circle"
-              iconSize={8}
-              formatter={(value: string) => value.length > 22 ? value.slice(0, 20) + '…' : value}
-              wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }}
-            />
+            <Legend iconType="circle" iconSize={8} formatter={(value: string) => value.length > 22 ? value.slice(0, 20) + '…' : value} wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -179,7 +196,6 @@ function InlineChart({ spec }: { spec: ChartSpec }) {
     );
   }
 
-  // Default: horizontal bar chart
   return (
     <div ref={containerRef} style={wrapStyle}>
       {chartHeader}
@@ -193,6 +209,86 @@ function InlineChart({ spec }: { spec: ChartSpec }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ─── ActionCard ───────────────────────────────────────────────────────────────
+
+type ActionState = 'idle' | 'loading' | 'done' | 'error';
+
+const ACTION_CONFIG: Record<ActionSpec['type'], { icon: string; color: string; defaultLabel: string }> = {
+  put_on_hold:   { icon: '⏸', color: '#f57c00', defaultLabel: 'Put on hold' },
+  remove_hold:   { icon: '▶️', color: '#00897b', defaultLabel: 'Resume game' },
+  mark_complete: { icon: '🏆', color: '#558b2f', defaultLabel: 'Mark as complete' },
+};
+
+function ActionCard({
+  spec,
+  state,
+  onExecute,
+}: {
+  spec: ActionSpec;
+  state: ActionState;
+  onExecute: (spec: ActionSpec) => void;
+}) {
+  const cfg = ACTION_CONFIG[spec.type] ?? { icon: '⚡', color: 'var(--accent)', defaultLabel: 'Take action' };
+  const label = spec.label ?? cfg.defaultLabel;
+
+  const btnBg =
+    state === 'done'  ? '#558b2f' :
+    state === 'error' ? '#c62828' :
+    cfg.color;
+
+  const btnLabel =
+    state === 'loading' ? '…' :
+    state === 'done'    ? '✓ Done' :
+    state === 'error'   ? '✗ Failed' :
+    label;
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      background: 'var(--paper-2)',
+      border: `1px solid ${cfg.color}44`,
+      borderLeft: `3px solid ${cfg.color}`,
+      borderRadius: '10px',
+      padding: '10px 12px',
+      margin: '5px 0',
+      gap: '10px',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {cfg.icon} {spec.game}
+        </div>
+        {spec.detail && (
+          <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', lineHeight: 1.4 }}>
+            {spec.detail}
+          </div>
+        )}
+      </div>
+      <button
+        onClick={() => { if (state === 'idle') onExecute(spec); }}
+        disabled={state !== 'idle'}
+        style={{
+          background: btnBg,
+          color: '#fff',
+          border: 'none',
+          borderRadius: '8px',
+          padding: '7px 14px',
+          cursor: state === 'idle' ? 'pointer' : 'default',
+          fontSize: '12px',
+          fontWeight: 700,
+          fontFamily: 'inherit',
+          minWidth: '108px',
+          flexShrink: 0,
+          opacity: state === 'loading' ? 0.7 : 1,
+          transition: 'background 0.15s, opacity 0.15s',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {btnLabel}
+      </button>
     </div>
   );
 }
@@ -214,7 +310,17 @@ function TypingIndicator() {
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ msg, onCopy }: { msg: CompanionMessage; onCopy: (text: string) => void }) {
+function MessageBubble({
+  msg,
+  onCopy,
+  onAction,
+  actionStates,
+}: {
+  msg: CompanionMessage;
+  onCopy: (text: string) => void;
+  onAction: (spec: ActionSpec) => void;
+  actionStates: Record<string, ActionState>;
+}) {
   const isUser = msg.role === 'user';
   const [copied, setCopied] = useState(false);
 
@@ -281,7 +387,6 @@ function MessageBubble({ msg, onCopy }: { msg: CompanionMessage; onCopy: (text: 
             bullets.push(lines[i].replace(/^[-*•]\s/, ''));
             i++;
           }
-          // skip blank separator lines between numbered items
           while (i < lines.length && !lines[i].trim() && i + 1 < lines.length && lines[i + 1].match(/^\d+\.\s/)) { i++; }
           items.push({ header, bullets });
         }
@@ -338,6 +443,22 @@ function MessageBubble({ msg, onCopy }: { msg: CompanionMessage; onCopy: (text: 
                       return null;
                     }
                   }
+                  if (block.kind === 'action') {
+                    try {
+                      const spec: ActionSpec = JSON.parse(block.content);
+                      const key = `${spec.type}:${spec.game}`;
+                      return (
+                        <ActionCard
+                          key={bi}
+                          spec={spec}
+                          state={actionStates[key] ?? 'idle'}
+                          onExecute={onAction}
+                        />
+                      );
+                    } catch {
+                      return null;
+                    }
+                  }
                   return <div key={bi}>{renderText(block.content)}</div>;
                 })}
               </div>
@@ -366,16 +487,15 @@ export default function CompanionChat() {
   const [selectedGame, setSelectedGame] = useState<string | null>(null);
   const [games, setGames] = useState<string[]>([]);
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
+  const [actionStates, setActionStates] = useState<Record<string, ActionState>>({});
   const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastAiMsgRef = useRef<HTMLDivElement>(null);
 
-  // Fetch games list once
   useEffect(() => {
     fetchGames().then(setGames).catch(() => {});
   }, []);
 
-  // Reload history when game context changes
   useEffect(() => {
     setHistoryLoading(true);
     fetchCompanionHistory(selectedGame ?? undefined)
@@ -388,20 +508,33 @@ export default function CompanionChat() {
     if (!open || !messagesRef.current) return;
     const last = messages[messages.length - 1];
     if (last?.role === 'assistant' && lastAiMsgRef.current) {
-      // Scroll the container (not the page) so the top of the AI reply is visible
       messagesRef.current.scrollTop = lastAiMsgRef.current.offsetTop - messagesRef.current.offsetTop;
     } else {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }
   }, [messages, open]);
 
-  // Close game picker on outside click
   useEffect(() => {
     if (!gamePickerOpen) return;
     const handler = () => setGamePickerOpen(false);
     setTimeout(() => document.addEventListener('click', handler), 0);
     return () => document.removeEventListener('click', handler);
   }, [gamePickerOpen]);
+
+  const handleAction = useCallback(async (spec: ActionSpec) => {
+    const key = `${spec.type}:${spec.game}`;
+    setActionStates(prev => ({ ...prev, [key]: 'loading' }));
+    try {
+      if (spec.type === 'put_on_hold' || spec.type === 'remove_hold') {
+        await togglePaused(spec.game);
+      } else if (spec.type === 'mark_complete') {
+        await toggleCompletion(spec.game);
+      }
+      setActionStates(prev => ({ ...prev, [key]: 'done' }));
+    } catch {
+      setActionStates(prev => ({ ...prev, [key]: 'error' }));
+    }
+  }, []);
 
   const handleSend = useCallback(async (text?: string) => {
     const content = (text ?? input).trim();
@@ -433,12 +566,14 @@ export default function CompanionChat() {
     if (!confirm('Clear this conversation?')) return;
     await clearCompanionHistory(selectedGame ?? undefined);
     setMessages([]);
+    setActionStates({});
   };
 
   const handleSelectGame = (game: string | null) => {
     setSelectedGame(game);
     setGamePickerOpen(false);
     setMessages([]);
+    setActionStates({});
   };
 
   const isEmpty = messages.length === 0 && !historyLoading;
@@ -468,13 +603,12 @@ export default function CompanionChat() {
             <div>
               <div style={{ fontSize: '14px', fontWeight: 700 }}>AI Gaming Companion</div>
               <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                {selectedGame ? `Focused on ${selectedGame}` : 'Your personal coach & strategist'}
+                {selectedGame ? `Focused on ${selectedGame}` : 'Backlog coach & strategist'}
               </div>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
-            {/* Game selector */}
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => setGamePickerOpen(v => !v)}
@@ -528,7 +662,7 @@ export default function CompanionChat() {
         {open && (
           <>
             {/* Messages */}
-            <div ref={messagesRef} style={{ maxHeight: '420px', overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--paper-2)' }}>
+            <div ref={messagesRef} style={{ maxHeight: '480px', overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--paper-2)' }}>
               {historyLoading && (
                 <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '13px', padding: '16px 0' }}>Loading conversation…</div>
               )}
@@ -540,7 +674,9 @@ export default function CompanionChat() {
                     {selectedGame ? `${selectedGame} coach ready` : 'Hey, ready to level up?'}
                   </div>
                   <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '16px' }}>
-                    {selectedGame ? `I'll focus all my analysis on ${selectedGame}.` : 'Ask me anything — stats, strategy, what to play next.'}
+                    {selectedGame
+                      ? `I'll focus all my analysis on ${selectedGame}.`
+                      : 'I track your backlog health and tell you exactly what needs attention.'}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', justifyContent: 'center' }}>
                     {QUICK_ACTIONS.map(a => (
@@ -554,7 +690,12 @@ export default function CompanionChat() {
                 const isLastAi = msg.role === 'assistant' && i === messages.length - 1;
                 return (
                   <div key={msg.id} ref={isLastAi ? lastAiMsgRef : undefined}>
-                    <MessageBubble msg={msg} onCopy={handleCopy} />
+                    <MessageBubble
+                      msg={msg}
+                      onCopy={handleCopy}
+                      onAction={handleAction}
+                      actionStates={actionStates}
+                    />
                   </div>
                 );
               })}
