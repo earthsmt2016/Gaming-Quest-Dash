@@ -31,6 +31,8 @@ interface BacklogHealth {
   active_games: number;
   neglected_count: number;
   neglected_games: string[];
+  rotating_games: string[];
+  active_game_list: string[];
   risks: string[];
   penalties: HealthPenalty[];
 }
@@ -215,8 +217,26 @@ export default function CoachCard() {
               ) : (
                 <>
                   {health.penalties.map((p, i) => {
-                    const isNeglect = p.label.includes('not played') && (health.neglected_games ?? []).length > 0;
+                    const isNeglect   = p.label.includes('not played') && (health.neglected_games ?? []).length > 0;
+                    const isRotation  = p.label.includes('this week') && (health.rotating_games ?? []).length > 0;
+                    const isBacklog   = p.label.includes('active games') && (health.active_game_list ?? []).length > 0;
+                    const gameList    = isNeglect ? (health.neglected_games ?? [])
+                                      : isRotation ? (health.rotating_games ?? [])
+                                      : isBacklog  ? (health.active_game_list ?? [])
+                                      : [];
+                    const hasGames    = gameList.length > 0;
                     const accentColor = p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)';
+
+                    const btnLabel = (ps: PauseState) =>
+                      ps === 'loading' ? '…' : ps === 'done' ? '✓ On hold' : ps === 'error' ? '✗ Failed'
+                      : isRotation ? '⏸ Bench it' : '⏸ Put on hold';
+
+                    const rowHint = isRotation
+                      ? 'Benching any of these reduces your rotation score'
+                      : isBacklog
+                      ? 'Oldest-played games listed first — easiest to bench'
+                      : null;
+
                     return (
                     <div key={i} style={{
                       background: 'var(--paper-2)',
@@ -228,61 +248,68 @@ export default function CoachCard() {
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
                         <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 600 }}>{p.label}</span>
-                        <span style={{
-                          fontSize: 11, fontWeight: 800,
-                          color: accentColor,
-                          flexShrink: 0, marginLeft: 8,
-                        }}>−{p.deduction} pts</span>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: accentColor, flexShrink: 0, marginLeft: 8 }}>
+                          −{p.deduction} pts
+                        </span>
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600, marginBottom: isNeglect ? 8 : 0 }}>
+                      <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600, marginBottom: hasGames ? 8 : 0 }}>
                         💡 {p.tip}
                       </div>
-                      {isNeglect && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                          {(health.neglected_games ?? []).map(game => {
-                            const ps = pauseStates[game] ?? 'idle';
-                            return (
-                              <div key={game} style={{
-                                display: 'flex', alignItems: 'center',
-                                justifyContent: 'space-between', gap: 8,
-                                background: 'var(--paper)',
-                                border: '1px solid var(--line)',
-                                borderRadius: 'var(--radius-sm)',
-                                padding: '5px 8px',
-                              }}>
-                                <span style={{
-                                  fontSize: 12, fontWeight: 600,
-                                  color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
-                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                                  textDecoration: ps === 'done' ? 'line-through' : 'none',
+                      {hasGames && (
+                        <>
+                          {rowHint && (
+                            <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, fontStyle: 'italic' }}>
+                              {rowHint}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            {gameList.map(game => {
+                              const ps = pauseStates[game] ?? 'idle';
+                              return (
+                                <div key={game} style={{
+                                  display: 'flex', alignItems: 'center',
+                                  justifyContent: 'space-between', gap: 8,
+                                  background: 'var(--paper)',
+                                  border: '1px solid var(--line)',
+                                  borderRadius: 'var(--radius-sm)',
+                                  padding: '5px 8px',
+                                  opacity: ps === 'done' ? 0.6 : 1,
+                                  transition: 'opacity 0.2s',
                                 }}>
-                                  {game}
-                                </span>
-                                <button
-                                  onClick={() => { if (ps === 'idle') handlePause(game); }}
-                                  disabled={ps !== 'idle'}
-                                  style={{
-                                    background: ps === 'done' ? 'var(--success)' : ps === 'error' ? 'var(--danger)' : '#f57c00',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: 6,
-                                    padding: '4px 10px',
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    fontFamily: 'inherit',
-                                    cursor: ps === 'idle' ? 'pointer' : 'default',
-                                    flexShrink: 0,
-                                    opacity: ps === 'loading' ? 0.65 : 1,
-                                    transition: 'background 0.15s',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
-                                  {ps === 'loading' ? '…' : ps === 'done' ? '✓ On hold' : ps === 'error' ? '✗ Failed' : '⏸ Put on hold'}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
+                                  <span style={{
+                                    fontSize: 12, fontWeight: 600,
+                                    color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                                    textDecoration: ps === 'done' ? 'line-through' : 'none',
+                                  }}>
+                                    {game}
+                                  </span>
+                                  <button
+                                    onClick={() => { if (ps === 'idle') handlePause(game); }}
+                                    disabled={ps !== 'idle'}
+                                    style={{
+                                      background: ps === 'done' ? 'var(--success)' : ps === 'error' ? 'var(--danger)' : '#f57c00',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: 6,
+                                      padding: '4px 10px',
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      fontFamily: 'inherit',
+                                      cursor: ps === 'idle' ? 'pointer' : 'default',
+                                      flexShrink: 0,
+                                      opacity: ps === 'loading' ? 0.65 : 1,
+                                      transition: 'background 0.15s',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {btnLabel(ps)}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
                       )}
                     </div>
                     );

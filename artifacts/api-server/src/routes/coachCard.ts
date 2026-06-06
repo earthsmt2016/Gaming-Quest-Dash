@@ -98,6 +98,18 @@ router.get("/backlog-health", async (_req, res) => {
       });
     }
 
+    // Rotating = active games played this week, sorted by session count desc
+    const rotatingGames = active
+      .filter((r: any) => activeWeek.has(r.game))
+      .map((r: any) => r.game);
+
+    // Full active list sorted by last_played desc (most stale last) — exclude neglected (already shown separately)
+    const neglectedSet = new Set(neglected.map((r: any) => r.game));
+    const activeGameList = active
+      .filter((r: any) => !neglectedSet.has(r.game))
+      .sort((a: any, b: any) => new Date(a.last_played).getTime() - new Date(b.last_played).getTime())
+      .map((r: any) => r.game);
+
     res.json({
       health_score: score,
       label,
@@ -107,6 +119,8 @@ router.get("/backlog-health", async (_req, res) => {
       neglected_count: neglected.length,
       neglected_games: neglected.map((r: any) => r.game),
       rotating_this_week: rotatingCount,
+      rotating_games: rotatingGames,
+      active_game_list: activeGameList,
       risks,
       penalties,
     });
