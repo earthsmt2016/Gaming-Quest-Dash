@@ -118,7 +118,8 @@ export default function CoachCard() {
   const [loading, setLoading]   = useState(false);
   const [loadingH, setLoadingH] = useState(true);
   const [error, setError]       = useState<string | null>(null);
-  const [healthOpen, setHealthOpen] = useState(true);
+  const [consoleOpen, setConsoleOpen] = useState(true);
+  const [mobileOpen, setMobileOpen]   = useState(true);
   const [pauseStates, setPauseStates] = useState<Record<string, PauseState>>({});
   const [platformMode, setPlatformMode] = useState<PlatformMode>('any');
 
@@ -231,207 +232,176 @@ export default function CoachCard() {
         </div>
       </div>
 
-      {/* ── Backlog health scorecard ── */}
+      {/* ── Health scorecards: Console + Mobile as separate collapsibles ── */}
       {health && !loadingH && (
-        <div style={{ borderBottom: '1px solid var(--soft-line)' }}>
-          {/* Clickable score bar row */}
-          <button
-            onClick={() => setHealthOpen(o => !o)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            {/* Score bar */}
-            <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--soft-line)', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', width: `${health.health_score}%`,
-                background: healthCssVar(health.health_score),
-                borderRadius: 3,
-                transition: 'width 0.4s ease',
-              }} />
-            </div>
-            <span style={{ fontSize: 12, fontWeight: 800, color: healthCssVar(health.health_score), minWidth: 36, textAlign: 'right' }}>
-              {health.health_score}/100
-            </span>
-            <span style={{ fontSize: 11, color: 'var(--muted)', minWidth: 48 }}>
-              {health.label}
-            </span>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{healthOpen ? '▾' : '▸'}</span>
-          </button>
-
-          {/* Expanded penalty breakdown */}
-          {healthOpen && (
-            <div style={{ padding: '0 16px 12px' }}>
-              {(health.penalties ?? []).length === 0 ? (
-                <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>✓ No issues — backlog is in great shape</div>
-              ) : (
-                <>
-                  {health.penalties.map((p, i) => {
-                    const isNeglect  = p.label.includes('not played') && (health.neglected_games ?? []).length > 0;
-                    const isRotation = p.label.includes('this week') && (health.rotating_games ?? []).length > 0;
-                    const isBacklog  = p.label.includes('active console') && (health.active_game_list ?? []).length > 0;
-                    const gameList: GameEntry[] = isNeglect  ? (health.neglected_games ?? [])
-                                                : isRotation ? (health.rotating_games ?? [])
-                                                : isBacklog  ? (health.active_game_list ?? [])
-                                                : [];
-                    const hasGames   = gameList.length > 0;
-                    const accentColor = p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)';
-
-                    const btnLabel = (ps: PauseState) =>
-                      ps === 'loading' ? '…' : ps === 'done' ? '✓ On hold' : ps === 'error' ? '✗ Failed'
-                      : isRotation ? '⏸ Bench it' : '⏸ Put on hold';
-
-                    const rowHint = isNeglect  ? 'Most idle listed first — highest priority to bench'
-                                  : isRotation ? 'Fewest sessions listed first — easiest to drop this week'
-                                  : isBacklog  ? 'Oldest-played listed first — easiest to bench'
-                                  : null;
-
-                    return (
-                    <div key={i} style={{
-                      background: 'var(--paper-2)',
-                      border: '1px solid var(--soft-line)',
-                      borderLeft: `3px solid ${accentColor}`,
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '8px 10px',
-                      marginBottom: 6,
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-                        <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 600 }}>{p.label}</span>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: accentColor, flexShrink: 0, marginLeft: 8 }}>
-                          −{p.deduction} pts
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600, marginBottom: hasGames ? 8 : 0 }}>
-                        💡 {p.tip}
-                      </div>
-                      {hasGames && (
-                        <>
-                          {rowHint && (
-                            <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, fontStyle: 'italic' }}>
-                              {rowHint}
-                            </div>
-                          )}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                            {gameList.map(entry => {
-                              const game = entry.game;
-                              const ps = pauseStates[game] ?? 'idle';
-                              const statLabel = isNeglect && entry.days_idle != null
-                                ? `${entry.days_idle}d idle`
-                                : isRotation && entry.sessions_this_week != null
-                                ? `${entry.sessions_this_week}× this week`
-                                : isBacklog && entry.days_idle != null
-                                ? `${entry.days_idle}d idle`
-                                : null;
-                              return (
-                                <div key={game} style={{
-                                  display: 'flex', alignItems: 'center',
-                                  justifyContent: 'space-between', gap: 8,
-                                  background: 'var(--paper)',
-                                  border: '1px solid var(--line)',
-                                  borderRadius: 'var(--radius-sm)',
-                                  padding: '5px 8px',
-                                  opacity: ps === 'done' ? 0.6 : 1,
-                                  transition: 'opacity 0.2s',
-                                }}>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                      {entry.mobile && (
-                                        <span style={{ fontSize: 10, flexShrink: 0 }}>📱</span>
-                                      )}
-                                      <span style={{
-                                        fontSize: 12, fontWeight: 600,
-                                        color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
-                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                        textDecoration: ps === 'done' ? 'line-through' : 'none',
-                                      }}>
-                                        {game}
-                                      </span>
-                                    </div>
-                                    {statLabel && (
-                                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
-                                        {statLabel}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={() => { if (ps === 'idle') handlePause(game); }}
-                                    disabled={ps !== 'idle'}
-                                    style={{
-                                      background: ps === 'done' ? 'var(--success)' : ps === 'error' ? 'var(--danger)' : '#f57c00',
-                                      color: '#fff',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      padding: '4px 10px',
-                                      fontSize: 11,
-                                      fontWeight: 700,
-                                      fontFamily: 'inherit',
-                                      cursor: ps === 'idle' ? 'pointer' : 'default',
-                                      flexShrink: 0,
-                                      opacity: ps === 'loading' ? 0.65 : 1,
-                                      transition: 'background 0.15s',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {btnLabel(ps)}
-                                  </button>
-                                </div>
-                              );
-                            })}
+        <>
+          {/* ── Console collapsible ── */}
+          <div style={{ borderBottom: '1px solid var(--soft-line)' }}>
+            <button
+              onClick={() => setConsoleOpen(o => !o)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>🎮 Console</span>
+              <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--soft-line)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${health.health_score}%`,
+                  background: healthCssVar(health.health_score),
+                  borderRadius: 3, transition: 'width 0.4s ease',
+                }} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 800, color: healthCssVar(health.health_score), minWidth: 36, textAlign: 'right' }}>
+                {health.health_score}/100
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', minWidth: 40 }}>{health.label}</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>{consoleOpen ? '▾' : '▸'}</span>
+            </button>
+            {consoleOpen && (
+              <div style={{ padding: '0 16px 12px' }}>
+                {(health.penalties ?? []).length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>✓ No issues — backlog is in great shape</div>
+                ) : (
+                  <>
+                    {health.penalties.map((p, i) => {
+                      const isNeglect  = p.label.includes('not played') && (health.neglected_games ?? []).length > 0;
+                      const isRotation = p.label.includes('this week') && (health.rotating_games ?? []).length > 0;
+                      const isBacklog  = p.label.includes('active console') && (health.active_game_list ?? []).length > 0;
+                      const gameList: GameEntry[] = isNeglect  ? (health.neglected_games ?? [])
+                                                  : isRotation ? (health.rotating_games ?? [])
+                                                  : isBacklog  ? (health.active_game_list ?? [])
+                                                  : [];
+                      const hasGames    = gameList.length > 0;
+                      const accentColor = p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)';
+                      const btnLabel    = (ps: PauseState) =>
+                        ps === 'loading' ? '…' : ps === 'done' ? '✓ On hold' : ps === 'error' ? '✗ Failed'
+                        : isRotation ? '⏸ Bench it' : '⏸ Put on hold';
+                      const rowHint = isNeglect  ? 'Most idle listed first — highest priority to bench'
+                                    : isRotation ? 'Fewest sessions listed first — easiest to drop this week'
+                                    : isBacklog  ? 'Oldest-played listed first — easiest to bench'
+                                    : null;
+                      return (
+                        <div key={i} style={{
+                          background: 'var(--paper-2)', border: '1px solid var(--soft-line)',
+                          borderLeft: `3px solid ${accentColor}`, borderRadius: 'var(--radius-sm)',
+                          padding: '8px 10px', marginBottom: 6,
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                            <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 600 }}>{p.label}</span>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: accentColor, flexShrink: 0, marginLeft: 8 }}>−{p.deduction} pts</span>
                           </div>
-                        </>
-                      )}
+                          <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600, marginBottom: hasGames ? 8 : 0 }}>
+                            💡 {p.tip}
+                          </div>
+                          {hasGames && (
+                            <>
+                              {rowHint && (
+                                <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, fontStyle: 'italic' }}>{rowHint}</div>
+                              )}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                {gameList.map(entry => {
+                                  const game = entry.game;
+                                  const ps   = pauseStates[game] ?? 'idle';
+                                  const statLabel = isNeglect && entry.days_idle != null       ? `${entry.days_idle}d idle`
+                                                  : isRotation && entry.sessions_this_week != null ? `${entry.sessions_this_week}× this week`
+                                                  : isBacklog && entry.days_idle != null        ? `${entry.days_idle}d idle`
+                                                  : null;
+                                  return (
+                                    <div key={game} style={{
+                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                                      background: 'var(--paper)', border: '1px solid var(--line)',
+                                      borderRadius: 'var(--radius-sm)', padding: '5px 8px',
+                                      opacity: ps === 'done' ? 0.6 : 1, transition: 'opacity 0.2s',
+                                    }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <span style={{
+                                          fontSize: 12, fontWeight: 600, display: 'block',
+                                          color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
+                                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                          textDecoration: ps === 'done' ? 'line-through' : 'none',
+                                        }}>{game}</span>
+                                        {statLabel && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>{statLabel}</div>}
+                                      </div>
+                                      <button
+                                        onClick={() => { if (ps === 'idle') handlePause(game); }}
+                                        disabled={ps !== 'idle'}
+                                        style={{
+                                          background: ps === 'done' ? 'var(--success)' : ps === 'error' ? 'var(--danger)' : '#f57c00',
+                                          color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px',
+                                          fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                                          cursor: ps === 'idle' ? 'pointer' : 'default', flexShrink: 0,
+                                          opacity: ps === 'loading' ? 0.65 : 1, transition: 'background 0.15s', whiteSpace: 'nowrap',
+                                        }}
+                                      >{btnLabel(ps)}</button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+                      Fix all issues above to reach {Math.min(100, health.health_score + (health.penalties ?? []).reduce((a, p) => a + p.deduction, 0))}/100
                     </div>
-                    );
-                  })}
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
-                    Fix all issues above to reach {Math.min(100, health.health_score + (health.penalties ?? []).reduce((a, p) => a + p.deduction, 0))}/100
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Mobile collapsible (only shown when mobile games exist) ── */}
+          {(health.mobile_active ?? 0) > 0 && (() => {
+            const mScore = health.mobile_score ?? 100;
+            const mLabel = health.mobile_label ?? 'Healthy';
+            const mColor = healthCssVar(mScore);
+            const mPens  = health.mobile_penalties ?? [];
+            const mMax   = Math.min(100, mScore + mPens.reduce((a, p) => a + p.deduction, 0));
+
+            const getMobileList = (p: HealthPenalty): GameEntry[] => {
+              if (p.label.includes('not opened'))    return health.mobile_neglected_games ?? [];
+              if (p.label.includes('this week'))     return health.mobile_rotating_games  ?? [];
+              if (p.label.includes('active mobile')) return health.mobile_active_list     ?? [];
+              return [];
+            };
+            const mobileRowHint = (p: HealthPenalty) => {
+              if (p.label.includes('not opened'))    return 'Most idle listed first — highest priority to shelve';
+              if (p.label.includes('this week'))     return 'Fewest sessions listed first — easiest to drop';
+              if (p.label.includes('active mobile')) return 'Oldest-opened listed first — easiest to shelve';
+              return null;
+            };
+            const mobileStatLabel = (p: HealthPenalty, entry: GameEntry) => {
+              if (p.label.includes('not opened') && entry.days_idle != null)         return `${entry.days_idle}d idle`;
+              if (p.label.includes('this week') && entry.sessions_this_week != null) return `${entry.sessions_this_week}× this week`;
+              if (p.label.includes('active mobile') && entry.days_idle != null)      return `${entry.days_idle}d idle`;
+              return null;
+            };
+
+            return (
+              <div key="mobile-section" style={{ borderBottom: '1px solid var(--soft-line)' }}>
+                <button
+                  onClick={() => setMobileOpen(o => !o)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>📱 Mobile</span>
+                  <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--soft-line)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${mScore}%`, background: mColor, borderRadius: 3, transition: 'width 0.4s ease' }} />
                   </div>
-                </>
-              )}
-
-              {/* ── Mobile health score — mirrors console section ── */}
-              {(health.mobile_active ?? 0) > 0 && (() => {
-                const mScore  = health.mobile_score ?? 100;
-                const mLabel  = health.mobile_label ?? 'Healthy';
-                const mColor  = healthCssVar(mScore);
-                const mPens   = health.mobile_penalties ?? [];
-                const mMaxPossible = Math.min(100, mScore + mPens.reduce((a, p) => a + p.deduction, 0));
-
-                const getMobileList = (p: HealthPenalty): GameEntry[] => {
-                  if (p.label.includes('not opened'))   return health.mobile_neglected_games ?? [];
-                  if (p.label.includes('this week'))    return health.mobile_rotating_games  ?? [];
-                  if (p.label.includes('active mobile'))return health.mobile_active_list     ?? [];
-                  return [];
-                };
-                const mobileRowHint = (p: HealthPenalty) => {
-                  if (p.label.includes('not opened'))    return 'Most idle listed first — highest priority to shelve';
-                  if (p.label.includes('this week'))     return 'Fewest sessions listed first — easiest to drop';
-                  if (p.label.includes('active mobile')) return 'Oldest-opened listed first — easiest to shelve';
-                  return null;
-                };
-                const mobileStatLabel = (p: HealthPenalty, entry: GameEntry) => {
-                  if (p.label.includes('not opened') && entry.days_idle != null)        return `${entry.days_idle}d idle`;
-                  if (p.label.includes('this week') && entry.sessions_this_week != null) return `${entry.sessions_this_week}× this week`;
-                  if (p.label.includes('active mobile') && entry.days_idle != null)     return `${entry.days_idle}d idle`;
-                  return null;
-                };
-
-                return (
-                  <div style={{ marginTop: 14, borderTop: '1px solid var(--soft-line)', paddingTop: 12 }}>
-                    {/* Mobile score bar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>📱 Mobile backlog</span>
-                      <div style={{ flex: 1, height: 6, background: 'var(--line)', borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${mScore}%`, background: mColor, borderRadius: 3, transition: 'width 0.4s' }} />
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: mColor, minWidth: 36, textAlign: 'right' }}>{mScore}/100</span>
-                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>{mLabel}</span>
-                    </div>
-
+                  <span style={{ fontSize: 12, fontWeight: 800, color: mColor, minWidth: 36, textAlign: 'right' }}>{mScore}/100</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', minWidth: 40 }}>{mLabel}</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>{mobileOpen ? '▾' : '▸'}</span>
+                </button>
+                {mobileOpen && (
+                  <div style={{ padding: '0 16px 12px' }}>
                     {mPens.length === 0 ? (
-                      <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>✓ Mobile library is in great shape</div>
+                      <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>✓ Mobile library is in great shape</div>
                     ) : (
                       <>
                         {mPens.map((p, i) => {
@@ -454,13 +424,11 @@ export default function CoachCard() {
                               {hasGames && (
                                 <>
                                   {mobileRowHint(p) && (
-                                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, fontStyle: 'italic' }}>
-                                      {mobileRowHint(p)}
-                                    </div>
+                                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, fontStyle: 'italic' }}>{mobileRowHint(p)}</div>
                                   )}
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                                     {gameList.map(entry => {
-                                      const ps = pauseStates[entry.game] ?? 'idle';
+                                      const ps   = pauseStates[entry.game] ?? 'idle';
                                       const stat = mobileStatLabel(p, entry);
                                       return (
                                         <div key={entry.game} style={{
@@ -501,16 +469,16 @@ export default function CoachCard() {
                           );
                         })}
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
-                          Fix all issues above to reach {mMaxPossible}/100
+                          Fix all issues above to reach {mMax}/100
                         </div>
                       </>
                     )}
                   </div>
-                );
-              })()}
-            </div>
-          )}
-        </div>
+                )}
+              </div>
+            );
+          })()}
+        </>
       )}
 
       {/* ── Body ── */}
