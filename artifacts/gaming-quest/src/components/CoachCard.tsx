@@ -17,6 +17,8 @@ interface CoachRec {
   confidence_score: number;
   created_at: string;
   fulfilled: boolean;
+  game_is_paused?: boolean;
+  alt_is_paused?: boolean;
 }
 
 interface HealthPenalty {
@@ -356,17 +358,29 @@ export default function CoachCard() {
             {/* Primary recommendation */}
             <div style={{
               background: 'var(--paper-2)',
-              border: '1px solid var(--soft-line)',
-              borderLeft: '3px solid var(--accent)',
+              border: `1px solid ${rec.game_is_paused ? 'var(--warning)' : 'var(--soft-line)'}`,
+              borderLeft: `3px solid ${rec.game_is_paused ? 'var(--warning)' : 'var(--accent)'}`,
               borderRadius: 'var(--radius-sm)',
               padding: '12px 14px',
               marginBottom: 10,
+              opacity: rec.game_is_paused ? 0.75 : 1,
             }}>
+              {rec.game_is_paused && (
+                <div style={{
+                  fontSize: 11, fontWeight: 700, color: '#f57c00',
+                  background: 'rgba(245,124,0,0.08)',
+                  border: '1px solid rgba(245,124,0,0.25)',
+                  borderRadius: 6, padding: '5px 9px', marginBottom: 10,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  ⏸ This game is on hold — hit Refresh for a new pick
+                </div>
+              )}
               <div style={{
                 display: 'flex', alignItems: 'flex-start',
                 justifyContent: 'space-between', marginBottom: 8, gap: 8,
               }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)', flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: rec.game_is_paused ? 'var(--muted)' : 'var(--ink)', flex: 1, minWidth: 0, textDecoration: rec.game_is_paused ? 'line-through' : 'none' }}>
                   {rec.game}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
@@ -397,16 +411,27 @@ export default function CoachCard() {
             {rec.alternative_game && (
               <div style={{
                 background: 'var(--paper-2)',
-                border: '1px solid var(--soft-line)',
-                borderLeft: '3px solid var(--muted)',
+                border: `1px solid ${rec.alt_is_paused ? 'var(--warning)' : 'var(--soft-line)'}`,
+                borderLeft: `3px solid ${rec.alt_is_paused ? 'var(--warning)' : 'var(--muted)'}`,
                 borderRadius: 'var(--radius-sm)',
                 padding: '10px 14px',
+                opacity: rec.alt_is_paused ? 0.7 : 1,
               }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
                   If you want a change of pace
                 </div>
+                {rec.alt_is_paused && (
+                  <div style={{
+                    fontSize: 11, fontWeight: 700, color: '#f57c00',
+                    background: 'rgba(245,124,0,0.08)',
+                    border: '1px solid rgba(245,124,0,0.25)',
+                    borderRadius: 6, padding: '4px 8px', marginBottom: 8,
+                  }}>
+                    ⏸ Also on hold — refresh for new alternatives
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: rec.alternative_quest || rec.alternative_why ? 6 : 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: rec.alt_is_paused ? 'var(--muted)' : 'var(--ink)', flex: 1, minWidth: 0, textDecoration: rec.alt_is_paused ? 'line-through' : 'none' }}>
                     {rec.alternative_game}
                   </div>
                   {rec.alternative_minutes && (

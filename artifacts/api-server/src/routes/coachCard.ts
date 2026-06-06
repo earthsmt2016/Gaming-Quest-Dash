@@ -315,11 +315,13 @@ Respond ONLY with valid JSON, no markdown:
 router.get("/ai/coach-card/latest", async (_req, res) => {
   try {
     await ensureCoachTables();
-    const result = await pool.query(
-      `SELECT * FROM ai_recommendations ORDER BY created_at DESC LIMIT 1`
-    );
-    if (!result.rows.length) { res.json(null); return; }
-    const r = result.rows[0];
+    const [recResult, pausedResult] = await Promise.all([
+      pool.query(`SELECT * FROM ai_recommendations ORDER BY created_at DESC LIMIT 1`),
+      pool.query(`SELECT game FROM game_pauses`).catch(() => ({ rows: [] })),
+    ]);
+    if (!recResult.rows.length) { res.json(null); return; }
+    const r = recResult.rows[0];
+    const pausedSet = new Set((pausedResult as any).rows.map((p: any) => p.game));
     res.json({
       id: r.id,
       game: r.game,
@@ -334,6 +336,9 @@ router.get("/ai/coach-card/latest", async (_req, res) => {
       created_at: r.created_at,
       fulfilled: r.fulfilled,
       fulfilled_at: r.fulfilled_at,
+      // Live pause state — lets the frontend warn when the pick is now on hold
+      game_is_paused: pausedSet.has(r.game),
+      alt_is_paused: r.alternative_game ? pausedSet.has(r.alternative_game) : false,
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch latest recommendation", detail: String(err) });
