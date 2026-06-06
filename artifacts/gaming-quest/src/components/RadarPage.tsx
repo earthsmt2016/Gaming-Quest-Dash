@@ -17,6 +17,13 @@ interface RadarGame {
   added_at: string;
 }
 
+interface DiscoverGame {
+  name: string;
+  release_date: string | null;
+  platforms: string[];
+  description: string;
+}
+
 const MATCH_CONFIG = {
   strong:   { label: '🔥 Strong match',  color: '#16a34a', bg: 'rgba(22,163,74,0.1)',  border: 'rgba(22,163,74,0.25)' },
   good:     { label: '👍 Good match',    color: '#0891b2', bg: 'rgba(8,145,178,0.1)',  border: 'rgba(8,145,178,0.25)' },
@@ -384,14 +391,40 @@ export default function RadarPage() {
   const [addError, setAddError] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
-  const load = useCallback(async () => {
+  // Discover panel state
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverGames, setDiscoverGames] = useState<DiscoverGame[]>([]);
+  const [discoverError, setDiscoverError] = useState('');
+  const [addingFromDiscover, setAddingFromDiscover] = useState<Set<string>>(new Set());
+  const [addedFromDiscover, setAddedFromDiscover] = useState<Set<string>>(new Set());
+
+  const loadGames = useCallback(async () => {
     try {
       const r = await fetch(`${BASE}/radar`);
       if (r.ok) setGames(await r.json());
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadGames(); }, [loadGames]);
+
+  const loadDiscover = async () => {
+    setDiscoverLoading(true);
+    setDiscoverError('');
+    try {
+      const r = await fetch(`${BASE}/radar/discover`);
+      if (!r.ok) throw new Error(`Failed (${r.status})`);
+      setDiscoverGames(await r.json());
+    } catch (e: any) {
+      setDiscoverError(e.message ?? 'Could not load suggestions');
+    } finally { setDiscoverLoading(false); }
+  };
+
+  const toggleDiscover = () => {
+    const next = !discoverOpen;
+    setDiscoverOpen(next);
+    if (next && discoverGames.length === 0 && !discoverLoading) loadDiscover();
+  };
 
   const handleAdd = async () => {
     const name = search.trim();
@@ -406,12 +439,31 @@ export default function RadarPage() {
       });
       if (r.status === 409) { setAddError(`"${name}" is already on your radar`); setAdding(false); return; }
       if (!r.ok) throw new Error(`Failed (${r.status})`);
-      const game = await r.json();
-      setGames(prev => [game, ...prev]);
       setSearch('');
+      // Reload to get server-sorted order
+      const refreshed = await fetch(`${BASE}/radar`);
+      if (refreshed.ok) setGames(await refreshed.json());
     } catch (e: any) {
       setAddError(e.message ?? 'Failed to add game');
     } finally { setAdding(false); }
+  };
+
+  const handleAddFromDiscover = async (game: DiscoverGame) => {
+    setAddingFromDiscover(prev => new Set([...prev, game.name]));
+    try {
+      const r = await fetch(`${BASE}/radar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: game.name }),
+      });
+      if (r.ok || r.status === 409) {
+        setAddedFromDiscover(prev => new Set([...prev, game.name]));
+        const refreshed = await fetch(`${BASE}/radar`);
+        if (refreshed.ok) setGames(await refreshed.json());
+      }
+    } finally {
+      setAddingFromDiscover(prev => { const s = new Set(prev); s.delete(game.name); return s; });
+    }
   };
 
   const handleRemove = async (id: number) => {
@@ -463,11 +515,27 @@ export default function RadarPage() {
               Track upcoming & new releases — AI checks if they fit your taste
             </div>
           </div>
-          {games.length > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'right' }}>
-              {games.length} game{games.length !== 1 ? 's' : ''} tracked
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {games.length > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                {games.length} game{games.length !== 1 ? 's' : ''} tracked
+              </div>
+            )}
+            <button
+              onClick={toggleDiscover}
+              style={{
+                fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+                padding: '6px 12px', borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${discoverOpen ? 'var(--accent)' : 'var(--line)'}`,
+                background: discoverOpen ? 'var(--accent)' : 'var(--paper-2)',
+                color: discoverOpen ? '#fff' : 'var(--ink)',
+                cursor: 'pointer', transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}
+            >
+              🌐 Discover
+            </button>
+          </div>
         </div>
 
         {/* Search / add bar */}
@@ -508,6 +576,114 @@ export default function RadarPage() {
         )}
         {addError && (
           <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{addError}</div>
+        )}
+
+        {/* Discover panel */}
+        {discoverOpen && (
+          <div style={{
+            marginTop: 14,
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--radius)',
+            background: 'var(--paper-2)',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '10px 14px',
+              borderBottom: '1px solid var(--soft-line)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+                🌐 Recently announced games
+              </div>
+              <button
+                onClick={loadDiscover}
+                disabled={discoverLoading}
+                style={{
+                  fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                  padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--line)', background: 'var(--paper)',
+                  color: 'var(--muted)', cursor: discoverLoading ? 'default' : 'pointer',
+                  opacity: discoverLoading ? 0.5 : 1,
+                }}
+              >
+                {discoverLoading ? '⚙️ Searching…' : '↻ Refresh'}
+              </button>
+            </div>
+
+            {discoverLoading && (
+              <div style={{ padding: '20px 14px', fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>
+                <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', marginRight: 6 }}>⚙️</span>
+                AI is searching the web for upcoming games…
+              </div>
+            )}
+
+            {discoverError && (
+              <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--danger)' }}>
+                {discoverError}
+              </div>
+            )}
+
+            {!discoverLoading && discoverGames.length > 0 && (
+              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                {discoverGames.map((dg, i) => {
+                  const isAdding = addingFromDiscover.has(dg.name);
+                  const isAdded = addedFromDiscover.has(dg.name) || games.some(g => g.name.toLowerCase() === dg.name.toLowerCase());
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        padding: '10px 14px',
+                        borderBottom: i < discoverGames.length - 1 ? '1px solid var(--soft-line)' : 'none',
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        opacity: isAdded ? 0.55 : 1,
+                        background: isAdded ? 'var(--paper-2)' : 'var(--paper)',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{dg.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--muted)' }}>📅 {fmtDate(dg.release_date)}</span>
+                          {dg.platforms.length > 0 && (
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                              {dg.platforms.slice(0, 3).join(' · ')}
+                            </span>
+                          )}
+                        </div>
+                        {dg.description && (
+                          <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.45 }}>
+                            {dg.description}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => !isAdded && !isAdding && handleAddFromDiscover(dg)}
+                        disabled={isAdded || isAdding}
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                          padding: '5px 12px', borderRadius: 'var(--radius-sm)',
+                          border: `1px solid ${isAdded ? 'var(--soft-line)' : 'var(--accent)'}`,
+                          background: isAdded ? 'transparent' : 'var(--accent)',
+                          color: isAdded ? 'var(--muted)' : '#fff',
+                          cursor: isAdded || isAdding ? 'default' : 'pointer',
+                          minWidth: 72, textAlign: 'center',
+                          opacity: isAdding ? 0.6 : 1,
+                        }}
+                      >
+                        {isAdding ? '⚙️…' : isAdded ? '✓ On radar' : '+ Add'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {!discoverLoading && !discoverError && discoverGames.length === 0 && (
+              <div style={{ padding: '16px 14px', fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>
+                No suggestions found.
+              </div>
+            )}
+          </div>
         )}
       </div>
 

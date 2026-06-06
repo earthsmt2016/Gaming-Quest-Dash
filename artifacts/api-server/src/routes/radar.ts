@@ -34,12 +34,10 @@ async function fetchRawgInfo(name: string) {
   const data = await searchRes.json();
   if (!data.results?.length) return null;
 
-  // Prefer exact or close match; fallback to first result
   const hit = data.results.find((r: any) =>
     r.name.toLowerCase() === name.toLowerCase()
   ) ?? data.results[0];
 
-  // Fetch detail for description + release
   let description = '';
   let release_date = hit.released ?? null;
   try {
@@ -63,24 +61,21 @@ async function fetchRawgInfo(name: string) {
   };
 }
 
-// Ask the AI if it knows the release date for a game RAWG couldn't provide
-async function askAiForReleaseDate(name: string): Promise<string | null> {
+// Use web search to find the real release date for a game
+async function searchForReleaseDate(name: string): Promise<string | null> {
   try {
-    const res = await openai.chat.completions.create({
+    const response = await (openai as any).responses.create({
       model: 'gpt-4.1',
-      max_completion_tokens: 80,
-      messages: [{
-        role: 'user',
-        content: `What is the release date of the video game "${name}"? If it has been announced but not yet released, give the expected release date. Reply ONLY with a JSON object: {"release_date": "YYYY-MM-DD or null", "note": "confirmed|announced|unknown"}. If you are not confident, return null for release_date.`,
-      }],
+      tools: [{ type: 'web_search_preview' }],
+      input: `Search for the official release date of the video game "${name}". Check store pages (Steam, PlayStation, Nintendo), official websites, and recent news articles. Return ONLY a JSON object with no markdown: {"release_date": "YYYY-MM-DD or null", "confidence": "confirmed|announced|tba"}. Use null if truly unknown.`,
     });
-    const raw = res.choices[0]?.message?.content?.trim() ?? '';
-    const m = raw.match(/\{[\s\S]*\}/);
+    const text: string = response.output_text ?? '';
+    const m = text.match(/\{[\s\S]*?\}/);
     if (m) {
       const d = JSON.parse(m[0]);
-      if (d.release_date && d.note !== 'unknown') return d.release_date;
+      if (d.release_date && d.confidence !== 'tba') return d.release_date;
     }
-  } catch { /* non-fatal */ }
+  } catch (e) { console.error('searchForReleaseDate error:', e); }
   return null;
 }
 
@@ -153,9 +148,42 @@ Score key:
 router.get('/radar', async (_req, res) => {
   try {
     await ensureTable();
-    const result = await pool.query('SELECT * FROM game_radar ORDER BY added_at DESC');
+    const result = await pool.query(`
+      SELECT * FROM game_radar
+      ORDER BY
+        CASE WHEN release_date IS NULL THEN 1 ELSE 0 END,
+        release_date ASC
+    `);
     res.json(result.rows);
   } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── GET /api/radar/discover — AI web search for upcoming games ────────────
+router.get('/radar/discover', async (_req, res) => {
+  try {
+    await ensureTable();
+    const existing = await pool.query('SELECT LOWER(name) as lname FROM game_radar');
+    const existingNames = new Set(existing.rows.map((r: any) => r.lname as string));
+
+    const response = await (openai as any).responses.create({
+      model: 'gpt-4.1',
+      tools: [{ type: 'web_search_preview' }],
+      input: `Search the web right now for the most anticipated upcoming video games announced for 2025 and 2026. Include a mix of big AAA titles and notable indie games. For each, find the latest confirmed or announced release date from official sources or gaming news. Return ONLY a valid JSON array (no markdown, no explanation): [{"name": "exact game title", "release_date": "YYYY-MM-DD or null", "platforms": ["PS5", "Xbox", "PC", "Switch", "Mobile"], "description": "one sentence about the game"}]. Include 10 games.`,
+    });
+
+    const text: string = response.output_text ?? '';
+    const m = text.match(/\[[\s\S]*\]/);
+    if (!m) { res.json([]); return; }
+
+    const games: any[] = JSON.parse(m[0]);
+    const filtered = games.filter(g =>
+      g.name && !existingNames.has((g.name as string).toLowerCase())
+    );
+    res.json(filtered);
+  } catch (err) {
+    console.error('discover error:', err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -174,13 +202,12 @@ router.post('/radar', async (req, res) => {
       return;
     }
 
-    // Fetch game info from RAWG
     const gameInfo = await fetchRawgInfo(name).catch(() => null);
 
-    // If RAWG has no release date, ask the AI
+    // If RAWG has no release date, use web search to find it
     let release_date = gameInfo?.release_date ?? null;
     if (!release_date) {
-      release_date = await askAiForReleaseDate(gameInfo?.name ?? name).catch(() => null);
+      release_date = await searchForReleaseDate(gameInfo?.name ?? name).catch(() => null);
     }
 
     const match = await runMatchAnalysis({
