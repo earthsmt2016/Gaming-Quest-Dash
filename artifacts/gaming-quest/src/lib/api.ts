@@ -969,3 +969,28 @@ export async function fetchPendingSuggestions(): Promise<ProgressEstimate[]> {
   if (!res.ok) throw new Error('Failed to fetch pending suggestions');
   return res.json();
 }
+
+export interface HealthSettings {
+  console_neglect_days: number;
+  console_rotation_limit: number;
+  console_backlog_limit: number;
+  mobile_neglect_days: number;
+  mobile_rotation_limit: number;
+  mobile_backlog_limit: number;
+}
+
+export async function fetchSettings(): Promise<HealthSettings> {
+  const res = await fetch(`${BASE}/settings`);
+  if (!res.ok) throw new Error('Failed to fetch settings');
+  return res.json();
+}
+
+export async function saveSettings(s: HealthSettings): Promise<HealthSettings> {
+  const res = await fetch(`${BASE}/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(s),
+  });
+  if (!res.ok) throw new Error('Failed to save settings');
+  return res.json();
+}

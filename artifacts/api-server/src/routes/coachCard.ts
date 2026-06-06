@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { loadSettings } from "./settings";
 
 const router = Router();
 
@@ -71,9 +72,11 @@ router.get("/backlog-health", async (_req, res) => {
     const consoleActive  = allActive.filter(r => !r.mobile);
     const mobileActive   = allActive.filter(r => r.mobile);
 
-    const CONSOLE_NEGLECT_DAYS = 14;
-    const MOBILE_NEGLECT_DAYS  = 28;
-    const CONSOLE_BACKLOG_LIMIT = 6;
+    const cfg = await loadSettings();
+    const CONSOLE_NEGLECT_DAYS  = cfg.console_neglect_days;
+    const CONSOLE_ROTATION_LIMIT = cfg.console_rotation_limit;
+    const CONSOLE_BACKLOG_LIMIT = cfg.console_backlog_limit;
+    const MOBILE_NEGLECT_DAYS   = cfg.mobile_neglect_days;
 
     const consoleNeglected = consoleActive
       .filter(r => r.days_idle > CONSOLE_NEGLECT_DAYS)
@@ -85,7 +88,7 @@ router.get("/backlog-health", async (_req, res) => {
     const rotatingCount = rotatingConsole.length;
 
     const neglectPenalty  = Math.min(35, consoleNeglected.length * 5);
-    const rotationPenalty = Math.min(15, Math.max(0, rotatingCount - 3) * 5);
+    const rotationPenalty = Math.min(15, Math.max(0, rotatingCount - CONSOLE_ROTATION_LIMIT) * 5);
     const backlogPenalty  = Math.min(30, Math.max(0, consoleActive.length - CONSOLE_BACKLOG_LIMIT) * 4);
 
     let score = 100 - neglectPenalty - rotationPenalty - backlogPenalty;
@@ -97,16 +100,16 @@ router.get("/backlog-health", async (_req, res) => {
     if (neglectPenalty > 0) {
       const toRecover = Math.min(consoleNeglected.length, 4);
       penalties.push({
-        label: `${consoleNeglected.length} console game${consoleNeglected.length > 1 ? 's' : ''} not played in 14+ days`,
+        label: `${consoleNeglected.length} console game${consoleNeglected.length > 1 ? 's' : ''} not played in ${CONSOLE_NEGLECT_DAYS}+ days`,
         deduction: neglectPenalty,
         tip: `Put ${toRecover}+ on hold → recover up to +${toRecover * 5} pts`,
       });
     }
     if (rotationPenalty > 0) {
       penalties.push({
-        label: `Playing ${rotatingCount} console games this week (ideal: ≤3)`,
+        label: `Playing ${rotatingCount} console games this week (ideal: ≤${CONSOLE_ROTATION_LIMIT})`,
         deduction: rotationPenalty,
-        tip: `Focus on 3 games this week → +${rotationPenalty} pts`,
+        tip: `Focus on ${CONSOLE_ROTATION_LIMIT} games this week → +${rotationPenalty} pts`,
       });
     }
     if (backlogPenalty > 0) {
@@ -125,8 +128,8 @@ router.get("/backlog-health", async (_req, res) => {
       .sort((a, b) => a.last_played.getTime() - b.last_played.getTime());
 
     // ── Mobile health score — same structure, mobile-appropriate limits ──────
-    const MOBILE_ROTATION_LIMIT = 5;
-    const MOBILE_BACKLOG_LIMIT  = 8;
+    const MOBILE_ROTATION_LIMIT = cfg.mobile_rotation_limit;
+    const MOBILE_BACKLOG_LIMIT  = cfg.mobile_backlog_limit;
 
     const mobileNeglected = mobileActive
       .filter(r => r.days_idle > MOBILE_NEGLECT_DAYS)

@@ -18,6 +18,7 @@ import gameProgressRouter from "./gameProgress";
 import goalsRouter from "./goals";
 import gameKnowledgeRouter from "./gameKnowledge";
 import radarRouter from "./radar";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(gameProgressRouter);
 router.use(goalsRouter);
 router.use(gameKnowledgeRouter);
 router.use(radarRouter);
+router.use(settingsRouter);
 
 export default router;
