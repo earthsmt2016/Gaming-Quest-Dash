@@ -330,13 +330,18 @@ router.post("/ai/coach-card", async (req, res) => {
     const mobileSessionRange = `15–45 min`;
     const consoleSessionRange = `${Math.max(45, Math.round(avgMin * 0.75))}–${Math.max(90, Math.round(avgMin * 1.5))} min`;
 
+    const nowHour = new Date().getHours();
+    const timeOfDay = nowHour >= 5 && nowHour < 12 ? 'this morning'
+                    : nowHour >= 12 && nowHour < 17 ? 'this afternoon'
+                    : 'tonight';
+
     const platformConstraint = platform_mode === 'mobile'
       ? `\n⚠️ PLATFORM FILTER — MOBILE: Recommend only games tagged with a mobile platform above. The alternative must also be a mobile game.\n⏱️ SESSION LENGTH — MOBILE: Mobile games are played in short bursts. suggested_minutes MUST be between 15 and 45. alternative_minutes MUST also be between 15 and 45. Do NOT suggest 60+ minute mobile sessions.`
       : platform_mode === 'xbox'
       ? `\n⚠️ PLATFORM FILTER — XBOX: Recommend only games tagged with an Xbox platform above. The alternative must also be an Xbox game.\n⏱️ SESSION LENGTH — XBOX: Console sessions suit longer play. suggested_minutes should be in the range ${consoleSessionRange} based on the player's avg session of ~${avgMin} min. alternative_minutes should be at least 45.`
       : '';
 
-    const systemPrompt = `You are a personal gaming strategist coach. Give ONE sharp, data-backed recommendation for what the player should play tonight.
+    const systemPrompt = `You are a personal gaming strategist coach. Give ONE sharp, data-backed recommendation for what the player should play ${timeOfDay}.
 
 PLAYER PROFILE:
 - Preferred difficulty: ${p.preferred_difficulty ?? 'medium'}
@@ -364,7 +369,7 @@ QUESTS:
 ${questLines || '(no quests)'}
 
 Rules for your response:
-- Pick the game most deserving of play tonight based on the data
+- Pick the game most deserving of play ${timeOfDay} based on the data
 - If a PLATFORM FILTER is active, ONLY pick games from that platform list — do not break this rule
 - If backlog health is Critical or At Risk, at least one "why" bullet should reference a neglected game or suggest putting an idle game on hold
 - Each "why" bullet must cite a specific data point (days since played, quest availability, session count, etc.)
@@ -393,7 +398,7 @@ Respond ONLY with valid JSON, no markdown:
       max_completion_tokens: 400,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: "Generate tonight's recommendation." },
+        { role: 'user', content: `Generate ${timeOfDay}'s recommendation.` },
       ],
     });
 
