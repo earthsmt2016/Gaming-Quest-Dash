@@ -17,12 +17,19 @@ interface CoachRec {
   fulfilled: boolean;
 }
 
+interface HealthPenalty {
+  label: string;
+  deduction: number;
+  tip: string;
+}
+
 interface BacklogHealth {
   health_score: number;
   label: string;
   active_games: number;
   neglected_count: number;
   risks: string[];
+  penalties: HealthPenalty[];
 }
 
 function fmtMins(m: number): string {
@@ -59,6 +66,7 @@ export default function CoachCard() {
   const [loading, setLoading]   = useState(false);
   const [loadingH, setLoadingH] = useState(true);
   const [error, setError]       = useState<string | null>(null);
+  const [healthOpen, setHealthOpen] = useState(false);
 
   useEffect(() => {
     fetch(`${BASE}/backlog-health`)
@@ -146,19 +154,72 @@ export default function CoachCard() {
         </div>
       </div>
 
-      {/* ── Backlog risks ── */}
-      {health?.risks && health.risks.length > 0 && (
-        <div style={{
-          padding: '7px 16px',
-          background: 'var(--paper-2)',
-          borderBottom: '1px solid var(--soft-line)',
-          display: 'flex', gap: '12px', flexWrap: 'wrap' as const,
-        }}>
-          {health.risks.map((r, i) => (
-            <span key={i} style={{ fontSize: 11, color: 'var(--warning)', fontWeight: 600 }}>
-              ⚠️ {r}
+      {/* ── Backlog health scorecard ── */}
+      {health && !loadingH && (
+        <div style={{ borderBottom: '1px solid var(--soft-line)' }}>
+          {/* Clickable score bar row */}
+          <button
+            onClick={() => setHealthOpen(o => !o)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            {/* Score bar */}
+            <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--soft-line)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', width: `${health.health_score}%`,
+                background: healthCssVar(health.health_score),
+                borderRadius: 3,
+                transition: 'width 0.4s ease',
+              }} />
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 800, color: healthCssVar(health.health_score), minWidth: 36, textAlign: 'right' }}>
+              {health.health_score}/100
             </span>
-          ))}
+            <span style={{ fontSize: 11, color: 'var(--muted)', minWidth: 48 }}>
+              {health.label}
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{healthOpen ? '▾' : '▸'}</span>
+          </button>
+
+          {/* Expanded penalty breakdown */}
+          {healthOpen && (
+            <div style={{ padding: '0 16px 12px' }}>
+              {(health.penalties ?? []).length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>✓ No issues — backlog is in great shape</div>
+              ) : (
+                <>
+                  {health.penalties.map((p, i) => (
+                    <div key={i} style={{
+                      background: 'var(--paper-2)',
+                      border: '1px solid var(--soft-line)',
+                      borderLeft: `3px solid ${p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)'}`,
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '8px 10px',
+                      marginBottom: 6,
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                        <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 600 }}>{p.label}</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 800,
+                          color: p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)',
+                          flexShrink: 0, marginLeft: 8,
+                        }}>−{p.deduction} pts</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>
+                        💡 {p.tip}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+                    Fix all issues above to reach {Math.min(100, health.health_score + (health.penalties ?? []).reduce((a, p) => a + p.deduction, 0))}/100
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

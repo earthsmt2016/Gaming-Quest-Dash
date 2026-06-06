@@ -61,13 +61,40 @@ router.get("/backlog-health", async (_req, res) => {
     if (rotatingCount > 4)    risks.push(`High rotation — playing ${rotatingCount} games this week`);
     if (active.length > 6)    risks.push(`Large backlog — ${active.length} active games`);
 
-    let score = 100;
-    score -= neglected.length * 10;
-    score -= Math.max(0, rotatingCount - 3) * 8;
-    score -= Math.max(0, active.length - 5) * 5;
+    const neglectPenalty  = neglected.length * 10;
+    const rotationPenalty = Math.max(0, rotatingCount - 3) * 8;
+    const backlogPenalty  = Math.max(0, active.length - 5) * 5;
+
+    let score = 100 - neglectPenalty - rotationPenalty - backlogPenalty;
     score = Math.max(0, Math.min(100, Math.round(score)));
 
     const label = score >= 80 ? 'Healthy' : score >= 60 ? 'Fair' : score >= 40 ? 'At Risk' : 'Critical';
+
+    // Build penalty breakdown with actionable tips
+    const penalties: { label: string; deduction: number; tip: string }[] = [];
+    if (neglectPenalty > 0) {
+      const toRecover = Math.min(neglected.length, 4);
+      penalties.push({
+        label: `${neglected.length} game${neglected.length > 1 ? 's' : ''} not played in 14+ days`,
+        deduction: neglectPenalty,
+        tip: `Put ${toRecover}+ on hold → recover up to +${toRecover * 10} pts`,
+      });
+    }
+    if (rotationPenalty > 0) {
+      penalties.push({
+        label: `Playing ${rotatingCount} games this week (ideal: ≤3)`,
+        deduction: rotationPenalty,
+        tip: `Focus on 3 games this week → +${rotationPenalty} pts`,
+      });
+    }
+    if (backlogPenalty > 0) {
+      const extraGames = active.length - 5;
+      penalties.push({
+        label: `${active.length} active games (ideal: ≤5)`,
+        deduction: backlogPenalty,
+        tip: `Put ${extraGames} game${extraGames > 1 ? 's' : ''} on hold → +${backlogPenalty} pts`,
+      });
+    }
 
     res.json({
       health_score: score,
@@ -79,6 +106,7 @@ router.get("/backlog-health", async (_req, res) => {
       neglected_games: neglected.map((r: any) => r.game),
       rotating_this_week: rotatingCount,
       risks,
+      penalties,
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to compute backlog health", detail: String(err) });
@@ -148,6 +176,28 @@ router.post("/ai/coach-card", async (_req, res) => {
           }).join('\n')
       : '(no AI knowledge maps generated yet)';
 
+    // Compute backlog health for the prompt
+    const [bAllGames, bRecentGames, bCompletions, bPaused] = await Promise.all([
+      pool.query(`SELECT game, MAX(timestamp::timestamptz) as last_played FROM log_entries GROUP BY game`),
+      pool.query(`SELECT DISTINCT game FROM log_entries WHERE timestamp::timestamptz > NOW() - INTERVAL '7 days'`),
+      pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] })),
+      pool.query(`SELECT game FROM paused_games`).catch(() => ({ rows: [] })),
+    ]);
+    const bCompletedSet = new Set(bCompletions.rows.map((r: any) => r.game));
+    const bPausedSet    = new Set(bPaused.rows.map((r: any) => r.game));
+    const bActiveWeek   = new Set(bRecentGames.rows.map((r: any) => r.game));
+    const bActive       = bAllGames.rows.filter((r: any) => !bCompletedSet.has(r.game) && !bPausedSet.has(r.game));
+    const bNow = Date.now();
+    const bNeglected    = bActive.filter((r: any) => (bNow - new Date(r.last_played).getTime()) > 14 * 86400000);
+    const bRotating     = bActive.filter((r: any) => bActiveWeek.has(r.game)).length;
+    const bScore        = Math.max(0, 100 - bNeglected.length * 10 - Math.max(0, bRotating - 3) * 8 - Math.max(0, bActive.length - 5) * 5);
+    const bLabel        = bScore >= 80 ? 'Healthy' : bScore >= 60 ? 'Fair' : bScore >= 40 ? 'At Risk' : 'Critical';
+    const bHealthLines  = [
+      bNeglected.length > 0 ? `- ${bNeglected.length} neglected games (14+ days idle): -${bNeglected.length * 10} pts — names: ${bNeglected.slice(0, 5).map((r: any) => r.game).join(', ')}` : null,
+      bRotating > 3 ? `- Playing ${bRotating} games this week (ideal ≤3): -${Math.max(0, bRotating - 3) * 8} pts` : null,
+      bActive.length > 5 ? `- ${bActive.length} active games (ideal ≤5): -${Math.max(0, bActive.length - 5) * 5} pts` : null,
+    ].filter(Boolean).join('\n');
+
     const systemPrompt = `You are a personal gaming strategist coach. Give ONE sharp, data-backed recommendation for what the player should play tonight.
 
 PLAYER PROFILE:
@@ -155,6 +205,10 @@ PLAYER PROFILE:
 - Avg session: ~${p.avg_session_minutes ?? 60} min
 - Playstyle: ${p.personality_summary ?? 'Not yet established — limited data available'}
 - Coaching notes: ${(p as any).coaching_summary ?? 'n/a'}
+
+BACKLOG HEALTH: ${bScore}/100 (${bLabel})
+${bHealthLines || '- No issues detected'}
+${bScore < 60 ? `⚠️ Backlog is ${bLabel} — factor this into your recommendation. Preferring neglected games helps the score. If a game is clearly abandoned, mention it should be put on hold.` : ''}
 
 RECENT ACTIVITY (last 12 sessions):
 ${recentActivity || '(none)'}
@@ -173,6 +227,7 @@ ${questLines || '(no quests)'}
 
 Rules for your response:
 - Pick the game most deserving of play tonight based on the data
+- If backlog health is Critical or At Risk, at least one "why" bullet should reference a neglected game or suggest putting an idle game on hold
 - Each "why" bullet must cite a specific data point (days since played, quest availability, session count, etc.)
 - suggested_minutes should fit the player's avg session length
 - alternative must be a DIFFERENT game — a shorter/lighter change-of-pace option
