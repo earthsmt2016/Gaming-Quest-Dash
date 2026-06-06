@@ -55,14 +55,22 @@ interface HealthPenalty {
   tip: string;
 }
 
+interface GameEntry {
+  game: string;
+  days_idle?: number;
+  sessions_this_week?: number;
+  platform: string | null;
+  mobile: boolean;
+}
+
 interface BacklogHealth {
   health_score: number;
   label: string;
   active_games: number;
   neglected_count: number;
-  neglected_games: string[];
-  rotating_games: string[];
-  active_game_list: string[];
+  neglected_games: GameEntry[];
+  rotating_games: GameEntry[];
+  active_game_list: GameEntry[];
   risks: string[];
   penalties: HealthPenalty[];
 }
@@ -252,25 +260,24 @@ export default function CoachCard() {
               ) : (
                 <>
                   {health.penalties.map((p, i) => {
-                    const isNeglect   = p.label.includes('not played') && (health.neglected_games ?? []).length > 0;
-                    const isRotation  = p.label.includes('this week') && (health.rotating_games ?? []).length > 0;
-                    const isBacklog   = p.label.includes('active games') && (health.active_game_list ?? []).length > 0;
-                    const gameList    = isNeglect ? (health.neglected_games ?? [])
-                                      : isRotation ? (health.rotating_games ?? [])
-                                      : isBacklog  ? (health.active_game_list ?? [])
-                                      : [];
-                    const hasGames    = gameList.length > 0;
+                    const isNeglect  = p.label.includes('idle') && (health.neglected_games ?? []).length > 0;
+                    const isRotation = p.label.includes('this week') && (health.rotating_games ?? []).length > 0;
+                    const isBacklog  = p.label.includes('weighted') && (health.active_game_list ?? []).length > 0;
+                    const gameList: GameEntry[] = isNeglect  ? (health.neglected_games ?? [])
+                                                : isRotation ? (health.rotating_games ?? [])
+                                                : isBacklog  ? (health.active_game_list ?? [])
+                                                : [];
+                    const hasGames   = gameList.length > 0;
                     const accentColor = p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)';
 
                     const btnLabel = (ps: PauseState) =>
                       ps === 'loading' ? '…' : ps === 'done' ? '✓ On hold' : ps === 'error' ? '✗ Failed'
                       : isRotation ? '⏸ Bench it' : '⏸ Put on hold';
 
-                    const rowHint = isRotation
-                      ? 'Benching any of these reduces your rotation score'
-                      : isBacklog
-                      ? 'Oldest-played games listed first — easiest to bench'
-                      : null;
+                    const rowHint = isNeglect  ? 'Most idle listed first — highest priority to bench'
+                                  : isRotation ? 'Fewest sessions listed first — easiest to drop this week'
+                                  : isBacklog  ? 'Oldest-played listed first — easiest to bench'
+                                  : null;
 
                     return (
                     <div key={i} style={{
@@ -298,8 +305,16 @@ export default function CoachCard() {
                             </div>
                           )}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                            {gameList.map(game => {
+                            {gameList.map(entry => {
+                              const game = entry.game;
                               const ps = pauseStates[game] ?? 'idle';
+                              const statLabel = isNeglect && entry.days_idle != null
+                                ? `${entry.days_idle}d idle`
+                                : isRotation && entry.sessions_this_week != null
+                                ? `${entry.sessions_this_week}× this week`
+                                : isBacklog && entry.days_idle != null
+                                ? `${entry.days_idle}d idle`
+                                : null;
                               return (
                                 <div key={game} style={{
                                   display: 'flex', alignItems: 'center',
@@ -311,14 +326,26 @@ export default function CoachCard() {
                                   opacity: ps === 'done' ? 0.6 : 1,
                                   transition: 'opacity 0.2s',
                                 }}>
-                                  <span style={{
-                                    fontSize: 12, fontWeight: 600,
-                                    color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
-                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                                    textDecoration: ps === 'done' ? 'line-through' : 'none',
-                                  }}>
-                                    {game}
-                                  </span>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                      {entry.mobile && (
+                                        <span style={{ fontSize: 10, flexShrink: 0 }}>📱</span>
+                                      )}
+                                      <span style={{
+                                        fontSize: 12, fontWeight: 600,
+                                        color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        textDecoration: ps === 'done' ? 'line-through' : 'none',
+                                      }}>
+                                        {game}
+                                      </span>
+                                    </div>
+                                    {statLabel && (
+                                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
+                                        {statLabel}
+                                      </div>
+                                    )}
+                                  </div>
                                   <button
                                     onClick={() => { if (ps === 'idle') handlePause(game); }}
                                     disabled={ps !== 'idle'}
