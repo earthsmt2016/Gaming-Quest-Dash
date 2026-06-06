@@ -248,12 +248,13 @@ export async function fetchDailyPlan(
   dayOfWeek: string,
   games: DailyPlanGame[],
   activeQuests?: ActiveQuestContext[],
-  sessionMode?: string
+  sessionMode?: string,
+  platformMode?: string,
 ): Promise<DailyPlanPick[]> {
   const res = await fetch(`${BASE}/daily-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ availableMinutes, dayOfWeek, games, activeQuests, sessionMode }),
+    body: JSON.stringify({ availableMinutes, dayOfWeek, games, activeQuests, sessionMode, platformMode }),
   });
   if (!res.ok) return [];
   return (await res.json()).picks ?? [];

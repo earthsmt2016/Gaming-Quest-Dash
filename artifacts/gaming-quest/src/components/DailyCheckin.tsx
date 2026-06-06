@@ -3,6 +3,14 @@ import { LogEntry, computeRecommendations, badgeFor } from '../lib/logParser';
 import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, fetchSubQuest, completeQuest, addMiniLog, triggerQuestRefresh, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
 import { useQuestsContext } from '../context/QuestsContext';
 
+type PlatformMode = 'any' | 'mobile' | 'xbox';
+
+const PLATFORM_MODES: { id: PlatformMode; icon: string; label: string; sub: string }[] = [
+  { id: 'any',    icon: '🎲', label: 'Any',    sub: 'Surprise me' },
+  { id: 'mobile', icon: '📱', label: 'Mobile', sub: 'Paid & Arcade' },
+  { id: 'xbox',   icon: '🎮', label: 'Xbox',   sub: 'Paid & Game Pass' },
+];
+
 const QUICK_TIMES = [
   { label: '20m', value: 20 },
   { label: '30m', value: 30 },
@@ -116,6 +124,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   const [customStr, setCustomStr] = useState('');
   const [useCustom, setUseCustom] = useState(false);
   const [plan, setPlan] = useState<PlanState>({ status: 'idle' });
+  const [platformMode, setPlatformMode] = useState<PlatformMode>('any');
   const [sessionMode, setSessionMode] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [questRecs, setQuestRecs] = useState<{ fitting: Quest[]; partial: Quest[] } | null>(null);
@@ -215,7 +224,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
         game: q.game, title: q.title,
         estimated_minutes: q.estimated_minutes, difficulty: q.difficulty,
       }));
-      const picks = await fetchDailyPlan(mins, dayOfWeek, activeGames, activeQuestData, sessionMode ?? undefined);
+      const picks = await fetchDailyPlan(mins, dayOfWeek, activeGames, activeQuestData, sessionMode ?? undefined, platformMode === 'any' ? undefined : platformMode);
       if (picks.length > 0) {
         setPlan({ status: 'ai', mins, picks });
         planGameNames = picks.map(p => p.game);
@@ -415,8 +424,43 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
             {/* ── Time picker ── */}
             {plan.status === 'idle' && (
               <>
-                <div style={{ fontSize: '13px', color: 'var(--muted)' }}>
-                  Pick your available time and get an AI-planned session.
+                {/* Platform toggle */}
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>
+                    Tonight I feel like…
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {PLATFORM_MODES.map(m => {
+                      const active = platformMode === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => setPlatformMode(m.id)}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center',
+                            padding: '8px 14px', borderRadius: '10px', cursor: 'pointer',
+                            border: active ? '2px solid var(--accent)' : '1.5px solid var(--line)',
+                            background: active ? 'var(--accent)' : 'var(--paper)',
+                            color: active ? '#fff' : 'var(--text)',
+                            fontFamily: 'inherit', transition: 'all 0.12s', minWidth: '72px',
+                          }}
+                        >
+                          <span style={{ fontSize: '20px', lineHeight: 1 }}>{m.icon}</span>
+                          <span style={{ fontSize: '12px', fontWeight: 700, marginTop: '4px' }}>{m.label}</span>
+                          <span style={{ fontSize: '10px', opacity: 0.75, marginTop: '1px' }}>{m.sub}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '4px' }}>
+                  Pick your available time and get an AI-planned session
+                  {platformMode !== 'any' && (
+                    <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                      {' '}({platformMode === 'mobile' ? '📱 Mobile' : '🎮 Xbox'} only)
+                    </span>
+                  )}.
                 </div>
                 <div className="dc-time-grid">
                   {QUICK_TIMES.map(t => (

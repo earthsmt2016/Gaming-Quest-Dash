@@ -20,6 +20,11 @@ interface ActiveQuestInput {
   difficulty: string;
 }
 
+const PLATFORM_MODE_PROMPTS: Record<string, string> = {
+  mobile: 'PLATFORM FILTER: MOBILE ONLY. The player wants to play on mobile tonight. Only include games that are available on mobile (iOS/Android/Apple Arcade). If you are unsure whether a game is on mobile, err on the side of excluding it. State the platform in the "why" field.',
+  xbox:   'PLATFORM FILTER: XBOX ONLY. The player wants to play on Xbox tonight (Xbox console or Xbox Game Pass). Only include games playable on Xbox or via Game Pass. State the platform in the "why" field.',
+};
+
 const SESSION_MODE_PROMPTS: Record<string, string> = {
   quick_win:   'Session mode: QUICK WIN. Prioritise games/quests that can be completed or meaningfully advanced in the available time. Prefer quests close to completion, games with short active quests, and tasks that give a clear sense of accomplishment. Avoid time sinks.',
   story_push:  'Session mode: STORY PUSH. Prioritise games with active narrative quests or significant story milestones upcoming. Pick the game the player is deepest into and push the story forward — name the exact upcoming story beat in the "why".',
@@ -29,12 +34,13 @@ const SESSION_MODE_PROMPTS: Record<string, string> = {
 };
 
 router.post("/daily-plan", async (req, res) => {
-  const { availableMinutes, dayOfWeek, games, activeQuests, sessionMode } = req.body as {
+  const { availableMinutes, dayOfWeek, games, activeQuests, sessionMode, platformMode } = req.body as {
     availableMinutes: number;
     dayOfWeek: string;
     games: GameInput[];
     activeQuests?: ActiveQuestInput[];
     sessionMode?: string;
+    platformMode?: string;
   };
 
   if (!availableMinutes || !Array.isArray(games) || games.length === 0) {
@@ -99,7 +105,11 @@ router.post("/daily-plan", async (req, res) => {
     ? `\n\n${SESSION_MODE_PROMPTS[sessionMode]}`
     : "";
 
-  const systemPrompt = `You are a sharp daily gaming session planner. Given a player's active games and available time, you create an optimal, specific session plan.${modeLine}
+  const platformLine = platformMode && PLATFORM_MODE_PROMPTS[platformMode]
+    ? `\n\n${PLATFORM_MODE_PROMPTS[platformMode]}`
+    : "";
+
+  const systemPrompt = `You are a sharp daily gaming session planner. Given a player's active games and available time, you create an optimal, specific session plan.${platformLine}${modeLine}
 
 Selection rules:
 - Pick at most ${maxGames} game${maxGames > 1 ? "s" : ""} (based on available time: ${availableMinutes} min)
