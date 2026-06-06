@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 const BASE = `${import.meta.env.BASE_URL}api`;
 
+type PauseState = 'idle' | 'loading' | 'done' | 'error';
+
 interface CoachRec {
   id: number;
   game: string;
@@ -28,6 +30,7 @@ interface BacklogHealth {
   label: string;
   active_games: number;
   neglected_count: number;
+  neglected_games: string[];
   risks: string[];
   penalties: HealthPenalty[];
 }
@@ -66,7 +69,8 @@ export default function CoachCard() {
   const [loading, setLoading]   = useState(false);
   const [loadingH, setLoadingH] = useState(true);
   const [error, setError]       = useState<string | null>(null);
-  const [healthOpen, setHealthOpen] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(true);
+  const [pauseStates, setPauseStates] = useState<Record<string, PauseState>>({});
 
   const fetchHealth = useCallback(() => {
     fetch(`${BASE}/backlog-health`)
@@ -75,6 +79,19 @@ export default function CoachCard() {
       .catch(() => {})
       .finally(() => setLoadingH(false));
   }, []);
+
+  const handlePause = useCallback(async (game: string) => {
+    setPauseStates(prev => ({ ...prev, [game]: 'loading' }));
+    try {
+      const r = await fetch(`${BASE}/paused/${encodeURIComponent(game)}`, { method: 'POST' });
+      if (!r.ok) throw new Error('Failed');
+      setPauseStates(prev => ({ ...prev, [game]: 'done' }));
+      // Refresh health after a beat so the score updates
+      setTimeout(fetchHealth, 800);
+    } catch {
+      setPauseStates(prev => ({ ...prev, [game]: 'error' }));
+    }
+  }, [fetchHealth]);
 
   useEffect(() => {
     fetchHealth();
@@ -197,11 +214,14 @@ export default function CoachCard() {
                 <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>✓ No issues — backlog is in great shape</div>
               ) : (
                 <>
-                  {health.penalties.map((p, i) => (
+                  {health.penalties.map((p, i) => {
+                    const isNeglect = p.label.includes('not played') && (health.neglected_games ?? []).length > 0;
+                    const accentColor = p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)';
+                    return (
                     <div key={i} style={{
                       background: 'var(--paper-2)',
                       border: '1px solid var(--soft-line)',
-                      borderLeft: `3px solid ${p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)'}`,
+                      borderLeft: `3px solid ${accentColor}`,
                       borderRadius: 'var(--radius-sm)',
                       padding: '8px 10px',
                       marginBottom: 6,
@@ -210,15 +230,63 @@ export default function CoachCard() {
                         <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 600 }}>{p.label}</span>
                         <span style={{
                           fontSize: 11, fontWeight: 800,
-                          color: p.deduction >= 40 ? 'var(--danger)' : 'var(--warning)',
+                          color: accentColor,
                           flexShrink: 0, marginLeft: 8,
                         }}>−{p.deduction} pts</span>
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600 }}>
+                      <div style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600, marginBottom: isNeglect ? 8 : 0 }}>
                         💡 {p.tip}
                       </div>
+                      {isNeglect && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {(health.neglected_games ?? []).map(game => {
+                            const ps = pauseStates[game] ?? 'idle';
+                            return (
+                              <div key={game} style={{
+                                display: 'flex', alignItems: 'center',
+                                justifyContent: 'space-between', gap: 8,
+                                background: 'var(--paper)',
+                                border: '1px solid var(--line)',
+                                borderRadius: 'var(--radius-sm)',
+                                padding: '5px 8px',
+                              }}>
+                                <span style={{
+                                  fontSize: 12, fontWeight: 600,
+                                  color: ps === 'done' ? 'var(--muted)' : 'var(--ink)',
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                                  textDecoration: ps === 'done' ? 'line-through' : 'none',
+                                }}>
+                                  {game}
+                                </span>
+                                <button
+                                  onClick={() => { if (ps === 'idle') handlePause(game); }}
+                                  disabled={ps !== 'idle'}
+                                  style={{
+                                    background: ps === 'done' ? 'var(--success)' : ps === 'error' ? 'var(--danger)' : '#f57c00',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: 6,
+                                    padding: '4px 10px',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    fontFamily: 'inherit',
+                                    cursor: ps === 'idle' ? 'pointer' : 'default',
+                                    flexShrink: 0,
+                                    opacity: ps === 'loading' ? 0.65 : 1,
+                                    transition: 'background 0.15s',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {ps === 'loading' ? '…' : ps === 'done' ? '✓ On hold' : ps === 'error' ? '✗ Failed' : '⏸ Put on hold'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
                     Fix all issues above to reach {Math.min(100, health.health_score + (health.penalties ?? []).reduce((a, p) => a + p.deduction, 0))}/100
                   </div>
