@@ -63,6 +63,27 @@ async function fetchRawgInfo(name: string) {
   };
 }
 
+// Ask the AI if it knows the release date for a game RAWG couldn't provide
+async function askAiForReleaseDate(name: string): Promise<string | null> {
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4.1',
+      max_completion_tokens: 80,
+      messages: [{
+        role: 'user',
+        content: `What is the release date of the video game "${name}"? If it has been announced but not yet released, give the expected release date. Reply ONLY with a JSON object: {"release_date": "YYYY-MM-DD or null", "note": "confirmed|announced|unknown"}. If you are not confident, return null for release_date.`,
+      }],
+    });
+    const raw = res.choices[0]?.message?.content?.trim() ?? '';
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) {
+      const d = JSON.parse(m[0]);
+      if (d.release_date && d.note !== 'unknown') return d.release_date;
+    }
+  } catch { /* non-fatal */ }
+  return null;
+}
+
 async function runMatchAnalysis(gameInfo: {
   name: string; genres: string[]; platforms: string[];
   description: string; release_date: string | null; metacritic: number | null;
@@ -153,17 +174,21 @@ router.post('/radar', async (req, res) => {
       return;
     }
 
-    // Fetch game info + AI match in parallel
-    const [gameInfo, ] = await Promise.all([
-      fetchRawgInfo(name).catch(() => null),
-    ]);
+    // Fetch game info from RAWG
+    const gameInfo = await fetchRawgInfo(name).catch(() => null);
+
+    // If RAWG has no release date, ask the AI
+    let release_date = gameInfo?.release_date ?? null;
+    if (!release_date) {
+      release_date = await askAiForReleaseDate(gameInfo?.name ?? name).catch(() => null);
+    }
 
     const match = await runMatchAnalysis({
       name: gameInfo?.name ?? name,
       genres: gameInfo?.genres ?? [],
       platforms: gameInfo?.platforms ?? [],
       description: gameInfo?.description ?? '',
-      release_date: gameInfo?.release_date ?? null,
+      release_date,
       metacritic: gameInfo?.metacritic ?? null,
     }).catch(() => ({ score: 'maybe', reason: 'Analysis unavailable.' }));
 
@@ -175,7 +200,7 @@ router.post('/radar', async (req, res) => {
         gameInfo?.name ?? name,
         gameInfo?.slug ?? null,
         gameInfo?.description ?? null,
-        gameInfo?.release_date ?? null,
+        release_date,
         gameInfo?.cover_url ?? null,
         gameInfo?.genres ?? [],
         gameInfo?.platforms ?? [],
@@ -187,6 +212,21 @@ router.post('/radar', async (req, res) => {
     res.json(saved.rows[0]);
   } catch (err) {
     console.error('radar add error:', err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── PATCH /api/radar/:id — update release date manually ──────────────────
+router.patch('/radar/:id', async (req, res) => {
+  try {
+    const { release_date } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE game_radar SET release_date=$1 WHERE id=$2 RETURNING *`,
+      [release_date ?? null, req.params.id]
+    );
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(rows[0]);
+  } catch (err) {
     res.status(500).json({ error: String(err) });
   }
 });

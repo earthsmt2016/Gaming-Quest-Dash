@@ -78,16 +78,35 @@ function MatchBadge({ score }: { score: RadarGame['ai_match_score'] }) {
 }
 
 function GameCard({
-  game, onRemove, onRefresh,
+  game, onRemove, onRefresh, onDateChange,
 }: {
   game: RadarGame;
   onRemove: () => void;
   onRefresh: () => void;
+  onDateChange: (id: number, date: string | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
+  const [dateInput, setDateInput] = useState(game.release_date ?? '');
+  const [savingDate, setSavingDate] = useState(false);
   const platforms = dedupPlatforms(game.platforms);
+
+  const handleSaveDate = async () => {
+    setSavingDate(true);
+    try {
+      const r = await fetch(`${BASE}/radar/${game.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ release_date: dateInput || null }),
+      });
+      if (r.ok) {
+        onDateChange(game.id, dateInput || null);
+        setEditingDate(false);
+      }
+    } finally { setSavingDate(false); }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -151,9 +170,50 @@ function GameCard({
 
         {/* Release date + metacritic */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-            📅 {fmtDate(game.release_date)}
-          </span>
+          {editingDate ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <input
+                type="date"
+                value={dateInput}
+                onChange={e => setDateInput(e.target.value)}
+                autoFocus
+                style={{
+                  fontSize: 12, fontFamily: 'inherit', padding: '2px 6px',
+                  border: '1px solid var(--accent)', borderRadius: 4,
+                  background: 'var(--paper)', color: 'var(--ink)',
+                }}
+              />
+              <button
+                onClick={handleSaveDate}
+                disabled={savingDate}
+                style={{
+                  fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
+                }}
+              >{savingDate ? '…' : '✓'}</button>
+              <button
+                onClick={() => { setEditingDate(false); setDateInput(game.release_date ?? ''); }}
+                style={{
+                  fontSize: 11, fontFamily: 'inherit', background: 'none',
+                  border: '1px solid var(--line)', borderRadius: 4,
+                  padding: '3px 6px', cursor: 'pointer', color: 'var(--muted)',
+                }}
+              >✕</button>
+            </div>
+          ) : (
+            <span
+              onClick={() => setEditingDate(true)}
+              title="Click to edit release date"
+              style={{
+                fontSize: 12, color: 'var(--muted)', display: 'flex', alignItems: 'center',
+                gap: 4, cursor: 'pointer',
+              }}
+            >
+              📅 {fmtDate(game.release_date)}
+              <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 1 }}>✏️</span>
+            </span>
+          )}
           {game.metacritic && (
             <span style={{
               fontSize: 11, fontWeight: 700,
@@ -367,6 +427,10 @@ export default function RadarPage() {
     }
   };
 
+  const handleDateChange = (id: number, date: string | null) => {
+    setGames(prev => prev.map(g => g.id === id ? { ...g, release_date: date } : g));
+  };
+
   const filtered = filter === 'all' ? games : games.filter(g => g.ai_match_score === filter);
 
   const counts: Record<string, number> = {};
@@ -513,6 +577,7 @@ export default function RadarPage() {
                 game={game}
                 onRemove={() => handleRemove(game.id)}
                 onRefresh={() => handleRefresh(game.id)}
+                onDateChange={handleDateChange}
               />
             ))}
           </div>
