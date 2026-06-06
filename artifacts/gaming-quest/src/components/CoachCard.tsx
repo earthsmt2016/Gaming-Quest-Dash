@@ -4,6 +4,24 @@ const BASE = `${import.meta.env.BASE_URL}api`;
 
 type PauseState = 'idle' | 'loading' | 'done' | 'error';
 
+type PlatformMode = 'any' | 'mobile' | 'xbox';
+
+const PLATFORM_MODES: { id: PlatformMode; label: string; icon: string; sub: string }[] = [
+  { id: 'any',    label: 'Any',    icon: '🎲', sub: 'Surprise me' },
+  { id: 'mobile', label: 'Mobile', icon: '📱', sub: 'Paid & Arcade' },
+  { id: 'xbox',   label: 'Xbox',   icon: '🎮', sub: 'Paid & Game Pass' },
+];
+
+const PLATFORM_LABELS: Record<string, { label: string; icon: string }> = {
+  mobile_paid:   { label: 'Mobile (Paid)',   icon: '📱' },
+  apple_arcade:  { label: 'Apple Arcade',    icon: '🍏' },
+  xbox_paid:     { label: 'Xbox (Paid)',      icon: '🎮' },
+  xbox_gamepass: { label: 'Xbox Game Pass',   icon: '☁️' },
+  playstation:   { label: 'PlayStation',      icon: '🕹️' },
+  switch:        { label: 'Switch',           icon: '🕹️' },
+  pc:            { label: 'PC / Steam',       icon: '💻' },
+};
+
 interface CoachRec {
   id: number;
   game: string;
@@ -19,6 +37,9 @@ interface CoachRec {
   fulfilled: boolean;
   game_is_paused?: boolean;
   alt_is_paused?: boolean;
+  platform?: string | null;
+  alt_platform?: string | null;
+  platform_mode?: PlatformMode | null;
 }
 
 interface HealthPenalty {
@@ -75,6 +96,7 @@ export default function CoachCard() {
   const [error, setError]       = useState<string | null>(null);
   const [healthOpen, setHealthOpen] = useState(true);
   const [pauseStates, setPauseStates] = useState<Record<string, PauseState>>({});
+  const [platformMode, setPlatformMode] = useState<PlatformMode>('any');
 
   const fetchHealth = useCallback(() => {
     fetch(`${BASE}/backlog-health`)
@@ -118,7 +140,11 @@ export default function CoachCard() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`${BASE}/ai/coach-card`, { method: 'POST' });
+      const r = await fetch(`${BASE}/ai/coach-card`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform_mode: platformMode === 'any' ? null : platformMode }),
+      });
       if (!r.ok) throw new Error('Failed');
       setRec(await r.json());
     } catch {
@@ -126,7 +152,7 @@ export default function CoachCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [platformMode]);
 
   const isStale = rec
     ? (Date.now() - new Date(rec.created_at).getTime()) > CACHE_TTL_MS
@@ -328,13 +354,53 @@ export default function CoachCard() {
 
       {/* ── Body ── */}
       <div style={{ padding: '14px 16px' }}>
+
+        {/* Platform mode toggle */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 7 }}>
+            Tonight I feel like…
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {PLATFORM_MODES.map(m => {
+              const active = platformMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setPlatformMode(m.id)}
+                  style={{
+                    flex: 1,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                    padding: '8px 4px',
+                    background: active ? 'var(--accent)' : 'var(--paper-2)',
+                    color: active ? '#fff' : 'var(--ink)',
+                    border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>{m.icon}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700 }}>{m.label}</span>
+                  <span style={{ fontSize: 9, opacity: active ? 0.85 : 0.55 }}>{m.sub}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {error && (
           <div style={{ fontSize: 12, color: 'var(--danger)', padding: '8px 0' }}>{error}</div>
         )}
 
         {!rec && !loading && !error && (
-          <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)', fontSize: 13 }}>
-            Hit <strong style={{ color: 'var(--ink)' }}>Get Recommendation</strong> for tonight's personalised pick
+          <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--muted)', fontSize: 13 }}>
+            Hit <strong style={{ color: 'var(--ink)' }}>Get Recommendation</strong> for tonight's pick
+            {platformMode !== 'any' && (
+              <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                {' '}({platformMode === 'mobile' ? '📱 Mobile' : '🎮 Xbox'} only)
+              </span>
+            )}
           </div>
         )}
 
@@ -380,8 +446,15 @@ export default function CoachCard() {
                 display: 'flex', alignItems: 'flex-start',
                 justifyContent: 'space-between', marginBottom: 8, gap: 8,
               }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: rec.game_is_paused ? 'var(--muted)' : 'var(--ink)', flex: 1, minWidth: 0, textDecoration: rec.game_is_paused ? 'line-through' : 'none' }}>
-                  {rec.game}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: rec.game_is_paused ? 'var(--muted)' : 'var(--ink)', textDecoration: rec.game_is_paused ? 'line-through' : 'none' }}>
+                    {rec.game}
+                  </div>
+                  {rec.platform && PLATFORM_LABELS[rec.platform] && (
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginTop: 2 }}>
+                      {PLATFORM_LABELS[rec.platform].icon} {PLATFORM_LABELS[rec.platform].label}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
                   <div style={{
@@ -431,8 +504,15 @@ export default function CoachCard() {
                   </div>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: rec.alternative_quest || rec.alternative_why ? 6 : 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: rec.alt_is_paused ? 'var(--muted)' : 'var(--ink)', flex: 1, minWidth: 0, textDecoration: rec.alt_is_paused ? 'line-through' : 'none' }}>
-                    {rec.alternative_game}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: rec.alt_is_paused ? 'var(--muted)' : 'var(--ink)', textDecoration: rec.alt_is_paused ? 'line-through' : 'none' }}>
+                      {rec.alternative_game}
+                    </div>
+                    {rec.alt_platform && PLATFORM_LABELS[rec.alt_platform] && (
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginTop: 1 }}>
+                        {PLATFORM_LABELS[rec.alt_platform].icon} {PLATFORM_LABELS[rec.alt_platform].label}
+                      </div>
+                    )}
                   </div>
                   {rec.alternative_minutes && (
                     <div style={{

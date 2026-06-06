@@ -129,12 +129,26 @@ router.get("/backlog-health", async (_req, res) => {
   }
 });
 
+const MOBILE_PLATFORMS = new Set(['mobile_paid', 'apple_arcade']);
+const XBOX_PLATFORMS   = new Set(['xbox_paid', 'xbox_gamepass']);
+
+const PLATFORM_LABELS: Record<string, string> = {
+  mobile_paid:   'Mobile (Paid)',
+  apple_arcade:  'Apple Arcade',
+  xbox_paid:     'Xbox (Paid)',
+  xbox_gamepass: 'Xbox Game Pass',
+  playstation:   'PlayStation',
+  switch:        'Switch',
+  pc:            'PC / Steam',
+};
+
 // ─── POST /api/ai/coach-card ────────────────────────────────────────────────
-router.post("/ai/coach-card", async (_req, res) => {
+router.post("/ai/coach-card", async (req, res) => {
   try {
     await ensureCoachTables();
+    const platform_mode: string | null = req.body?.platform_mode ?? null; // 'mobile' | 'xbox' | null
 
-    const [profile, recentLogs, quests, gameHistory, completions, progressData, knowledgeData] = await Promise.all([
+    const [profile, recentLogs, quests, gameHistory, completions, progressData, knowledgeData, platformData] = await Promise.all([
       pool.query(`SELECT * FROM user_profile WHERE id=1`),
       pool.query(`SELECT game, action, minutes, timestamp FROM log_entries ORDER BY timestamp::timestamptz DESC LIMIT 40`),
       pool.query(`SELECT game, title, status, difficulty, estimated_minutes FROM quests WHERE status IN ('active','suggested') ORDER BY status DESC`),
@@ -147,19 +161,32 @@ router.post("/ai/coach-card", async (_req, res) => {
       pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] })),
       pool.query(`SELECT game, current_percentage, status, estimated_hours_remaining FROM game_progress ORDER BY current_percentage DESC`).catch(() => ({ rows: [] })),
       pool.query(`SELECT game, story_percentage, full_percentage, estimated_story_hours, estimated_full_hours FROM game_knowledge`).catch(() => ({ rows: [] })),
+      pool.query(`SELECT game, platform FROM game_platforms`).catch(() => ({ rows: [] })),
     ]);
 
     const p = profile.rows[0] ?? {};
     const completedSet = new Set(completions.rows.map((r: any) => r.game));
     const now = Date.now();
 
+    // Build platform map & determine which platform set applies to the requested mode
+    const platformMap = new Map<string, string>(platformData.rows.map((r: any) => [r.game, r.platform]));
+    const modeSet = platform_mode === 'mobile' ? MOBILE_PLATFORMS : platform_mode === 'xbox' ? XBOX_PLATFORMS : null;
+
     const gameLines = gameHistory.rows
       .filter((g: any) => !completedSet.has(g.game))
+      .filter((g: any) => {
+        if (!modeSet) return true; // no filter
+        const plat = platformMap.get(g.game);
+        return plat ? modeSet.has(plat) : false; // exclude games with no matching platform
+      })
       .map((g: any) => {
         const daysSince = Math.round((now - new Date(g.last_played).getTime()) / 86400000);
         const hasActive    = quests.rows.some((q: any) => q.game === g.game && q.status === 'active');
         const hasSuggested = quests.rows.some((q: any) => q.game === g.game && q.status === 'suggested');
-        const tags = [hasActive ? '🗡 active quest' : hasSuggested ? '💡 suggested quest' : null].filter(Boolean).join(' ');
+        const plat = platformMap.get(g.game);
+        const platTag = plat ? `📍 ${PLATFORM_LABELS[plat] ?? plat}` : null;
+        const questTag = hasActive ? '🗡 active quest' : hasSuggested ? '💡 suggested quest' : null;
+        const tags = [platTag, questTag].filter(Boolean).join(', ');
         return `${g.game}: ${g.sessions} sessions, last played ${daysSince}d ago, ${Math.round(g.total_minutes / 60 * 10) / 10}h total${tags ? ` (${tags})` : ''}`;
       }).join('\n');
 
@@ -214,13 +241,19 @@ router.post("/ai/coach-card", async (_req, res) => {
       bActive.length > 5 ? `- ${bActive.length} active games (ideal ≤5): -${Math.max(0, bActive.length - 5) * 5} pts` : null,
     ].filter(Boolean).join('\n');
 
+    const platformConstraint = platform_mode === 'mobile'
+      ? `\n⚠️ PLATFORM FILTER: The player wants to play MOBILE tonight (📱 Mobile Paid or 🍏 Apple Arcade). You MUST recommend only games tagged with a mobile platform above. The alternative must also be a mobile game.`
+      : platform_mode === 'xbox'
+      ? `\n⚠️ PLATFORM FILTER: The player wants to play XBOX tonight (🎮 Xbox Paid or ☁️ Xbox Game Pass). You MUST recommend only games tagged with an xbox platform above. The alternative must also be an Xbox game.`
+      : '';
+
     const systemPrompt = `You are a personal gaming strategist coach. Give ONE sharp, data-backed recommendation for what the player should play tonight.
 
 PLAYER PROFILE:
 - Preferred difficulty: ${p.preferred_difficulty ?? 'medium'}
 - Avg session: ~${p.avg_session_minutes ?? 60} min
 - Playstyle: ${p.personality_summary ?? 'Not yet established — limited data available'}
-- Coaching notes: ${(p as any).coaching_summary ?? 'n/a'}
+- Coaching notes: ${(p as any).coaching_summary ?? 'n/a'}${platformConstraint}
 
 BACKLOG HEALTH: ${bScore}/100 (${bLabel})
 ${bHealthLines || '- No issues detected'}
@@ -229,8 +262,8 @@ ${bScore < 60 ? `⚠️ Backlog is ${bLabel} — factor this into your recommend
 RECENT ACTIVITY (last 12 sessions):
 ${recentActivity || '(none)'}
 
-ACTIVE GAMES (last 90 days):
-${gameLines || '(no active games tracked yet)'}
+ACTIVE GAMES (last 90 days)${platform_mode ? ` — filtered to ${platform_mode === 'mobile' ? 'Mobile' : 'Xbox'} only` : ''}:
+${gameLines || `(no ${platform_mode ? (platform_mode === 'mobile' ? 'mobile' : 'xbox') + ' ' : ''}games tracked yet — suggest tagging games with their platform first)`}
 
 GAME PROGRESS (manual tracking):
 ${progressLines}
@@ -243,6 +276,7 @@ ${questLines || '(no quests)'}
 
 Rules for your response:
 - Pick the game most deserving of play tonight based on the data
+- If a PLATFORM FILTER is active, ONLY pick games from that platform list — do not break this rule
 - If backlog health is Critical or At Risk, at least one "why" bullet should reference a neglected game or suggest putting an idle game on hold
 - Each "why" bullet must cite a specific data point (days since played, quest availability, session count, etc.)
 - suggested_minutes should fit the player's avg session length
@@ -303,7 +337,14 @@ Respond ONLY with valid JSON, no markdown:
       [insightContent, card.game]
     ).catch(() => {});
 
-    res.json({ ...card, id: saved.rows[0].id, created_at: saved.rows[0].created_at });
+    res.json({
+      ...card,
+      id: saved.rows[0].id,
+      created_at: saved.rows[0].created_at,
+      platform: platformMap.get(card.game) ?? null,
+      alt_platform: card.alternative_game ? (platformMap.get(card.alternative_game) ?? null) : null,
+      platform_mode: platform_mode ?? null,
+    });
   } catch (err) {
     console.error("coach-card error:", err);
     res.status(500).json({ error: "Failed to generate coach card", detail: String(err) });
@@ -315,13 +356,15 @@ Respond ONLY with valid JSON, no markdown:
 router.get("/ai/coach-card/latest", async (_req, res) => {
   try {
     await ensureCoachTables();
-    const [recResult, pausedResult] = await Promise.all([
+    const [recResult, pausedResult, platformResult] = await Promise.all([
       pool.query(`SELECT * FROM ai_recommendations ORDER BY created_at DESC LIMIT 1`),
       pool.query(`SELECT game FROM game_pauses`).catch(() => ({ rows: [] })),
+      pool.query(`SELECT game, platform FROM game_platforms`).catch(() => ({ rows: [] })),
     ]);
     if (!recResult.rows.length) { res.json(null); return; }
     const r = recResult.rows[0];
     const pausedSet = new Set((pausedResult as any).rows.map((p: any) => p.game));
+    const platMap = new Map<string, string>((platformResult as any).rows.map((p: any) => [p.game, p.platform]));
     res.json({
       id: r.id,
       game: r.game,
@@ -339,6 +382,9 @@ router.get("/ai/coach-card/latest", async (_req, res) => {
       // Live pause state — lets the frontend warn when the pick is now on hold
       game_is_paused: pausedSet.has(r.game),
       alt_is_paused: r.alternative_game ? pausedSet.has(r.alternative_game) : false,
+      // Platform info — looked up live so it's always current
+      platform: platMap.get(r.game) ?? null,
+      alt_platform: r.alternative_game ? (platMap.get(r.alternative_game) ?? null) : null,
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch latest recommendation", detail: String(err) });

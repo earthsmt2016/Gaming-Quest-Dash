@@ -6,14 +6,14 @@ const CREDITS_RE = /saw the credits|finished the game|completed the main.?run|ro
 type GameStatus = 'Needs attention' | 'Light progress' | 'On track' | 'Stalled' | 'On hold' | 'Completed';
 type FilterTab = 'active' | 'hold' | 'done' | 'all';
 
-export const PLATFORMS: { id: string; label: string; icon: string }[] = [
-  { id: 'mobile',       label: 'Mobile',        icon: '📱' },
-  { id: 'xbox',         label: 'Xbox',           icon: '🎮' },
-  { id: 'gamepass',     label: 'Game Pass',      icon: '☁️' },
-  { id: 'playstation',  label: 'PlayStation',    icon: '🎮' },
-  { id: 'switch',       label: 'Switch',         icon: '🕹️' },
-  { id: 'pc',           label: 'PC / Steam',     icon: '💻' },
-  { id: 'steamdeck',    label: 'Steam Deck',     icon: '🖥️' },
+export const PLATFORMS: { id: string; label: string; icon: string; mode?: 'mobile' | 'xbox' }[] = [
+  { id: 'mobile_paid',   label: 'Mobile (Paid)',   icon: '📱', mode: 'mobile' },
+  { id: 'apple_arcade',  label: 'Apple Arcade',    icon: '🍏', mode: 'mobile' },
+  { id: 'xbox_paid',     label: 'Xbox (Paid)',      icon: '🎮', mode: 'xbox'   },
+  { id: 'xbox_gamepass', label: 'Xbox Game Pass',   icon: '☁️', mode: 'xbox'   },
+  { id: 'playstation',   label: 'PlayStation',      icon: '🕹️' },
+  { id: 'switch',        label: 'Switch',           icon: '🕹️' },
+  { id: 'pc',            label: 'PC / Steam',       icon: '💻' },
 ];
 
 interface GameData {
