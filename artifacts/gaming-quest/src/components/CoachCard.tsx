@@ -88,8 +88,8 @@ export default function CoachCard() {
       const r = await fetch(`${BASE}/paused/${encodeURIComponent(game)}`, { method: 'POST' });
       if (!r.ok) throw new Error('Failed');
       setPauseStates(prev => ({ ...prev, [game]: 'done' }));
-      // Refresh health after a beat so the score updates
-      setTimeout(fetchHealth, 800);
+      // Refresh health so score + game lists update live
+      setTimeout(fetchHealth, 1200);
     } catch {
       setPauseStates(prev => ({ ...prev, [game]: 'error' }));
     }

@@ -44,7 +44,7 @@ router.get("/backlog-health", async (_req, res) => {
       pool.query(`SELECT game, MAX(timestamp::timestamptz) as last_played FROM log_entries GROUP BY game`),
       pool.query(`SELECT DISTINCT game FROM log_entries WHERE timestamp::timestamptz > NOW() - INTERVAL '7 days'`),
       pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] })),
-      pool.query(`SELECT game FROM paused_games`).catch(() => ({ rows: [] })),
+      pool.query(`SELECT game FROM game_pauses`).catch(() => ({ rows: [] })),
     ]);
 
     const completedSet = new Set(completions.rows.map((r: any) => r.game));
@@ -197,7 +197,7 @@ router.post("/ai/coach-card", async (_req, res) => {
       pool.query(`SELECT game, MAX(timestamp::timestamptz) as last_played FROM log_entries GROUP BY game`),
       pool.query(`SELECT DISTINCT game FROM log_entries WHERE timestamp::timestamptz > NOW() - INTERVAL '7 days'`),
       pool.query(`SELECT game FROM game_completions`).catch(() => ({ rows: [] })),
-      pool.query(`SELECT game FROM paused_games`).catch(() => ({ rows: [] })),
+      pool.query(`SELECT game FROM game_pauses`).catch(() => ({ rows: [] })),
     ]);
     const bCompletedSet = new Set(bCompletions.rows.map((r: any) => r.game));
     const bPausedSet    = new Set(bPaused.rows.map((r: any) => r.game));
