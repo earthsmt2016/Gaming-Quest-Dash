@@ -68,13 +68,19 @@ export default function CoachCard() {
   const [error, setError]       = useState<string | null>(null);
   const [healthOpen, setHealthOpen] = useState(false);
 
-  useEffect(() => {
+  const fetchHealth = useCallback(() => {
     fetch(`${BASE}/backlog-health`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setHealth(d); })
       .catch(() => {})
       .finally(() => setLoadingH(false));
   }, []);
+
+  useEffect(() => {
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchHealth]);
 
   useEffect(() => {
     fetch(`${BASE}/ai/coach-card/latest`)

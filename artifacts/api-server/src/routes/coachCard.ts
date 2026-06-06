@@ -61,9 +61,10 @@ router.get("/backlog-health", async (_req, res) => {
     if (rotatingCount > 4)    risks.push(`High rotation — playing ${rotatingCount} games this week`);
     if (active.length > 6)    risks.push(`Large backlog — ${active.length} active games`);
 
-    const neglectPenalty  = neglected.length * 10;
-    const rotationPenalty = Math.max(0, rotatingCount - 3) * 8;
-    const backlogPenalty  = Math.max(0, active.length - 5) * 5;
+    // Calibrated so each individual action registers as visible score improvement
+    const neglectPenalty  = Math.min(35, neglected.length * 5);
+    const rotationPenalty = Math.min(15, Math.max(0, rotatingCount - 3) * 5);
+    const backlogPenalty  = Math.min(30, Math.max(0, active.length - 6) * 4);
 
     let score = 100 - neglectPenalty - rotationPenalty - backlogPenalty;
     score = Math.max(0, Math.min(100, Math.round(score)));
@@ -73,11 +74,12 @@ router.get("/backlog-health", async (_req, res) => {
     // Build penalty breakdown with actionable tips
     const penalties: { label: string; deduction: number; tip: string }[] = [];
     if (neglectPenalty > 0) {
+      const perGame = 5;
       const toRecover = Math.min(neglected.length, 4);
       penalties.push({
         label: `${neglected.length} game${neglected.length > 1 ? 's' : ''} not played in 14+ days`,
         deduction: neglectPenalty,
-        tip: `Put ${toRecover}+ on hold → recover up to +${toRecover * 10} pts`,
+        tip: `Put ${toRecover}+ on hold → recover up to +${toRecover * perGame} pts`,
       });
     }
     if (rotationPenalty > 0) {
@@ -88,9 +90,9 @@ router.get("/backlog-health", async (_req, res) => {
       });
     }
     if (backlogPenalty > 0) {
-      const extraGames = active.length - 5;
+      const extraGames = active.length - 6;
       penalties.push({
-        label: `${active.length} active games (ideal: ≤5)`,
+        label: `${active.length} active games (ideal: ≤6)`,
         deduction: backlogPenalty,
         tip: `Put ${extraGames} game${extraGames > 1 ? 's' : ''} on hold → +${backlogPenalty} pts`,
       });
