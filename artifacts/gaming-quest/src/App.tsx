@@ -224,8 +224,9 @@ export default function App() {
 
   const handleThisWeek = useCallback(() => {
     const s = monStart(new Date()), e = sunEnd(new Date());
-    setFromDate(s.toISOString().slice(0, 10));
-    setToDate(e.toISOString().slice(0, 10));
+    const localDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    setFromDate(localDate(s));
+    setToDate(localDate(e));
   }, []);
 
   const handleResetFilters = useCallback(() => {
@@ -273,11 +274,12 @@ export default function App() {
     setReportSaving(true);
     try {
       const start = monStart(new Date()), end = sunEnd(new Date());
+      const localDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       const title = `Week of ${formatDate(start)} – ${formatDate(end)}`;
       const saved = await saveReport({
         title,
-        period_from: start.toISOString().slice(0, 10),
-        period_to: end.toISOString().slice(0, 10),
+        period_from: localDate(start),
+        period_to: localDate(end),
         logs_json: wl.map(l => ({ timestamp: l.timestamp, game: l.game, action: l.action, minutes: l.minutes, type: l.type })),
         ai_insights_json: {},
         trigger_type: 'manual',

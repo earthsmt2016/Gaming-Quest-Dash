@@ -599,8 +599,8 @@ export default function ReportsPage() {
     setPdfLoadingId(r.id);
     try {
       const full = await fetchSavedReport(r.id);
-      const from = new Date(r.period_from);
-      const to = new Date(r.period_to);
+      const from = new Date(r.period_from.slice(0, 10) + 'T00:00:00');
+      const to = new Date(r.period_to.slice(0, 10) + 'T23:59:59');
       const logs = (full.logs_json ?? []).map((l: any) => ({ ...l, date: new Date(l.timestamp) }));
       const insights = full.ai_insights_json ?? {};
       const storedOpts = Object.keys(full.options_json ?? {}).length > 0 ? full.options_json : options;
