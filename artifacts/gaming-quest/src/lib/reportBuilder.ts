@@ -1081,8 +1081,19 @@ export function buildPdfReport(
 
 export function printReport(html: string): void {
   const w = window.open('', '_blank', 'width=900,height=700');
-  if (!w) { alert('Pop-up blocked. Please allow pop-ups for this site to generate the PDF.'); return; }
-  w.document.write(html);
-  w.document.close();
-  w.onload = () => { w.focus(); w.print(); };
+  if (w) {
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+    return;
+  }
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gaming-quest-report.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
