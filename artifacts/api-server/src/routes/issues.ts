@@ -259,7 +259,14 @@ Reply with STRICT JSON only:
     }
   ]
 }
-Set found=false if you cannot localize a concrete code-level cause. Include every affected location — do not stop at the first one. Each fix must be a separate non-overlapping snippet. Keep each snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.
+Set found=false if you cannot localize a concrete code-level cause. Include every affected location — do not stop at the first one. Each fix must be a separate non-overlapping snippet. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.
+
+CRITICAL SNIPPET RULES — violating these will cause a build error and revert:
+1. currentCode and proposedCode must each be syntactically self-contained. The substitution (replace currentCode with proposedCode) must leave the file parseable.
+2. For TSX/JSX files: NEVER cut a snippet inside a JSX element. The snippet must start at the beginning of a complete JSX element (or a statement/expression) and end after that element's matching closing tag. If the minimal fix is inside a tag, expand the snippet to include the full enclosing element — opening tag through closing tag.
+3. For TSX/JSX files: every opening tag in currentCode must have its matching closing tag in currentCode (and same for proposedCode). Unbalanced tags will fail the build.
+4. Prefer fewer, larger snippets over many tiny ones that risk cutting through JSX structure. It is better to include 10 lines of unchanged context than to produce an unbalanced snippet.
+5. For SQL strings inside pool.query(\`...\`): include the full query string — opening backtick through closing backtick — so the replacement is unambiguous.
 
 IMPORTANT — SQL query bugs to look for in backend route files:
 - Missing WHERE/JOIN filter: a SELECT returns rows it should exclude (e.g. paused games, completed items). Fix: add AND game NOT IN (SELECT game FROM state_table) or a JOIN.
