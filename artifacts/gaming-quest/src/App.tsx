@@ -85,10 +85,21 @@ export default function App() {
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [activePage, setActivePage] = useState<Page>('dashboard');
 
-  const navigateTo = (page: Page) => {
+  const navigateTo = useCallback((page: Page) => {
     setActivePage(page);
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page);
+    window.history.replaceState({}, '', url.toString());
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const page = url.searchParams.get('page') as Page | null;
+    if (page && page !== activePage) {
+      setActivePage(page);
+    }
+  }, []);
   const [reportSaving, setReportSaving] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
 
