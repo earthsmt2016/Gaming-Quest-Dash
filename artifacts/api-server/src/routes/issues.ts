@@ -10,23 +10,33 @@ const router = Router();
 async function ensureTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_issues (
-      id          SERIAL PRIMARY KEY,
-      page        TEXT NOT NULL DEFAULT '',
-      element     TEXT,
-      description TEXT NOT NULL,
-      status      TEXT NOT NULL DEFAULT 'open',
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      id           SERIAL PRIMARY KEY,
+      page         TEXT NOT NULL DEFAULT '',
+      element      TEXT,
+      description  TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'open',
+      nav_history  JSONB,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Migrate: add nav_history if it doesn't exist
+  await pool.query(`
+    ALTER TABLE app_issues ADD COLUMN IF NOT EXISTS nav_history JSONB
+  `).catch(() => {});
 }
 ensureTable().catch(err => console.error("issues ensureTable:", err));
 
-async function logIssue(page: string, element: string, description: string) {
+async function logIssue(page: string, element: string, description: string, navHistory?: NavHistoryEntry[]) {
   const { rows } = await pool.query(
-    `INSERT INTO app_issues (page, element, description) VALUES ($1, $2, $3) RETURNING *`,
-    [page || '', element || '', description]
+    `INSERT INTO app_issues (page, element, description, nav_history) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [page || '', element || '', description, navHistory ? JSON.stringify(navHistory) : null]
   );
   return rows[0];
+}
+
+interface NavHistoryEntry {
+  page: string;
+  timestamp: string;
 }
 
 const FIX_TYPES = ['put_on_hold', 'remove_hold', 'mark_complete'] as const;
@@ -150,7 +160,7 @@ function numberLines(content: string, max = 900): string {
 const normalizeWs = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 async function diagnoseCode(
-  ctx: { page: string; element: string; description: string },
+  ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[] },
   model: string,
   maxTokens: number,
 ): Promise<CodeDiagnosis | null> {
@@ -159,7 +169,10 @@ async function diagnoseCode(
 
   // Step 1 — locate the most relevant file(s).
   const locateSys = `You are a senior engineer for the "Gaming Quest Dashboard" codebase. Given a bug report and a list of source files, pick the 1-3 files MOST likely to contain the cause. Reply with STRICT JSON only: {"files":["relative/path.tsx"]}. Only choose paths from the provided list, copied EXACTLY. Prefer frontend components (artifacts/gaming-quest/src) for UI bugs and api-server routes for data/server bugs.`;
-  const locateUser = `${APP_GUIDE}\n\nSOURCE FILES:\n${files.join('\n')}\n\nBUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}`;
+  const navLines = ctx.navHistory && ctx.navHistory.length
+    ? `\nNAVIGATION HISTORY (last visited):\n${ctx.navHistory.map((h, i) => `  ${i + 1}. ${h.page} @ ${h.timestamp}`).join('\n')}`
+    : '';
+  const locateUser = `${APP_GUIDE}${navLines}\n\nSOURCE FILES:\n${files.join('\n')}\n\nBUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}`;
 
   const locateRes = await aiForRoute('issue-diagnosis').chat.completions.create({
     model,
@@ -210,7 +223,7 @@ Reply with STRICT JSON only:
   "confidence": "low" | "medium" | "high"
 }
 Set found=false if you cannot localize a concrete code-level cause. Keep the snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.`;
-  const diagUser = `BUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}\n\n${fileBlocks.join('\n\n')}`;
+  const diagUser = `BUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}${navLines}\n\n${fileBlocks.join('\n\n')}`;
 
   const diagRes = await aiForRoute('issue-diagnosis').chat.completions.create({
     model,
@@ -251,7 +264,7 @@ Set found=false if you cannot localize a concrete code-level cause. Keep the sni
 }
 
 // Best-effort: never throw, gated behind its own feature toggle.
-async function maybeDiagnose(ctx: { page: string; element: string; description: string }): Promise<CodeDiagnosis | null> {
+async function maybeDiagnose(ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[] }): Promise<CodeDiagnosis | null> {
   try {
     const cfg = await getConfig('issue-diagnosis');
     if (!cfg.enabled) return null;
@@ -263,11 +276,28 @@ async function maybeDiagnose(ctx: { page: string; element: string; description: 
 }
 
 // POST /api/issues/triage — AI triage: troubleshoot, auto-fix, or log
+function sanitizeNavHistory(raw: any): NavHistoryEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const entries = raw
+    .filter((h: any) => h && typeof h.page === 'string' && typeof h.timestamp === 'string')
+    .slice(0, 15)
+    .map((h: any) => ({
+      page: h.page.slice(0, 50),
+      timestamp: h.timestamp.slice(0, 50),
+    }));
+  return entries.length > 0 ? entries : undefined;
+}
+
 router.post("/issues/triage", async (req, res) => {
-  const { page, element, description } = req.body as { page?: string; element?: string; description?: string };
+  const { page, element, description } = req.body as { page?: string; element?: string; description?: string; navHistory?: NavHistoryEntry[] };
+  const navHistory = sanitizeNavHistory(req.body.navHistory);
   const desc = (description ?? '').trim();
   if (!desc) {
     res.status(400).json({ error: "description is required" });
+    return;
+  }
+  if (desc.length > 4000) {
+    res.status(400).json({ error: "Description is too long (max 4000 chars)" });
     return;
   }
 
@@ -275,7 +305,7 @@ router.post("/issues/triage", async (req, res) => {
     const { enabled, model, max_tokens } = await getConfig('issue-triage');
 
     if (!enabled) {
-      const issue = await logIssue(page ?? '', element ?? '', desc);
+      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory);
       res.json({ category: 'log', logged: true, issue, summary: "Thanks — this has been logged for review.", steps: [], fixes: [] });
       return;
     }
@@ -300,7 +330,11 @@ router.post("/issues/triage", async (req, res) => {
       `  Completed: ${[...completedSet].join(', ') || '(none)'}`,
     ].join('\n');
 
-    const userMsg = `${stateLines}\n\nISSUE REPORT:\n  Page: ${page || '(unknown)'}\n  Element: ${element || '(none)'}\n  Description: ${desc}`;
+    const navLines = navHistory && navHistory.length
+      ? `\nNAVIGATION HISTORY (last visited):\n${navHistory.map((h, i) => `  ${i + 1}. ${h.page} @ ${h.timestamp}`).join('\n')}`
+      : '';
+
+    const userMsg = `${stateLines}${navLines}\n\nISSUE REPORT:\n  Page: ${page || '(unknown)'}\n  Element: ${element || '(none)'}\n  Description: ${desc}`;
 
     const response = await aiForRoute('issue-triage').chat.completions.create({
       model,
@@ -316,7 +350,7 @@ router.post("/issues/triage", async (req, res) => {
     try { parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}'); } catch { /* fall through */ }
 
     if (!parsed || typeof parsed !== 'object') {
-      const issue = await logIssue(page ?? '', element ?? '', desc);
+      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory);
       res.json({ category: 'log', logged: true, issue, summary: "Thanks — this has been logged for review.", steps: [], fixes: [] });
       return;
     }
@@ -351,8 +385,8 @@ router.post("/issues/triage", async (req, res) => {
     }
 
     if (category === 'log' || (steps.length === 0 && fixes.length === 0)) {
-      const issue = await logIssue(page ?? '', element ?? '', desc);
-      const diagnosis = await maybeDiagnose({ page: page ?? '', element: element ?? '', description: desc });
+      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory);
+      const diagnosis = await maybeDiagnose({ page: page ?? '', element: element ?? '', description: desc, navHistory });
       res.json({
         category: 'log',
         logged: true,
@@ -369,7 +403,7 @@ router.post("/issues/triage", async (req, res) => {
   } catch (err) {
     console.error("issue triage error:", err);
     try {
-      const issue = await logIssue(page ?? '', element ?? '', desc);
+      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory);
       res.json({ category: 'log', logged: true, issue, summary: "Thanks — this has been logged for review.", steps: [], fixes: [] });
     } catch (e2: any) {
       res.status(500).json({ error: e2.message });
@@ -391,11 +425,12 @@ router.get("/issues", async (_req, res) => {
 router.post("/issues", async (req, res) => {
   try {
     const { page, element, description } = req.body;
+    const navHistory = sanitizeNavHistory(req.body.navHistory);
     const { rows } = await pool.query(`
-      INSERT INTO app_issues (page, element, description)
-      VALUES ($1, $2, $3)
+      INSERT INTO app_issues (page, element, description, nav_history)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
-    `, [page || '', element || '', description]);
+    `, [page || '', element || '', description, navHistory ? JSON.stringify(navHistory) : null]);
     res.json(rows[0]);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

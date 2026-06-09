@@ -106,6 +106,16 @@ export default function IssuesPage() {
               </div>
             </div>
             <div style={{ fontSize: 14, color: 'var(--ink)', lineHeight: 1.5, marginBottom: 6 }}>{issue.description}</div>
+            {issue.nav_history && issue.nav_history.length > 1 && (
+              <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4, marginBottom: '6px', padding: '4px 8px', background: 'var(--paper-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                <span style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink)' }}>Path: </span>
+                {issue.nav_history.map((h, i) => (
+                  <span key={i}>
+                    {h.page}{i < issue.nav_history!.length - 1 ? ' → ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>
               {new Date(issue.created_at).toLocaleString()}
             </div>

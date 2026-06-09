@@ -84,9 +84,14 @@ export default function App() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [activePage, setActivePage] = useState<Page>('dashboard');
+  const [navHistory, setNavHistory] = useState<{ page: string; timestamp: string }[]>([]);
 
   const navigateTo = useCallback((page: Page) => {
     setActivePage(page);
+    setNavHistory(prev => {
+      const next = [...prev, { page, timestamp: new Date().toISOString() }];
+      return next.slice(-15); // keep last 15 entries
+    });
     const url = new URL(window.location.href);
     url.searchParams.set('page', page);
     window.history.replaceState({}, '', url.toString());
@@ -625,7 +630,7 @@ export default function App() {
           </main>
         </div>
       </div>
-      <IssueReporter page={activePage} />
+      <IssueReporter page={activePage} navHistory={navHistory} />
     </>
     </QuestsProvider>
   );

@@ -7,6 +7,7 @@ import {
 
 interface Props {
   page: string;
+  navHistory?: { page: string; timestamp: string }[];
 }
 
 type Step = 'form' | 'thinking' | 'result' | 'logged';
@@ -170,7 +171,7 @@ async function applyFix(fix: IssueFix): Promise<void> {
   }
 }
 
-export default function IssueReporter({ page }: Props) {
+export default function IssueReporter({ page, navHistory }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('form');
   const [element, setElement] = useState('');
@@ -197,13 +198,13 @@ export default function IssueReporter({ page }: Props) {
     if (!desc.trim()) return;
     setStep('thinking');
     try {
-      const r = await triageIssue({ page, element, description: desc.trim() });
+      const r = await triageIssue({ page, element, description: desc.trim(), navHistory });
       setResult(r);
       setStep(r.category === 'log' ? 'logged' : 'result');
     } catch {
       // Fall back to plain logging so the report is never lost
       try {
-        await createIssue({ page, element, description: desc.trim() });
+        await createIssue({ page, element, description: desc.trim(), navHistory });
         setResult({ category: 'log', summary: '', steps: [], fixes: [], logged: true });
         setStep('logged');
       } catch {
@@ -211,7 +212,7 @@ export default function IssueReporter({ page }: Props) {
         setStep('form');
       }
     }
-  }, [page, element, desc]);
+  }, [page, element, desc, navHistory]);
 
   const runFix = useCallback(async (idx: number, fix: IssueFix) => {
     setFixStates(s => ({ ...s, [idx]: 'loading' }));
@@ -226,7 +227,7 @@ export default function IssueReporter({ page }: Props) {
   const logAnyway = useCallback(async () => {
     setBusy(true);
     try {
-      await createIssue({ page, element, description: desc.trim() });
+      await createIssue({ page, element, description: desc.trim(), navHistory });
       setResult(r => ({ ...(r as IssueTriage), category: 'log', logged: true }));
       setStep('logged');
     } catch {
@@ -234,7 +235,7 @@ export default function IssueReporter({ page }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [page, element, desc]);
+  }, [page, element, desc, navHistory]);
 
   if (!open) {
     return (
@@ -270,6 +271,16 @@ export default function IssueReporter({ page }: Props) {
       {step === 'form' && (
         <>
           <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Page: {page}</div>
+          {navHistory && navHistory.length > 1 && (
+            <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', padding: '6px 8px', background: 'var(--paper-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)', lineHeight: 1.4 }}>
+              <span style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink)' }}>Recent path: </span>
+              {navHistory.slice(-5).map((h, i) => (
+                <span key={i} style={{ color: i === navHistory.slice(-5).length - 1 ? 'var(--accent)' : 'var(--muted)' }}>
+                  {h.page}{i < navHistory.slice(-5).length - 1 ? ' → ' : ''}
+                </span>
+              ))}
+            </div>
+          )}
           <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>
             Element (optional)
             <input
