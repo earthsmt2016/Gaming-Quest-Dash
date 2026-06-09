@@ -223,8 +223,8 @@ async function diagnoseCode(
   }
   if (!fileBlocks.length) return [];
 
-  // Step 2 — diagnose and propose ALL related changes (up to 3).
-  const diagSys = `You are a senior engineer diagnosing a bug in the "Gaming Quest Dashboard". You are given the full content of the most relevant source file(s), each line prefixed with its line number and a tab, plus a bug report. Identify ALL related code locations that need fixing (up to 3) and propose a MINIMAL change for each.
+  // Step 2 — diagnose and propose ALL related changes.
+  const diagSys = `You are a senior engineer diagnosing a bug in the "Gaming Quest Dashboard". You are given the full content of the most relevant source file(s), each line prefixed with its line number and a tab, plus a bug report. Identify ALL code locations that need fixing — every place the same root cause manifests — and propose a MINIMAL change for each.
 Reply with STRICT JSON only:
 {
   "found": true | false,
@@ -241,7 +241,7 @@ Reply with STRICT JSON only:
     }
   ]
 }
-Set found=false if you cannot localize a concrete code-level cause. Each fix must be a separate non-overlapping snippet. Keep each snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.`;
+Set found=false if you cannot localize a concrete code-level cause. Include every affected location — do not stop at the first one. Each fix must be a separate non-overlapping snippet. Keep each snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.`;
   const diagUser = `BUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}${navLines}${interactionLines}\n\n${fileBlocks.join('\n\n')}`;
 
   const diagRes = await aiForRoute('issue-diagnosis').chat.completions.create({
@@ -258,7 +258,7 @@ Set found=false if you cannot localize a concrete code-level cause. Each fix mus
   try { parsed = JSON.parse(diagRes.choices[0]?.message?.content ?? '{}'); } catch { return []; }
   if (!parsed || typeof parsed !== 'object' || parsed.found === false) return [];
 
-  const rawFixes: any[] = Array.isArray(parsed.fixes) ? parsed.fixes.slice(0, 3) : [];
+  const rawFixes: any[] = Array.isArray(parsed.fixes) ? parsed.fixes : [];
   const results: CodeDiagnosis[] = [];
 
   for (const d of rawFixes) {
