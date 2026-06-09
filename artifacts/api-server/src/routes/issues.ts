@@ -265,13 +265,24 @@ Set found=false if you cannot localize a concrete code-level cause. Keep the sni
   const fileContent = safeReadSource(d.file) ?? '';
   if (!normalizeWs(fileContent).includes(normalizeWs(d.currentCode))) return null;
 
+  // Use the actual lines from the file (by startLine/endLine) as currentCode so the
+  // apply-fix exact-match is guaranteed to succeed, even if the AI returned slightly
+  // different whitespace/indentation than what's really in the file.
+  const fileLines = fileContent.split('\n');
+  const extractedCode = fileLines.slice(startLine - 1, endLine).join('\n');
+  // Only use the extraction if it's semantically consistent with what the AI returned.
+  const currentCode = (
+    extractedCode.trim() &&
+    normalizeWs(extractedCode).includes(normalizeWs(d.currentCode.trim().split('\n')[0]))
+  ) ? extractedCode : d.currentCode;
+
   const confidence = d.confidence === 'high' || d.confidence === 'low' ? d.confidence : 'medium';
   return {
     file: d.file,
     startLine,
     endLine,
     cause: typeof d.cause === 'string' ? d.cause.slice(0, 400) : '',
-    currentCode: d.currentCode.slice(0, 2000),
+    currentCode: currentCode.slice(0, 2000),
     proposedCode: d.proposedCode.slice(0, 2000),
     explanation: typeof d.explanation === 'string' ? d.explanation.slice(0, 500) : '',
     confidence,

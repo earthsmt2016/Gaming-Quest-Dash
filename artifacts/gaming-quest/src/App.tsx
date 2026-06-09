@@ -771,7 +771,7 @@ function DesktopSidebar(props: SidebarProps) {
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,160px) minmax(0,160px)', columnGap: '24px', rowGap: '12px' }}>
                 <label style={qaLabelStyle}>
                   <span>Minutes</span>
-                  <input type="number" min={0} max={999} value={qaMinutes} onChange={e => setQaMinutes(e.target.value === '' ? 0 : parseInt(e.target.value, 10))} style={qaInputStyle} />
+                  <input type="number" min={0} max={999} value={String(qaMinutes)} onChange={e => setQaMinutes(e.target.value === '' ? 0 : parseInt(e.target.value, 10))} style={qaInputStyle} />
                 </label>
                 <label style={qaLabelStyle}>
                   <span>Type</span>

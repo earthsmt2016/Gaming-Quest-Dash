@@ -495,7 +495,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                       type="number" min={5} max={600}
                       placeholder="e.g. 75"
                       value={customStr}
-                      onChange={e => setCustomStr(e.target.value)}
+                      onChange={e => setCustomStr(String(parseInt(e.target.value, 10) || ''))}
                       onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                       autoFocus
                     />
