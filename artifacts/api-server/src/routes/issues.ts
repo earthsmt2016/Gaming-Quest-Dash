@@ -62,7 +62,21 @@ const APP_GUIDE = `The app is "Gaming Quest Dashboard", a personal gaming tracke
 - Reports: weekly reports and schedules.
 - Radar: AI suggestions for what to play next.
 - Settings / AI pages: "AI Usage" shows OpenAI spend; "Configure" (AI Cost Settings) toggles AI features and models.
-Games can be: active (in the backlog), "on hold" (paused), or "completed". A game becomes active automatically when it has logged sessions and is neither on hold nor completed.`;
+Games can be: active (in the backlog), "on hold" (paused), or "completed". A game becomes active automatically when it has logged sessions and is neither on hold nor completed.
+
+BACKEND ROUTE MAP (api-server/src/routes/) — SQL queries live inside these TypeScript route handlers:
+- quests.ts       → /api/quests/suggested, /api/quests/active, /api/quests/logs, quest generation
+- pauses.ts       → /api/paused/:game (toggle pause; also archives quests on pause)
+- logEntries.ts   → /api/logs (CRUD for play sessions / log entries)
+- games.ts        → /api/games (game list, status, platforms)
+- completions.ts  → /api/completions (mark/unmark completed)
+- coachCard.ts    → /api/ai/coach-card (AI nightly recommendation)
+- companion.ts    → /api/companion/chat (AI companion chat)
+- health.ts       → /api/backlog-health (backlog stats)
+- dailyPlan.ts    → /api/daily-plan (session planner)
+- goals.ts        → /api/goals
+- reports.ts      → /api/reports
+Data filtering bugs (wrong items showing, items not disappearing, counts being off) almost always mean a missing SQL WHERE condition, a missing JOIN against a state table (e.g. game_pauses, completions), or a missing side-effect UPDATE/DELETE in a mutation route.`;
 
 const SYSTEM_PROMPT = `You are the in-app support triage assistant for the Gaming Quest Dashboard. A user just reported an issue from inside the app. Decide the single best way to help, then reply with STRICT JSON only (no markdown).
 
@@ -180,7 +194,13 @@ async function diagnoseCode(
   if (!files.length) return [];
 
   // Step 1 — locate the most relevant file(s).
-  const locateSys = `You are a senior engineer for the "Gaming Quest Dashboard" codebase. Given a bug report and a list of source files, pick the 1-3 files MOST likely to contain the cause. Reply with STRICT JSON only: {"files":["relative/path.tsx"]}. Only choose paths from the provided list, copied EXACTLY. Prefer frontend components (artifacts/gaming-quest/src) for UI bugs and api-server routes for data/server bugs.`;
+  const locateSys = `You are a senior engineer for the "Gaming Quest Dashboard" codebase. Given a bug report and a list of source files, pick the 1-3 files MOST likely to contain the cause. Reply with STRICT JSON only: {"files":["relative/path.tsx"]}. Only choose paths from the provided list, copied EXACTLY.
+
+Routing guidance:
+- UI rendering / layout / interaction bugs → frontend component in artifacts/gaming-quest/src/components/
+- Data filtering bugs (wrong items showing, items not disappearing, counts off) → backend route in artifacts/api-server/src/routes/ (e.g. quests.ts, pauses.ts, logEntries.ts)
+- State mutation not persisting or not triggering side-effects → backend mutation route (POST/PUT/DELETE handler)
+- Frontend and backend are BOTH suspect when data appears wrong in the UI — include both if unsure.`;
   const navLines = ctx.navHistory && ctx.navHistory.length
     ? `\nNAVIGATION HISTORY (last visited):\n${ctx.navHistory.map((h, i) => `  ${i + 1}. ${h.page} @ ${h.timestamp}`).join('\n')}`
     : '';
@@ -241,7 +261,13 @@ Reply with STRICT JSON only:
     }
   ]
 }
-Set found=false if you cannot localize a concrete code-level cause. Include every affected location — do not stop at the first one. Each fix must be a separate non-overlapping snippet. Keep each snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.`;
+Set found=false if you cannot localize a concrete code-level cause. Include every affected location — do not stop at the first one. Each fix must be a separate non-overlapping snippet. Keep each snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.
+
+IMPORTANT — SQL query bugs to look for in backend route files:
+- Missing WHERE/JOIN filter: a SELECT returns rows it should exclude (e.g. paused games, completed items). Fix: add AND game NOT IN (SELECT game FROM state_table) or a JOIN.
+- Missing side-effect on mutation: a POST/PUT/DELETE changes one table but forgets to update a related table (e.g. pausing a game should also archive its suggested quests). Fix: add the missing UPDATE/DELETE after the primary mutation.
+- Wrong status filter: a query uses status='X' but should also include or exclude another status value.
+These are just as fixable as TypeScript bugs — propose the SQL change inside the pool.query(\`...\`) string.`;
   const diagUser = `BUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}${navLines}${interactionLines}\n\n${fileBlocks.join('\n\n')}`;
 
   const diagRes = await aiForRoute('issue-diagnosis').chat.completions.create({
