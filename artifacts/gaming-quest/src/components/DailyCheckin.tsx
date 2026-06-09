@@ -20,6 +20,7 @@ const PLATFORM_MODES: { id: PlatformMode; icon: string; label: string; sub: stri
 ];
 
 const QUICK_TIMES = [
+  { label: '10m', value: 10 },
   { label: '20m', value: 20 },
   { label: '30m', value: 30 },
   { label: '1h', value: 60 },
