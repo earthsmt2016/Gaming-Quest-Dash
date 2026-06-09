@@ -43,7 +43,11 @@ export default function TopBar({
           display: flex; align-items: center;
           gap: 0; flex: 1; justify-content: center;
           min-width: 0;
+          overflow-x: auto;
+          scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
         }
+        .topbar-nav::-webkit-scrollbar { display: none; }
         .topbar-nav-btn {
           background: none; border: none; cursor: pointer;
           font: inherit; font-size: 14px;
@@ -65,9 +69,10 @@ export default function TopBar({
         .topbar-nav-short { display: none; }
         @media (max-width: 600px) {
           .topbar-title { display: none; }
-          .topbar-nav-btn { padding: 0 8px; font-size: 13px; }
+          .topbar-nav-btn { padding: 0 8px; font-size: 13px; flex-shrink: 0; }
           .topbar-nav-full { display: none; }
           .topbar-nav-short { display: inline; }
+          .topbar-nav { justify-content: flex-start; }
         }
         @media (max-width: 400px) {
           .topbar-nav-btn { padding: 0 6px; font-size: 12px; }
