@@ -1022,6 +1022,42 @@ export async function createIssue(data: { page: string; element: string; descrip
   return res.json();
 }
 
+export type IssueFixType = 'put_on_hold' | 'remove_hold' | 'mark_complete';
+
+export interface IssueFix {
+  type: IssueFixType;
+  game: string;
+  label?: string;
+  detail?: string;
+}
+
+export interface IssueTriage {
+  category: 'self_serve' | 'auto_fix' | 'log';
+  summary: string;
+  steps: string[];
+  fixes: IssueFix[];
+  logged: boolean;
+  issue?: Issue;
+}
+
+export async function triageIssue(data: { page: string; element: string; description: string }): Promise<IssueTriage> {
+  const res = await fetch(`${BASE}/issues/triage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to triage issue');
+  const raw = await res.json();
+  return {
+    category: raw.category ?? 'log',
+    summary: raw.summary ?? '',
+    steps: Array.isArray(raw.steps) ? raw.steps : [],
+    fixes: Array.isArray(raw.fixes) ? raw.fixes : [],
+    logged: Boolean(raw.logged),
+    issue: raw.issue,
+  };
+}
+
 export async function fetchIssues(): Promise<Issue[]> {
   const res = await fetch(`${BASE}/issues`);
   if (!res.ok) throw new Error('Failed to fetch issues');

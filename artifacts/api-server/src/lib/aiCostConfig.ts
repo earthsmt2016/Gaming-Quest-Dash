@@ -24,6 +24,7 @@ const PRESETS: Record<AiCostPreset, Record<string, FeatureConfig>> = {
     radar:             { model: 'gpt-4o-mini', max_tokens: 200,  enabled: true },
     'game-knowledge':  { model: 'gpt-4o-mini', max_tokens: 600,  enabled: true },
     goals:             { model: 'gpt-4o-mini', max_tokens: 400,  enabled: true },
+    'issue-triage':    { model: 'gpt-4o-mini', max_tokens: 500,  enabled: true },
   },
   recommended: {
     companion:       { model: 'gpt-4o',    max_tokens: 1200, enabled: true },
@@ -35,6 +36,7 @@ const PRESETS: Record<AiCostPreset, Record<string, FeatureConfig>> = {
     radar:             { model: 'gpt-4.1',   max_tokens: 200,  enabled: true },
     'game-knowledge':  { model: 'gpt-4.1',   max_tokens: 800,  enabled: true },
     goals:             { model: 'gpt-4.1',   max_tokens: 400,  enabled: true },
+    'issue-triage':    { model: 'gpt-4o',    max_tokens: 600,  enabled: true },
   },
   max: {
     companion:       { model: 'gpt-5.4',   max_tokens: 1800, enabled: true },
@@ -46,6 +48,7 @@ const PRESETS: Record<AiCostPreset, Record<string, FeatureConfig>> = {
     radar:             { model: 'gpt-4.1',   max_tokens: 200,  enabled: true },
     'game-knowledge':  { model: 'gpt-4.1',   max_tokens: 800,  enabled: true },
     goals:             { model: 'gpt-4.1',   max_tokens: 400,  enabled: true },
+    'issue-triage':    { model: 'gpt-4.1',   max_tokens: 700,  enabled: true },
   },
 };
 
@@ -123,9 +126,10 @@ export const FEATURE_LABELS: Record<string, string> = {
   radar: 'Game Radar',
   'game-knowledge': 'Game Knowledge',
   goals: 'Goal Suggestions',
+  'issue-triage': 'Smart Issue Triage',
 };
 
 export const FEATURE_ORDER = [
   'companion', 'coach', 'quests', 'daily-plan',
-  'focus-insights', 'screenshot', 'radar', 'game-knowledge', 'goals',
+  'focus-insights', 'screenshot', 'radar', 'game-knowledge', 'goals', 'issue-triage',
 ];
