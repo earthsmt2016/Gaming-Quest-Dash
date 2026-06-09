@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 
 const router = Router();
 
@@ -258,10 +259,12 @@ async function buildUserProfile(): Promise<void> {
       `Playstyle tags: ${playstyleTags.join(', ') || 'none'}`,
       followRate !== null ? `Recommendation follow-through: ${followRate}% (${recFulfilled}/${recTotal} in last 30 days)` : '',
     ].filter(Boolean).join('\n');
+    const { model, max_tokens } = await getConfig('quests');
+
     try {
       const resp = await openai.chat.completions.create({
-        model: 'gpt-5.4',
-        max_completion_tokens: 220,
+        model,
+        max_completion_tokens: max_tokens,
         messages: [
           {
             role: 'system',
@@ -507,9 +510,11 @@ Respond ONLY with valid JSON (no markdown):
     if (extraInstruction) {
       messages.push({ role: 'user', content: extraInstruction });
     }
+    const { model, max_tokens } = await getConfig('quests');
+
     const response = await openai.chat.completions.create({
-      model: 'gpt-5.4',
-      max_completion_tokens: 1500,
+      model,
+      max_completion_tokens: max_tokens,
       messages,
     });
     return response.choices[0]?.message?.content?.trim() ?? '';
@@ -618,6 +623,11 @@ router.get("/games", async (_req, res) => {
 router.post("/quests/generate", async (req, res) => {
   try {
     await ensureTables();
+    const { enabled } = await getConfig('quests');
+    if (!enabled) {
+      res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+      return;
+    }
     const { game, games: gamesFilter, count = 2, difficulty } = req.body as {
       game?: string;
       games?: string[];
@@ -772,6 +782,11 @@ router.post("/quests/:id/feedback", async (req, res) => {
 router.post("/quests/:id/sub-quest", async (req, res) => {
   try {
     await ensureTables();
+    const { enabled } = await getConfig('quests');
+    if (!enabled) {
+      res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+      return;
+    }
     const id = parseInt(req.params.id, 10);
     const { availableMinutes } = req.body as { availableMinutes: number };
     if (!availableMinutes || availableMinutes < 1) {
@@ -816,9 +831,11 @@ ${miniLogLines ? `\nRecent progress notes (mini-logs):\n${miniLogLines}` : '\nNo
 
 Generate ONE mini-goal achievable in ${availableMinutes} minutes that makes a concrete, specific step forward.`;
 
+    const { model, max_tokens } = await getConfig('quests');
+
     const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
-      max_completion_tokens: 120,
+      model,
+      max_completion_tokens: max_tokens,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -1095,6 +1112,11 @@ async function searchYouTubeVideo(query: string): Promise<VideoResult | null> {
 router.get("/quests/:id/guide", async (req, res) => {
   try {
     await ensureTables();
+    const { enabled } = await getConfig('quests');
+    if (!enabled) {
+      res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+      return;
+    }
     const id = parseInt(req.params.id, 10);
 
     const existing = await pool.query(
@@ -1125,9 +1147,11 @@ Respond ONLY with valid JSON (no markdown):
   "tips": "<2-3 practical tips as a short paragraph>"
 }`;
 
+    const { model, max_tokens } = await getConfig('quests');
+
     const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
-      max_completion_tokens: 900,
+      model,
+      max_completion_tokens: max_tokens,
       messages: [
         { role: "system", content: systemPrompt },
         {

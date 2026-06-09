@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 
 const router = Router();
 
@@ -147,8 +148,10 @@ Rules:
 - remaining_full: list real optional content using this game's actual names (specific collectibles, challenge modes, character episodes, etc.)
 - Be specific to the actual game — use real names you know exist. If you are not certain about a specific name, omit it and lower the confidence score rather than inventing something plausible-sounding`;
 
+    const { model, max_tokens } = await getConfig('game-knowledge');
+
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
     });
@@ -355,8 +358,10 @@ Rules:
 - Never decrease percentages below current values
 - has_update = true if EITHER story OR full would change`;
 
+  const { model, max_tokens } = await getConfig('game-knowledge');
+
   const completion = await openai.chat.completions.create({
-    model: "gpt-4.1",
+    model,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.2,
   });
@@ -485,8 +490,10 @@ Rules:
 - Never decrease percentages below current values
 - has_update = true if EITHER story OR full would change`;
 
+    const { model, max_tokens } = await getConfig('game-knowledge');
+
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
     });
@@ -578,8 +585,10 @@ Respond ONLY with valid JSON (no markdown):
   "remaining_full":  [{ "title": "...", "description": "...", "category": "..." }]
 }`;
 
+  const { model, max_tokens } = await getConfig('game-knowledge');
+
   const completion = await openai.chat.completions.create({
-    model: "gpt-4.1",
+    model,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.1,
   });

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs/promises";
@@ -400,6 +401,11 @@ function makeSystemPrompt(context: string, game?: string): string {
 router.post("/companion/chat", async (req, res) => {
   try {
     await ensureTable();
+    const { enabled } = await getConfig('companion');
+    if (!enabled) {
+      res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+      return;
+    }
     const { message, game } = req.body as { message: string; game?: string };
     if (!message?.trim()) {
       res.status(400).json({ error: "message is required" }); return;
@@ -421,12 +427,14 @@ router.post("/companion/chat", async (req, res) => {
       { role: 'user', content: message.trim() },
     ];
 
+    const { model, max_tokens } = await getConfig('companion');
+
     // Tool-calling loop (max 4 rounds)
     let finalReply = '';
     for (let round = 0; round < 4; round++) {
       const response = await openai.chat.completions.create({
-        model: 'gpt-5.4',
-        max_completion_tokens: 1800,
+        model,
+        max_completion_tokens: max_tokens,
         messages,
         tools: TOOLS,
         tool_choice: 'auto',

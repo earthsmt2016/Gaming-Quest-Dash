@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 
 const router = Router();
 
@@ -16,6 +17,12 @@ interface FocusGame {
 }
 
 router.post("/focus-insights", async (req, res) => {
+  const { enabled } = await getConfig('focus-insights');
+  if (!enabled) {
+    res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+    return;
+  }
+
   const { games } = req.body as { games: FocusGame[] };
 
   if (!Array.isArray(games) || games.length === 0) {
@@ -25,6 +32,8 @@ router.post("/focus-insights", async (req, res) => {
 
   const results: { title: string; nextStep: string }[] = [];
 
+  const { model, max_tokens } = await getConfig('focus-insights');
+
   for (const game of games) {
     const sessionLines = game.sessions
       .map(s => `  - ${s.date} (${s.minutes}m): ${s.action}`)
@@ -32,8 +41,8 @@ router.post("/focus-insights", async (req, res) => {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-5.4",
-        max_completion_tokens: 200,
+        model,
+        max_completion_tokens: max_tokens,
         messages: [
           {
             role: "system",

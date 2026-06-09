@@ -1040,3 +1040,40 @@ export async function fetchAiUsage(): Promise<AiUsageSummary> {
   if (!res.ok) throw new Error('Failed to fetch AI usage');
   return res.json();
 }
+
+export async function fetchAiUsageGbp(): Promise<AiUsageSummary> {
+  const res = await fetch(`${BASE}/ai-usage/gbp`);
+  if (!res.ok) throw new Error('Failed to fetch AI usage');
+  return res.json();
+}
+
+export interface AiCostSettings {
+  preset: 'low' | 'recommended' | 'max';
+  overrides: Record<string, { model: string; max_tokens: number; enabled: boolean }>;
+}
+
+export async function fetchAiCostSettings(): Promise<AiCostSettings> {
+  const res = await fetch(`${BASE}/ai-cost/settings`);
+  if (!res.ok) throw new Error('Failed to fetch AI cost settings');
+  return res.json();
+}
+
+export async function saveAiCostSettings(s: AiCostSettings): Promise<AiCostSettings> {
+  const res = await fetch(`${BASE}/ai-cost/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(s),
+  });
+  if (!res.ok) throw new Error('Failed to save AI cost settings');
+  return res.json();
+}
+
+export async function saveAiCostFeature(name: string, cfg: { model?: string; max_tokens?: number; enabled?: boolean }): Promise<{ model: string; max_tokens: number; enabled: boolean }> {
+  const res = await fetch(`${BASE}/ai-cost/feature/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!res.ok) throw new Error('Failed to save feature config');
+  return res.json();
+}

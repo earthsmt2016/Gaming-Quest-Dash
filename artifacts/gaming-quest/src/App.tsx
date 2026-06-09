@@ -18,6 +18,7 @@ import GameLibrary from './components/GameLibrary';
 import RadarPage from './components/RadarPage';
 import SettingsPage from './components/SettingsPage';
 import AiUsagePage from './components/AiUsagePage';
+import AiCostSettingsPage from './components/AiCostSettingsPage';
 import IssuesPage from './components/IssuesPage';
 import IssueReporter from './components/IssueReporter';
 import EditLogModal from './components/EditLogModal';
@@ -45,7 +46,7 @@ import {
   triggerQuestRefresh,
 } from './lib/api';
 
-export type Page = 'dashboard' | 'log' | 'games' | 'quests' | 'reports' | 'radar' | 'settings' | 'ai-usage' | 'issues';
+export type Page = 'dashboard' | 'log' | 'games' | 'quests' | 'reports' | 'radar' | 'settings' | 'ai-usage' | 'ai-cost' | 'issues';
 
 function getWeekLogs(logs: LogEntry[]): LogEntry[] {
   const s = monStart(new Date()), e = sunEnd(new Date());
@@ -605,7 +606,8 @@ export default function App() {
 
                 {/* ── Settings ── */}
                 {activePage === 'settings' && <SettingsPage />}
-                {activePage === 'ai-usage' && <AiUsagePage />}
+                {activePage === 'ai-usage' && <AiUsagePage onNavigate={(p) => navigateTo(p as Page)} />}
+                {activePage === 'ai-cost' && <AiCostSettingsPage />}
                 {activePage === 'issues' && <IssuesPage />}
               </>
             )}

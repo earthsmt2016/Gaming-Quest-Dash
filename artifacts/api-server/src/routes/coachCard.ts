@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 import { loadSettings } from "./settings";
 
 const router = Router();
@@ -231,6 +232,11 @@ const PLATFORM_LABELS: Record<string, string> = {
 router.post("/ai/coach-card", async (req, res) => {
   try {
     await ensureCoachTables();
+    const { enabled } = await getConfig('coach');
+    if (!enabled) {
+      res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+      return;
+    }
     const platform_mode: string | null = req.body?.platform_mode ?? null; // 'mobile' | 'xbox' | null
 
     const [profile, recentLogs, quests, gameHistory, completions, progressData, knowledgeData, platformData] = await Promise.all([
@@ -393,9 +399,11 @@ Respond ONLY with valid JSON, no markdown:
   "confidence_score": <0.0–1.0>
 }`;
 
+    const { model, max_tokens } = await getConfig('coach');
+
     const response = await openai.chat.completions.create({
-      model: 'gpt-5.4',
-      max_completion_tokens: 400,
+      model,
+      max_completion_tokens: max_tokens,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Generate ${timeOfDay}'s recommendation.` },
@@ -502,6 +510,11 @@ router.get("/ai/recommendations", async (_req, res) => {
 router.post("/ai/weekly-review", async (req, res) => {
   try {
     await ensureCoachTables();
+    const { enabled } = await getConfig('coach');
+    if (!enabled) {
+      res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+      return;
+    }
 
     const [weekLogs, topGames, questActivity, profile] = await Promise.all([
       pool.query(`
@@ -563,9 +576,11 @@ Write a weekly review as valid JSON, no markdown:
   "mood": "<one of: great | good | quiet | mixed>"
 }`;
 
+    const { model, max_tokens } = await getConfig('coach');
+
     const response = await openai.chat.completions.create({
-      model: 'gpt-5.4',
-      max_completion_tokens: 350,
+      model,
+      max_completion_tokens: max_tokens,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: 'Generate my weekly review.' },

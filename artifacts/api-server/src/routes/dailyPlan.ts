@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 
 const router = Router();
 
@@ -34,6 +35,12 @@ const SESSION_MODE_PROMPTS: Record<string, string> = {
 };
 
 router.post("/daily-plan", async (req, res) => {
+  const { enabled } = await getConfig('daily-plan');
+  if (!enabled) {
+    res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+    return;
+  }
+
   const { availableMinutes, dayOfWeek, games, activeQuests, sessionMode, platformMode } = req.body as {
     availableMinutes: number;
     dayOfWeek: string;
@@ -136,10 +143,12 @@ Respond ONLY with valid JSON — no markdown, no explanation:
 
   const userPrompt = `Available time: ${availableMinutes} minutes\nDay: ${dayOfWeek}\n\n${gameBlocks}`;
 
+  const { model, max_tokens } = await getConfig('daily-plan');
+
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
-      max_completion_tokens: 700,
+      model,
+      max_completion_tokens: max_tokens,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

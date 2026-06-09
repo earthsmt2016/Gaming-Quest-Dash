@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 
 const router = Router();
 
@@ -355,6 +356,11 @@ router.get("/goals/completions", async (_req, res) => {
 router.post("/ai/goal-suggestions", async (req, res) => {
   try {
     await ensureTables();
+    const { enabled } = await getConfig('goals');
+    if (!enabled) {
+      res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+      return;
+    }
     const { game } = req.body;
     if (!game) return res.status(400).json({ error: "game required" });
 
@@ -410,8 +416,11 @@ Rules:
 - Do NOT suggest goals that already exist
 - Vary difficulty: 1 easy, 2 medium, 1 ambitious`;
 
+    const { model, max_tokens } = await getConfig('goals');
+
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model,
+      max_completion_tokens: max_tokens,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
     });

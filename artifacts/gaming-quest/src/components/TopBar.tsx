@@ -124,7 +124,7 @@ export default function TopBar({
           title="AI usage"
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: activePage === 'ai-usage' ? 'var(--accent)' : 'var(--muted)',
+            color: activePage === 'ai-usage' || activePage === 'ai-cost' ? 'var(--accent)' : 'var(--muted)',
             padding: '6px', borderRadius: 6, flexShrink: 0,
             display: 'flex', alignItems: 'center',
             transition: 'color 0.12s',

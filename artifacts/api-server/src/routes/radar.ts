@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 
 const router = Router();
 const RAWG = 'https://api.rawg.io/api';
@@ -130,9 +131,11 @@ Score key:
 - maybe: hit-and-miss — some appeal but notable gaps
 - unlikely: doesn't fit their history or available platforms`;
 
+  const { model, max_tokens } = await getConfig('radar');
+
   const res = await openai.chat.completions.create({
-    model: 'gpt-4.1',
-    max_completion_tokens: 180,
+    model,
+    max_completion_tokens: max_tokens,
     messages: [{ role: 'user', content: prompt }],
   });
 

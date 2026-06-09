@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { fetchAiUsage, AiUsageSummary } from '../lib/api';
+import { fetchAiUsageGbp, AiUsageSummary } from '../lib/api';
 
-export default function AiUsagePage() {
+export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string) => void }) {
   const [data, setData] = useState<AiUsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchAiUsage().then(d => setData(d)).catch(() => setError('Failed to load AI usage')).finally(() => setLoading(false));
+    fetchAiUsageGbp().then(d => setData(d)).catch(() => setError('Failed to load AI usage')).finally(() => setLoading(false));
   }, []);
 
   if (loading) {
@@ -25,7 +25,16 @@ export default function AiUsagePage() {
         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>
           AI Usage
         </div>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>OpenAI Cost Monitor</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>OpenAI Cost Monitor</h2>
+          <button
+            className="btn primary"
+            onClick={() => onNavigate('ai-cost')}
+            style={{ fontSize: 12, padding: '6px 12px' }}
+          >
+            Configure
+          </button>
+        </div>
         <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
           Track what AI features cost you money. Costs are estimates based on token usage.
         </p>
@@ -37,14 +46,14 @@ export default function AiUsagePage() {
           background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
         }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 6 }}>Today</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>${Number(today.cost).toFixed(4)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>£{Number(today.cost).toFixed(4)}</div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{Number(today.calls).toLocaleString()} calls · {Number(today.tokens).toLocaleString()} tokens</div>
         </div>
         <div style={{
           background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
         }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 6 }}>This week</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>${Number(week.cost).toFixed(4)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>£{Number(week.cost).toFixed(4)}</div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{Number(week.calls).toLocaleString()} calls · {Number(week.tokens).toLocaleString()} tokens</div>
         </div>
       </div>
@@ -67,7 +76,7 @@ export default function AiUsagePage() {
                   <div style={{ fontSize: 10, color: 'var(--muted)', transform: 'rotate(-30deg)', transformOrigin: 'top left', whiteSpace: 'nowrap' }}>
                     {d.day.slice(5)}
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700 }}>${Number(d.cost).toFixed(3)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700 }}>£{Number(d.cost).toFixed(3)}</div>
                 </div>
               );
             })}
@@ -91,7 +100,7 @@ export default function AiUsagePage() {
                   <span style={{ color: 'var(--muted)', marginLeft: 6 }}>({r.model})</span>
                 </div>
                 <div style={{ display: 'flex', gap: 12, color: 'var(--muted)', fontSize: 12 }}>
-                  <span>${Number(r.cost).toFixed(4)}</span>
+                  <span>£{Number(r.cost).toFixed(4)}</span>
                   <span>{Number(r.calls).toLocaleString()} calls</span>
                   <span>{Number(r.tokens).toLocaleString()} tokens</span>
                 </div>

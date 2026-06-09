@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { getConfig } from "./aiCost";
 
 const router = Router();
 
@@ -9,6 +10,12 @@ const router = Router();
  * Returns: { game, action, type, minutes, confidence }
  */
 router.post("/screenshot-analyze", async (req, res) => {
+  const { enabled } = await getConfig('screenshot');
+  if (!enabled) {
+    res.status(503).json({ error: "Feature disabled — enable it in AI Cost Settings to use this feature." });
+    return;
+  }
+
   const { imageBase64, mimeType, existingGames } = req.body as {
     imageBase64?: string;
     mimeType?: string;
@@ -24,10 +31,12 @@ router.post("/screenshot-analyze", async (req, res) => {
     ? `\n\nKnown games in this library (match exactly if visible): ${existingGames.slice(0, 30).join(", ")}.`
     : "";
 
+  const { model, max_tokens } = await getConfig('screenshot');
+
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
-      max_completion_tokens: 400,
+      model,
+      max_completion_tokens: max_tokens,
       messages: [
         {
           role: "user",
