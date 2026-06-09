@@ -45,9 +45,9 @@ function buildProxy(route: string) {
         return new Proxy(val, {
           get(rTarget: any, rProp: string) {
             const rVal = rTarget[rProp];
-            if (rProp === "create" && rVal) {
+            if (rProp === "create" && typeof rVal === "function") {
               return async (params: any, options?: any) => {
-                const response = await rTarget[rProp].create(params, options);
+                const response = await rVal.call(rTarget, params, options);
                 await logIfUsage(params, response, route);
                 return response;
               };

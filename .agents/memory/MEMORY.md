@@ -6,3 +6,4 @@
 - [Express route restart](express-route-pickup.md) — api-server uses nodemon/tsx but new routes registered at module load require a workflow restart to be picked up; HMR is frontend-only
 - [Expo port configuration](expo-port-config.md) — Expo workflows fail DIDNT_OPEN_A_PORT if localPort isn't in .replit [[ports]]; must use a mapped port like 8082.
 - [Issue code diagnosis](issue-code-diagnosis.md) — reporter logs bugs + proposes a fix to REVIEW only; user explicitly rejected auto-edit/commit; keep read-only + anti-hallucination guard
+- [aiLogger responses proxy](ailogger-responses-proxy.md) — responses.create wrapper called responses.create.create (double-create bug); use rVal.call(rTarget,...); chat path is 2-level, responses is 1-level
