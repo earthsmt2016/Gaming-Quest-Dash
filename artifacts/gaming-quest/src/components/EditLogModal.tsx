@@ -25,11 +25,11 @@ function fromDatetimeLocal(dtl: string): string {
 }
 
 export default function EditLogModal({ entry, onClose, onSave, onDelete }: EditLogModalProps) {
-  const [game, setGame] = useState('');
-  const [action, setAction] = useState('');
-  const [minutes, setMinutes] = useState(0);
-  const [type, setType] = useState<ActionType>('progress');
-  const [timestamp, setTimestamp] = useState('');
+const [game, setGame] = useState(entry?.game ?? '');
+const [action, setAction] = useState(entry?.action ?? '');
+const [minutes, setMinutes] = useState(entry?.minutes ?? 0);
+const [type, setType] = useState<ActionType>(entry?.type ?? 'progress');
+const [timestamp, setTimestamp] = useState(entry?.timestamp ? toDatetimeLocal(entry.timestamp) : '');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -41,7 +41,7 @@ export default function EditLogModal({ entry, onClose, onSave, onDelete }: EditL
       setAction(entry.action);
       setMinutes(entry.minutes);
       setType(entry.type);
-      setTimestamp(toDatetimeLocal(entry.timestamp));
+      setTimestamp(entry.timestamp ? toDatetimeLocal(entry.timestamp) : '');
       setError('');
       setConfirmDelete(false);
       setSaving(false);
