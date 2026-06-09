@@ -691,7 +691,10 @@ router.get("/quests/suggested", async (_req, res) => {
   try {
     await ensureTables();
     const result = await pool.query(
-      `SELECT * FROM quests WHERE status='suggested' ORDER BY estimated_minutes ASC`
+      `SELECT * FROM quests
+       WHERE status='suggested'
+         AND game NOT IN (SELECT game FROM game_pauses)
+       ORDER BY estimated_minutes ASC`
     );
     res.json(result.rows);
   } catch (err) {

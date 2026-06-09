@@ -262,8 +262,15 @@ export default function App() {
 
   const handleResetFilters = useCallback(() => {
     setGameFilter('all'); setTypeFilter('all');
-    setFromDate(''); setToDate('');
-  }, []);
+    if (logs.length) {
+      const sorted = [...logs].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const localDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      setFromDate(localDate(sorted[0].date));
+      setToDate(localDate(sorted[sorted.length - 1].date));
+    } else {
+      setFromDate(''); setToDate('');
+    }
+  }, [logs]);
 
   const handleToggleCompletion = useCallback(async (game: string) => {
     const nowDone = await toggleCompletion(game);

@@ -34,6 +34,11 @@ router.post("/paused/:game", async (req, res) => {
       res.json({ paused: false });
     } else {
       await pool.query("INSERT INTO game_pauses (game) VALUES ($1) ON CONFLICT DO NOTHING", [game]);
+      // Archive any suggested quests for this game so they leave the inbox immediately.
+      await pool.query(
+        `UPDATE quests SET status='archived' WHERE game=$1 AND status='suggested'`,
+        [game]
+      );
       res.json({ paused: true });
     }
   } catch {
