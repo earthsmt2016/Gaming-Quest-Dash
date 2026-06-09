@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { aiForRoute } from "../lib/aiLogger";
+import { aiForRoute, loggedOpenai } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 
 const router = Router();

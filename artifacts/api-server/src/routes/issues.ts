@@ -618,10 +618,9 @@ router.post("/issues/apply-fix", async (req, res) => {
         });
       }
       if (isBackend) {
-        // Respond before restarting so the client gets the reply
-        res.json({ ok: true, file, requiresRestart: true });
-        setTimeout(() => process.exit(0), 400);
-        return;
+        // Don't process.exit — it triggers Replit's crash-loop detector.
+        // The new dist/ is built; it takes effect on the next redeploy.
+        return res.json({ ok: true, file, requiresRestart: true, requiresRedeploy: true });
       }
       return res.json({ ok: true, file, requiresReload: true });
     }

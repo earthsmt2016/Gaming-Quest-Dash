@@ -260,6 +260,13 @@ export default function App() {
     setToDate(localDate(e));
   }, []);
 
+  const handleToday = useCallback(() => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    setFromDate(today);
+    setToDate(today);
+  }, []);
+
   const handleResetFilters = useCallback(() => {
     setGameFilter('all'); setTypeFilter('all');
     if (logs.length) {
@@ -602,6 +609,7 @@ export default function App() {
                         </label>
                       ))}
                       <div style={{ display: 'flex', gap: '6px', alignSelf: 'flex-end' }}>
+                        <button className="btn soft" onClick={handleToday} style={{ fontSize: '12px', padding: '7px 12px' }}>Today</button>
                         <button className="btn soft" onClick={handleThisWeek} style={{ fontSize: '12px', padding: '7px 12px' }}>This week</button>
                         <button className="btn" onClick={handleResetFilters} style={{ fontSize: '12px', padding: '7px 12px' }}>Reset</button>
                       </div>

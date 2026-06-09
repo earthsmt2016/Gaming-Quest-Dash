@@ -52,6 +52,7 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
   const [applyErr, setApplyErr] = useState('');
   const [requiresRestart, setRequiresRestart] = useState(false);
   const [requiresReload, setRequiresReload] = useState(false);
+  const [requiresRedeploy, setRequiresRedeploy] = useState(false);
   const conf = CONFIDENCE_META[diagnosis.confidence];
   const lineLabel = diagnosis.startLine
     ? (diagnosis.endLine && diagnosis.endLine !== diagnosis.startLine
@@ -73,7 +74,7 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
     setApplyErr('');
     applyIssueFix({ file: diagnosis.file, currentCode: diagnosis.currentCode, proposedCode: diagnosis.proposedCode })
       .then(r => {
-        if (r.ok) { setApplyState('applied'); setRequiresRestart(Boolean(r.requiresRestart)); setRequiresReload(Boolean(r.requiresReload)); }
+        if (r.ok) { setApplyState('applied'); setRequiresRestart(Boolean(r.requiresRestart)); setRequiresReload(Boolean(r.requiresReload)); setRequiresRedeploy(Boolean(r.requiresRedeploy)); }
         else { setApplyState('error'); setApplyErr(r.error || 'Failed to apply'); }
       })
       .catch(e => { setApplyState('error'); setApplyErr(String(e?.message || e)); });
@@ -154,7 +155,9 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
         {applyState === 'applied'
           ? requiresRestart
             ? isProd
-              ? `Applied & rebuilt. The server is restarting — wait a few seconds then reload the page.`
+              ? requiresRedeploy
+                ? `Applied & rebuilt. Redeploy the app for the backend change to take effect.`
+                : `Applied & rebuilt. The server is restarting — wait a few seconds then reload the page.`
               : `Applied to ${diagnosis.file}. Restart the API server workflow for the change to take effect — roll back to a checkpoint to undo.`
             : requiresReload
               ? `Applied & rebuilt. Hard-refresh the page to load the new version (Cmd+Shift+R / Ctrl+Shift+R).`

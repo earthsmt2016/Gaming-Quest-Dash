@@ -438,7 +438,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>
                     {sessionTimeLabel()} I feel like…
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
                     {PLATFORM_MODES.map(m => {
                       const active = platformMode === m.id;
                       return (
@@ -446,12 +446,12 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
                           key={m.id}
                           onClick={() => setPlatformMode(m.id)}
                           style={{
-                            display: 'flex', flexDirection: 'column', alignItems: 'center',
-                            padding: '8px 14px', borderRadius: '10px', cursor: 'pointer',
+                            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                            padding: '8px 6px', borderRadius: '10px', cursor: 'pointer',
                             border: active ? '2px solid var(--accent)' : '1.5px solid var(--line)',
                             background: active ? 'var(--accent)' : 'var(--paper)',
                             color: active ? '#fff' : 'var(--text)',
-                            fontFamily: 'inherit', transition: 'all 0.12s', minWidth: '72px',
+                            fontFamily: 'inherit', transition: 'all 0.12s',
                           }}
                         >
                           <span style={{ fontSize: '20px', lineHeight: 1 }}>{m.icon}</span>
