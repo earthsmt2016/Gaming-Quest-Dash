@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   triageIssue, createIssue, fetchPaused, fetchCompletions,
   togglePaused, toggleCompletion,
-  IssueTriage, IssueFix, IssueFixType,
+  IssueTriage, IssueFix, IssueFixType, IssueDiagnosis,
 } from '../lib/api';
 
 interface Props {
@@ -17,6 +17,100 @@ const FIX_META: Record<IssueFixType, { icon: string; color: string; label: strin
   remove_hold:   { icon: '▶', color: '#00897b', label: 'Resume game' },
   mark_complete: { icon: '🏆', color: '#558b2f', label: 'Mark complete' },
 };
+
+const CONFIDENCE_META: Record<IssueDiagnosis['confidence'], { label: string; color: string }> = {
+  high:   { label: 'High confidence', color: '#558b2f' },
+  medium: { label: 'Medium confidence', color: '#f57c00' },
+  low:    { label: 'Low confidence', color: '#9b3e6f' },
+};
+
+function CodeBlock({ code, tone }: { code: string; tone: 'remove' | 'add' }) {
+  const bg = tone === 'remove' ? 'rgba(198,40,40,0.07)' : 'rgba(85,139,47,0.09)';
+  const border = tone === 'remove' ? 'rgba(198,40,40,0.35)' : 'rgba(85,139,47,0.45)';
+  const marker = tone === 'remove' ? '#c62828' : '#558b2f';
+  return (
+    <pre style={{
+      margin: '0 0 6px', padding: '8px 10px', background: bg, border: `1px solid ${border}`,
+      borderLeft: `3px solid ${marker}`, borderRadius: '8px', overflowX: 'auto',
+      fontSize: '11px', lineHeight: 1.5, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      color: 'var(--ink)', whiteSpace: 'pre',
+    }}>
+      <code>{code}</code>
+    </pre>
+  );
+}
+
+function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
+  const [copied, setCopied] = useState(false);
+  const conf = CONFIDENCE_META[diagnosis.confidence];
+  const lineLabel = diagnosis.startLine
+    ? (diagnosis.endLine && diagnosis.endLine !== diagnosis.startLine
+        ? `lines ${diagnosis.startLine}–${diagnosis.endLine}`
+        : `line ${diagnosis.startLine}`)
+    : '';
+
+  const copy = useCallback(() => {
+    navigator.clipboard?.writeText(diagnosis.proposedCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    }).catch(() => {});
+  }, [diagnosis.proposedCode]);
+
+  return (
+    <div style={{
+      textAlign: 'left', marginTop: '4px', marginBottom: '12px', padding: '11px',
+      background: 'var(--paper-2)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink)' }}>🔍 Possible cause found</span>
+        <span style={{ fontSize: '10px', fontWeight: 700, color: '#fff', background: conf.color, borderRadius: '999px', padding: '2px 7px', whiteSpace: 'nowrap' }}>
+          {conf.label}
+        </span>
+      </div>
+
+      {diagnosis.cause && (
+        <div style={{ fontSize: '12px', color: 'var(--ink)', lineHeight: 1.5, marginBottom: '8px' }}>{diagnosis.cause}</div>
+      )}
+
+      <div style={{
+        fontSize: '11px', color: 'var(--muted)', marginBottom: '8px',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        overflowWrap: 'anywhere',
+      }}>
+        {diagnosis.file}{lineLabel ? ` · ${lineLabel}` : ''}
+      </div>
+
+      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', fontWeight: 700, marginBottom: '4px' }}>
+        Current
+      </div>
+      <CodeBlock code={diagnosis.currentCode} tone="remove" />
+
+      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', fontWeight: 700, margin: '4px 0' }}>
+        Proposed change
+      </div>
+      <CodeBlock code={diagnosis.proposedCode} tone="add" />
+
+      {diagnosis.explanation && (
+        <div style={{ fontSize: '12px', color: 'var(--ink)', lineHeight: 1.5, marginTop: '6px' }}>{diagnosis.explanation}</div>
+      )}
+
+      <button
+        onClick={copy}
+        style={{
+          marginTop: '9px', width: '100%', background: 'var(--paper)', color: 'var(--accent)',
+          border: '1px solid var(--accent)', borderRadius: '8px', padding: '7px', fontSize: '12px',
+          fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+        }}
+      >
+        {copied ? '✓ Copied' : 'Copy proposed change'}
+      </button>
+
+      <div style={{ fontSize: '10px', color: 'var(--muted)', lineHeight: 1.4, marginTop: '8px' }}>
+        Nothing was changed automatically. This is a suggestion — review it in your editor before applying.
+      </div>
+    </div>
+  );
+}
 
 async function applyFix(fix: IssueFix): Promise<void> {
   if (fix.type === 'put_on_hold') {
@@ -250,6 +344,7 @@ export default function IssueReporter({ page }: Props) {
           <div style={{ fontSize: '12px', color: 'var(--muted)', textAlign: 'center', lineHeight: 1.5, marginBottom: '12px' }}>
             {result?.summary || "Thanks — this couldn't be fixed automatically, so it's been logged and we'll look into it."}
           </div>
+          {result?.diagnosis && <DiagnosisPanel diagnosis={result.diagnosis} />}
           <button className="btn primary" onClick={close} style={{ width: '100%' }}>Close</button>
         </div>
       )}

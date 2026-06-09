@@ -1031,6 +1031,17 @@ export interface IssueFix {
   detail?: string;
 }
 
+export interface IssueDiagnosis {
+  file: string;
+  startLine: number;
+  endLine: number;
+  cause: string;
+  currentCode: string;
+  proposedCode: string;
+  explanation: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+
 export interface IssueTriage {
   category: 'self_serve' | 'auto_fix' | 'log';
   summary: string;
@@ -1038,6 +1049,22 @@ export interface IssueTriage {
   fixes: IssueFix[];
   logged: boolean;
   issue?: Issue;
+  diagnosis?: IssueDiagnosis | null;
+}
+
+function parseDiagnosis(raw: any): IssueDiagnosis | null {
+  if (!raw || typeof raw !== 'object') return null;
+  if (typeof raw.file !== 'string' || typeof raw.currentCode !== 'string' || typeof raw.proposedCode !== 'string') return null;
+  return {
+    file: raw.file,
+    startLine: Number(raw.startLine) || 0,
+    endLine: Number(raw.endLine) || 0,
+    cause: typeof raw.cause === 'string' ? raw.cause : '',
+    currentCode: raw.currentCode,
+    proposedCode: raw.proposedCode,
+    explanation: typeof raw.explanation === 'string' ? raw.explanation : '',
+    confidence: raw.confidence === 'high' || raw.confidence === 'low' ? raw.confidence : 'medium',
+  };
 }
 
 export async function triageIssue(data: { page: string; element: string; description: string }): Promise<IssueTriage> {
@@ -1055,6 +1082,7 @@ export async function triageIssue(data: { page: string; element: string; descrip
     fixes: Array.isArray(raw.fixes) ? raw.fixes : [],
     logged: Boolean(raw.logged),
     issue: raw.issue,
+    diagnosis: parseDiagnosis(raw.diagnosis),
   };
 }
 

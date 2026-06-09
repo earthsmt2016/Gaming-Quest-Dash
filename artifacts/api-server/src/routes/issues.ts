@@ -1,4 +1,6 @@
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
 import { pool } from "@workspace/db";
 import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
@@ -62,6 +64,197 @@ Respond with this exact JSON shape:
   "fixes": [{ "type": "put_on_hold" | "remove_hold" | "mark_complete", "game": "Exact Game Name", "label": "Put X on hold", "detail": "short reason" }]
 }
 Rules: steps is [] when not relevant. fixes is [] unless category is "auto_fix". Never invent game names. Keep summary friendly and concise. When in doubt, prefer "log".`;
+
+// ---------------------------------------------------------------------------
+// Code diagnosis: for issues that look like real bugs, point at the likely
+// source file/lines and propose a fix to REVIEW. Read-only — never edits files.
+// ---------------------------------------------------------------------------
+
+export interface CodeDiagnosis {
+  file: string;
+  startLine: number;
+  endLine: number;
+  cause: string;
+  currentCode: string;
+  proposedCode: string;
+  explanation: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+
+function findWorkspaceRoot(): string {
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i++) {
+    if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return process.cwd();
+}
+
+const WORKSPACE_ROOT = findWorkspaceRoot();
+const SOURCE_ROOTS = [
+  'artifacts/gaming-quest/src',
+  'artifacts/api-server/src',
+]
+  .map(r => path.join(WORKSPACE_ROOT, r))
+  .filter(p => fs.existsSync(p));
+
+function listSourceFiles(): string[] {
+  const out: string[] = [];
+  const exts = new Set(['.ts', '.tsx']);
+  const skipDirs = new Set(['node_modules', 'dist', 'build', '.vite', 'coverage']);
+  for (const root of SOURCE_ROOTS) {
+    const stack = [root];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+      for (const e of entries) {
+        if (e.name.startsWith('.')) continue;
+        const full = path.join(cur, e.name);
+        if (e.isDirectory()) {
+          if (!skipDirs.has(e.name)) stack.push(full);
+        } else if (exts.has(path.extname(e.name)) && !e.name.endsWith('.d.ts')) {
+          out.push(path.relative(WORKSPACE_ROOT, full));
+        }
+      }
+    }
+  }
+  return out.sort();
+}
+
+// Reads a file ONLY if it resolves inside an allowed source root (no traversal).
+function safeReadSource(relPath: string): string | null {
+  const full = path.resolve(WORKSPACE_ROOT, relPath);
+  if (!SOURCE_ROOTS.some(root => full === root || full.startsWith(root + path.sep))) return null;
+  try {
+    const stat = fs.statSync(full);
+    if (!stat.isFile() || stat.size > 200_000) return null;
+    return fs.readFileSync(full, 'utf8');
+  } catch { return null; }
+}
+
+function numberLines(content: string, max = 900): string {
+  const lines = content.split('\n');
+  const body = lines.slice(0, max).map((l, i) => `${i + 1}\t${l}`).join('\n');
+  return lines.length > max ? `${body}\n… (${lines.length - max} more lines truncated)` : body;
+}
+
+const normalizeWs = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+async function diagnoseCode(
+  ctx: { page: string; element: string; description: string },
+  model: string,
+  maxTokens: number,
+): Promise<CodeDiagnosis | null> {
+  const files = listSourceFiles();
+  if (!files.length) return null;
+
+  // Step 1 — locate the most relevant file(s).
+  const locateSys = `You are a senior engineer for the "Gaming Quest Dashboard" codebase. Given a bug report and a list of source files, pick the 1-3 files MOST likely to contain the cause. Reply with STRICT JSON only: {"files":["relative/path.tsx"]}. Only choose paths from the provided list, copied EXACTLY. Prefer frontend components (artifacts/gaming-quest/src) for UI bugs and api-server routes for data/server bugs.`;
+  const locateUser = `${APP_GUIDE}\n\nSOURCE FILES:\n${files.join('\n')}\n\nBUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}`;
+
+  const locateRes = await aiForRoute('issue-diagnosis').chat.completions.create({
+    model,
+    max_completion_tokens: 300,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: locateSys },
+      { role: 'user', content: locateUser },
+    ],
+  });
+
+  let chosen: string[] = [];
+  try {
+    const p = JSON.parse(locateRes.choices[0]?.message?.content ?? '{}');
+    if (Array.isArray(p.files)) {
+      chosen = p.files.filter((f: any) => typeof f === 'string' && files.includes(f)).slice(0, 3);
+    }
+  } catch { /* ignore */ }
+  if (!chosen.length) return null;
+
+  // Cap total prompt size so diagnosis cost/latency stays bounded as the codebase grows.
+  const MAX_CONTEXT_CHARS = 60_000;
+  const fileBlocks: string[] = [];
+  let budget = MAX_CONTEXT_CHARS;
+  for (const rel of chosen) {
+    const content = safeReadSource(rel);
+    if (content == null) continue;
+    const block = `===== FILE: ${rel} =====\n${numberLines(content)}`;
+    if (block.length > budget && fileBlocks.length > 0) break;
+    fileBlocks.push(block.slice(0, budget));
+    budget -= block.length;
+    if (budget <= 0) break;
+  }
+  if (!fileBlocks.length) return null;
+
+  // Step 2 — diagnose and propose a minimal change.
+  const diagSys = `You are a senior engineer diagnosing a bug in the "Gaming Quest Dashboard". You are given the full content of the most relevant source file(s), each line prefixed with its line number and a tab, plus a bug report. Identify the single most likely root cause and propose a MINIMAL code change to fix it.
+Reply with STRICT JSON only:
+{
+  "found": true | false,
+  "file": "exact relative path from the provided files",
+  "startLine": <first line number of the snippet to change>,
+  "endLine": <last line number of the snippet to change>,
+  "currentCode": "the exact existing code for those lines, WITHOUT the line-number prefixes",
+  "proposedCode": "the replacement code for those lines",
+  "cause": "1-2 sentence plain-English root cause",
+  "explanation": "1-3 sentences on why this change fixes it",
+  "confidence": "low" | "medium" | "high"
+}
+Set found=false if you cannot localize a concrete code-level cause. Keep the snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.`;
+  const diagUser = `BUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}\n\n${fileBlocks.join('\n\n')}`;
+
+  const diagRes = await aiForRoute('issue-diagnosis').chat.completions.create({
+    model,
+    max_completion_tokens: maxTokens,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: diagSys },
+      { role: 'user', content: diagUser },
+    ],
+  });
+
+  let d: any = null;
+  try { d = JSON.parse(diagRes.choices[0]?.message?.content ?? '{}'); } catch { return null; }
+  if (!d || typeof d !== 'object' || d.found === false) return null;
+  if (typeof d.file !== 'string' || !chosen.includes(d.file)) return null;
+
+  const startLine = Number(d.startLine);
+  const endLine = Number(d.endLine);
+  if (!Number.isFinite(startLine) || !Number.isFinite(endLine) || startLine < 1 || endLine < startLine) return null;
+  if (typeof d.currentCode !== 'string' || typeof d.proposedCode !== 'string') return null;
+  if (!d.currentCode.trim() || !d.proposedCode.trim()) return null;
+
+  // Anti-hallucination guard: the claimed "current code" must actually exist in the file.
+  const fileContent = safeReadSource(d.file) ?? '';
+  if (!normalizeWs(fileContent).includes(normalizeWs(d.currentCode))) return null;
+
+  const confidence = d.confidence === 'high' || d.confidence === 'low' ? d.confidence : 'medium';
+  return {
+    file: d.file,
+    startLine,
+    endLine,
+    cause: typeof d.cause === 'string' ? d.cause.slice(0, 400) : '',
+    currentCode: d.currentCode.slice(0, 2000),
+    proposedCode: d.proposedCode.slice(0, 2000),
+    explanation: typeof d.explanation === 'string' ? d.explanation.slice(0, 500) : '',
+    confidence,
+  };
+}
+
+// Best-effort: never throw, gated behind its own feature toggle.
+async function maybeDiagnose(ctx: { page: string; element: string; description: string }): Promise<CodeDiagnosis | null> {
+  try {
+    const cfg = await getConfig('issue-diagnosis');
+    if (!cfg.enabled) return null;
+    return await diagnoseCode(ctx, cfg.model, cfg.max_tokens);
+  } catch (err) {
+    console.error("issue diagnosis error:", err);
+    return null;
+  }
+}
 
 // POST /api/issues/triage — AI triage: troubleshoot, auto-fix, or log
 router.post("/issues/triage", async (req, res) => {
@@ -153,6 +346,7 @@ router.post("/issues/triage", async (req, res) => {
 
     if (category === 'log' || (steps.length === 0 && fixes.length === 0)) {
       const issue = await logIssue(page ?? '', element ?? '', desc);
+      const diagnosis = await maybeDiagnose({ page: page ?? '', element: element ?? '', description: desc });
       res.json({
         category: 'log',
         logged: true,
@@ -160,6 +354,7 @@ router.post("/issues/triage", async (req, res) => {
         summary: summary || "Thanks — this looks like something to look into. It's been logged for review.",
         steps: [],
         fixes: [],
+        diagnosis,
       });
       return;
     }
