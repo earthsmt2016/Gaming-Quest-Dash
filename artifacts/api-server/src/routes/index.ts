@@ -19,6 +19,8 @@ import goalsRouter from "./goals";
 import gameKnowledgeRouter from "./gameKnowledge";
 import radarRouter from "./radar";
 import settingsRouter from "./settings";
+import aiUsageRouter from "./aiUsage";
+import issuesRouter from "./issues";
 
 const router: IRouter = Router();
 
@@ -42,5 +44,7 @@ router.use(goalsRouter);
 router.use(gameKnowledgeRouter);
 router.use(radarRouter);
 router.use(settingsRouter);
+router.use(aiUsageRouter);
+router.use(issuesRouter);
 
 export default router;

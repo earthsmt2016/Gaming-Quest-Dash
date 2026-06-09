@@ -1002,3 +1002,41 @@ export async function saveSettings(s: HealthSettings): Promise<HealthSettings> {
   if (!res.ok) throw new Error('Failed to save settings');
   return res.json();
 }
+
+export interface Issue {
+  id: number;
+  page: string;
+  element: string | null;
+  description: string;
+  status: string;
+  created_at: string;
+}
+
+export async function createIssue(data: { page: string; element: string; description: string }): Promise<Issue> {
+  const res = await fetch(`${BASE}/issues`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to create issue');
+  return res.json();
+}
+
+export async function fetchIssues(): Promise<Issue[]> {
+  const res = await fetch(`${BASE}/issues`);
+  if (!res.ok) throw new Error('Failed to fetch issues');
+  return res.json();
+}
+
+export interface AiUsageSummary {
+  today: { cost: string; calls: string; tokens: string };
+  week: { cost: string; calls: string; tokens: string };
+  byRoute: { route: string; model: string; calls: string; cost: string; tokens: string }[];
+  daily: { day: string; cost: string; calls: string }[];
+}
+
+export async function fetchAiUsage(): Promise<AiUsageSummary> {
+  const res = await fetch(`${BASE}/ai-usage`);
+  if (!res.ok) throw new Error('Failed to fetch AI usage');
+  return res.json();
+}
