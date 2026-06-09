@@ -686,7 +686,8 @@ interface SidebarProps {
 }
 
 function DesktopSidebar(props: SidebarProps) {
-  const [qaOpen, setQaOpen] = React.useState(false);
+  const [qaOpen, setQaOpen] = React.useState(true);
+  const [rawLogsOpen, setRawLogsOpen] = React.useState(false);
   const [qaDateTime, setQaDateTime] = React.useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -811,28 +812,37 @@ function DesktopSidebar(props: SidebarProps) {
         <hr style={{ border: 'none', borderTop: '1px solid var(--line)', margin: 0 }} />
 
         {/* Raw Logs */}
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div className="eyebrow">Raw logs</div>
-          <p className="muted" style={{ margin: 0, fontSize: '13px' }}>
-            Format: <code>timestamp | game | action | minutes | type</code><br />
-            <span style={{ fontSize: '12px' }}>Use <code>0</code> minutes for achievements with no playtime.</span>
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <label style={labelWrapStyle}>
-              <span>Paste logs here</span>
-              <textarea
-                value={props.rawLogs}
-                onChange={e => props.onRawLogsChange(e.target.value)}
-                placeholder="2026-05-13 22:26 | Mario Kart Tour | 1st place | 60 | rank-up"
-                style={{ width: '100%', minHeight: '140px', border: '1px solid var(--line)', background: 'var(--paper)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', fontSize: '14px', resize: 'vertical' }}
-              />
-            </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <button className="btn primary" onClick={props.onImport} disabled={props.saving}>{props.saving ? 'Saving…' : 'Import'}</button>
-              <button className="btn" onClick={props.onSample} disabled={props.saving}>Sample data</button>
-              <button className="btn" onClick={props.onClear} disabled={props.saving}>Clear all</button>
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button
+            onClick={() => setRawLogsOpen(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%' }}
+          >
+            <div className="eyebrow" style={{ margin: 0 }}>Raw logs</div>
+            <span style={{ fontSize: '18px', color: 'var(--muted)', lineHeight: 1 }}>{rawLogsOpen ? '−' : '+'}</span>
+          </button>
+
+          {rawLogsOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p className="muted" style={{ margin: 0, fontSize: '13px' }}>
+                Format: <code>timestamp | game | action | minutes | type</code><br />
+                <span style={{ fontSize: '12px' }}>Use <code>0</code> minutes for achievements with no playtime.</span>
+              </p>
+              <label style={labelWrapStyle}>
+                <span>Paste logs here</span>
+                <textarea
+                  value={props.rawLogs}
+                  onChange={e => props.onRawLogsChange(e.target.value)}
+                  placeholder="2026-05-13 22:26 | Mario Kart Tour | 1st place | 60 | rank-up"
+                  style={{ width: '100%', minHeight: '140px', border: '1px solid var(--line)', background: 'var(--paper)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', fontSize: '14px', resize: 'vertical' }}
+                />
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                <button className="btn primary" onClick={props.onImport} disabled={props.saving}>{props.saving ? 'Saving…' : 'Import'}</button>
+                <button className="btn" onClick={props.onSample} disabled={props.saving}>Sample data</button>
+                <button className="btn" onClick={props.onClear} disabled={props.saving}>Clear all</button>
+              </div>
             </div>
-          </div>
+          )}
         </section>
       </aside>
 
