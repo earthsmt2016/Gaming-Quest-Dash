@@ -58,6 +58,7 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
         : `line ${diagnosis.startLine}`)
     : '';
   const isBackend = diagnosis.file.includes('api-server/');
+  const isProd = import.meta.env.PROD;
 
   const copy = useCallback(() => {
     navigator.clipboard?.writeText(diagnosis.proposedCode).then(() => {
@@ -116,22 +117,24 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
       )}
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '9px' }}>
-        <button
-          onClick={apply}
-          disabled={applyState === 'applying' || applyState === 'applied'}
-          style={{
-            flex: 2, background: applyState === 'applied' ? '#558b2f' : applyState === 'error' ? '#c62828' : 'var(--accent)',
-            color: '#fff', border: 'none', borderRadius: '8px', padding: '7px', fontSize: '12px',
-            fontWeight: 700, fontFamily: 'inherit',
-            cursor: applyState === 'applying' || applyState === 'applied' ? 'default' : 'pointer',
-            opacity: applyState === 'applying' ? 0.7 : 1,
-          }}
-        >
-          {applyState === 'applying' ? 'Applying…'
-            : applyState === 'applied' ? '✓ Applied'
-            : applyState === 'error' ? '✗ Retry apply'
-            : 'Apply fix'}
-        </button>
+        {!isProd && (
+          <button
+            onClick={apply}
+            disabled={applyState === 'applying' || applyState === 'applied'}
+            style={{
+              flex: 2, background: applyState === 'applied' ? '#558b2f' : applyState === 'error' ? '#c62828' : 'var(--accent)',
+              color: '#fff', border: 'none', borderRadius: '8px', padding: '7px', fontSize: '12px',
+              fontWeight: 700, fontFamily: 'inherit',
+              cursor: applyState === 'applying' || applyState === 'applied' ? 'default' : 'pointer',
+              opacity: applyState === 'applying' ? 0.7 : 1,
+            }}
+          >
+            {applyState === 'applying' ? 'Applying…'
+              : applyState === 'applied' ? '✓ Applied'
+              : applyState === 'error' ? '✗ Retry apply'
+              : 'Apply fix'}
+          </button>
+        )}
         <button
           onClick={copy}
           style={{
@@ -149,13 +152,15 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
       )}
 
       <div style={{ fontSize: '10px', color: 'var(--muted)', lineHeight: 1.4, marginTop: '8px' }}>
-        {applyState === 'applied'
-          ? requiresRestart
-            ? `Applied to ${diagnosis.file}. Restart the API server workflow for the change to take effect — roll back to a checkpoint to undo.`
-            : `Applied to ${diagnosis.file}. The app will reload with the change — roll back to a checkpoint to undo.`
-          : isBackend
-            ? 'This is a backend file. Applying writes the change to disk — the API server workflow must be restarted after. Review it first.'
-            : 'Applying writes this change directly to the file. Review it first — you can always roll back to a checkpoint to undo.'}
+        {isProd
+          ? 'Auto-apply is only available in the dev environment. Apply the fix there and redeploy to see it here.'
+          : applyState === 'applied'
+            ? requiresRestart
+              ? `Applied to ${diagnosis.file}. Restart the API server workflow for the change to take effect — roll back to a checkpoint to undo.`
+              : `Applied to ${diagnosis.file}. The app will reload with the change — roll back to a checkpoint to undo.`
+            : isBackend
+              ? 'This is a backend file. Applying writes the change to disk — the API server workflow must be restarted after. Review it first.'
+              : 'Applying writes this change directly to the file. Review it first — you can always roll back to a checkpoint to undo.'}
       </div>
     </div>
   );

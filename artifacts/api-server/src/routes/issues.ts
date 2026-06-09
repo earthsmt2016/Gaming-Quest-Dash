@@ -546,6 +546,9 @@ router.delete("/issues/:id", async (req, res) => {
 // and currentCode must match the file content EXACTLY exactly once.
 router.post("/issues/apply-fix", async (req, res) => {
   try {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ ok: false, error: "Auto-apply is only available in the development environment. Re-deploy after applying the fix locally." });
+    }
     const { file, currentCode, proposedCode } = req.body ?? {};
     if (typeof file !== "string" || typeof currentCode !== "string" || typeof proposedCode !== "string") {
       return res.status(400).json({ ok: false, error: "file, currentCode and proposedCode are required" });
