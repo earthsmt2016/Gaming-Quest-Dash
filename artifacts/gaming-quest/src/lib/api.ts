@@ -1067,6 +1067,19 @@ function parseDiagnosis(raw: any): IssueDiagnosis | null {
   };
 }
 
+export async function applyIssueFix(data: { file: string; currentCode: string; proposedCode: string }): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`${BASE}/issues/apply-fix`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const raw = await res.json().catch(() => ({}));
+  if (!res.ok || !raw.ok) {
+    return { ok: false, error: raw.error || 'Failed to apply fix' };
+  }
+  return { ok: true };
+}
+
 export async function triageIssue(data: { page: string; element: string; description: string }): Promise<IssueTriage> {
   const res = await fetch(`${BASE}/issues/triage`, {
     method: 'POST',

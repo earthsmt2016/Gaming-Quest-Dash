@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   triageIssue, createIssue, fetchPaused, fetchCompletions,
-  togglePaused, toggleCompletion,
+  togglePaused, toggleCompletion, applyIssueFix,
   IssueTriage, IssueFix, IssueFixType, IssueDiagnosis,
 } from '../lib/api';
 
@@ -40,14 +40,20 @@ function CodeBlock({ code, tone }: { code: string; tone: 'remove' | 'add' }) {
   );
 }
 
+type ApplyState = 'idle' | 'applying' | 'applied' | 'error';
+
 function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
   const [copied, setCopied] = useState(false);
+  const [applyState, setApplyState] = useState<ApplyState>('idle');
+  const [applyErr, setApplyErr] = useState('');
   const conf = CONFIDENCE_META[diagnosis.confidence];
   const lineLabel = diagnosis.startLine
     ? (diagnosis.endLine && diagnosis.endLine !== diagnosis.startLine
         ? `lines ${diagnosis.startLine}–${diagnosis.endLine}`
         : `line ${diagnosis.startLine}`)
     : '';
+  // Auto-apply is only offered for frontend dashboard files (matches the server's APPLY_ROOTS).
+  const canApply = diagnosis.file.includes('gaming-quest/');
 
   const copy = useCallback(() => {
     navigator.clipboard?.writeText(diagnosis.proposedCode).then(() => {
@@ -55,6 +61,17 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
       setTimeout(() => setCopied(false), 1800);
     }).catch(() => {});
   }, [diagnosis.proposedCode]);
+
+  const apply = useCallback(() => {
+    setApplyState('applying');
+    setApplyErr('');
+    applyIssueFix({ file: diagnosis.file, currentCode: diagnosis.currentCode, proposedCode: diagnosis.proposedCode })
+      .then(r => {
+        if (r.ok) setApplyState('applied');
+        else { setApplyState('error'); setApplyErr(r.error || 'Failed to apply'); }
+      })
+      .catch(e => { setApplyState('error'); setApplyErr(String(e?.message || e)); });
+  }, [diagnosis.file, diagnosis.currentCode, diagnosis.proposedCode]);
 
   return (
     <div style={{
@@ -94,19 +111,47 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
         <div style={{ fontSize: '12px', color: 'var(--ink)', lineHeight: 1.5, marginTop: '6px' }}>{diagnosis.explanation}</div>
       )}
 
-      <button
-        onClick={copy}
-        style={{
-          marginTop: '9px', width: '100%', background: 'var(--paper)', color: 'var(--accent)',
-          border: '1px solid var(--accent)', borderRadius: '8px', padding: '7px', fontSize: '12px',
-          fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
-        }}
-      >
-        {copied ? '✓ Copied' : 'Copy proposed change'}
-      </button>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '9px' }}>
+        {canApply && (
+          <button
+            onClick={apply}
+            disabled={applyState === 'applying' || applyState === 'applied'}
+            style={{
+              flex: 2, background: applyState === 'applied' ? '#558b2f' : applyState === 'error' ? '#c62828' : 'var(--accent)',
+              color: '#fff', border: 'none', borderRadius: '8px', padding: '7px', fontSize: '12px',
+              fontWeight: 700, fontFamily: 'inherit',
+              cursor: applyState === 'applying' || applyState === 'applied' ? 'default' : 'pointer',
+              opacity: applyState === 'applying' ? 0.7 : 1,
+            }}
+          >
+            {applyState === 'applying' ? 'Applying…'
+              : applyState === 'applied' ? '✓ Applied'
+              : applyState === 'error' ? '✗ Retry apply'
+              : 'Apply fix'}
+          </button>
+        )}
+        <button
+          onClick={copy}
+          style={{
+            flex: 1, background: 'var(--paper)', color: 'var(--accent)',
+            border: '1px solid var(--accent)', borderRadius: '8px', padding: '7px', fontSize: '12px',
+            fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+          }}
+        >
+          {copied ? '✓ Copied' : 'Copy proposed change'}
+        </button>
+      </div>
+
+      {applyState === 'error' && applyErr && (
+        <div style={{ fontSize: '11px', color: '#c62828', lineHeight: 1.4, marginTop: '8px' }}>{applyErr}</div>
+      )}
 
       <div style={{ fontSize: '10px', color: 'var(--muted)', lineHeight: 1.4, marginTop: '8px' }}>
-        Nothing was changed automatically. This is a suggestion — review it in your editor before applying.
+        {applyState === 'applied'
+          ? `Applied to ${diagnosis.file}. The app will reload with the change — roll back to a checkpoint if you want to undo it.`
+          : canApply
+            ? 'Applying writes this change directly to the file. Review it first — you can always roll back to a checkpoint to undo.'
+            : 'This is a server-side file, so it can only be applied manually. Copy the change and apply it in your editor.'}
       </div>
     </div>
   );

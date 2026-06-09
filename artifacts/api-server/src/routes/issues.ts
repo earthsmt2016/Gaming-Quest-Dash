@@ -100,6 +100,12 @@ const SOURCE_ROOTS = [
   .map(r => path.join(WORKSPACE_ROOT, r))
   .filter(p => fs.existsSync(p));
 
+// Auto-apply is deliberately restricted to the frontend dashboard source only.
+// The server NEVER lets an HTTP caller overwrite its own (executable) backend
+// code, which would otherwise be a remote code-tampering vector. Diagnosis can
+// still READ backend files; it just cannot auto-write them.
+const APPLY_ROOTS = SOURCE_ROOTS.filter(p => p.includes(`${path.sep}gaming-quest${path.sep}`));
+
 function listSourceFiles(): string[] {
   const out: string[] = [];
   const exts = new Set(['.ts', '.tsx']);
@@ -416,6 +422,44 @@ router.delete("/issues/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Applies a single proposed diagnosis fix to a source file.
+// Safe by construction: the file must resolve inside an allowed source root,
+// and currentCode must match the file content EXACTLY exactly once.
+router.post("/issues/apply-fix", async (req, res) => {
+  try {
+    const { file, currentCode, proposedCode } = req.body ?? {};
+    if (typeof file !== "string" || typeof currentCode !== "string" || typeof proposedCode !== "string") {
+      return res.status(400).json({ ok: false, error: "file, currentCode and proposedCode are required" });
+    }
+    if (!currentCode.trim()) {
+      return res.status(400).json({ ok: false, error: "currentCode is empty" });
+    }
+    if (proposedCode.length > 8000) {
+      return res.status(400).json({ ok: false, error: "Proposed change is too large to auto-apply — apply it manually." });
+    }
+    const full = path.resolve(WORKSPACE_ROOT, file);
+    if (!APPLY_ROOTS.some(root => full === root || full.startsWith(root + path.sep))) {
+      return res.status(403).json({ ok: false, error: "Auto-apply is limited to dashboard (frontend) files — apply this change manually." });
+    }
+    const content = safeReadSource(file);
+    if (content == null) {
+      return res.status(404).json({ ok: false, error: "Could not read the target file" });
+    }
+    const occurrences = content.split(currentCode).length - 1;
+    if (occurrences === 0) {
+      return res.status(409).json({ ok: false, error: "The current code no longer matches the file exactly — apply it manually." });
+    }
+    if (occurrences > 1) {
+      return res.status(409).json({ ok: false, error: "The current code appears multiple times — apply it manually to avoid ambiguity." });
+    }
+    const updated = content.replace(currentCode, proposedCode);
+    fs.writeFileSync(full, updated, "utf8");
+    return res.json({ ok: true, file });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 
