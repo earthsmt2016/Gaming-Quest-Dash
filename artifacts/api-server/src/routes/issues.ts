@@ -587,9 +587,12 @@ router.post("/issues/apply-fix", async (req, res) => {
       } catch (buildErr: any) {
         // Revert the source change so prod stays consistent
         fs.writeFileSync(full, content, "utf8");
+        const rawOut = (buildErr.stderr?.toString?.() || buildErr.stdout?.toString?.() || buildErr.message || '').trim();
+        // Surface the last 800 chars so the user can see the actual error
+        const snippet = rawOut.length > 800 ? '…' + rawOut.slice(-800) : rawOut;
         return res.status(500).json({
           ok: false,
-          error: `Build failed after applying fix — change has been reverted. Check the proposed code for syntax errors.`,
+          error: `Build failed — change reverted.\n\n${snippet}`.trim(),
         });
       }
       if (isBackend) {

@@ -147,7 +147,7 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
       </div>
 
       {applyState === 'error' && applyErr && (
-        <div style={{ fontSize: '11px', color: '#c62828', lineHeight: 1.4, marginTop: '8px' }}>{applyErr}</div>
+        <div style={{ fontSize: '11px', color: '#c62828', lineHeight: 1.4, marginTop: '8px', whiteSpace: 'pre-wrap', fontFamily: applyErr.includes('\n') ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : 'inherit' }}>{applyErr}</div>
       )}
 
       <div style={{ fontSize: '10px', color: 'var(--muted)', lineHeight: 1.4, marginTop: '8px' }}>
