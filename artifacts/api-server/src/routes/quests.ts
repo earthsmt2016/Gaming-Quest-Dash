@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 
 const router = Router();
@@ -262,7 +262,7 @@ async function buildUserProfile(): Promise<void> {
     const { model, max_tokens } = await getConfig('quests');
 
     try {
-      const resp = await openai.chat.completions.create({
+      const resp = await aiForRoute('quests').chat.completions.create({
         model,
         max_completion_tokens: max_tokens,
         messages: [
@@ -512,7 +512,7 @@ Respond ONLY with valid JSON (no markdown):
     }
     const { model, max_tokens } = await getConfig('quests');
 
-    const response = await openai.chat.completions.create({
+    const response = await aiForRoute('quests').chat.completions.create({
       model,
       max_completion_tokens: max_tokens,
       messages,
@@ -833,7 +833,7 @@ Generate ONE mini-goal achievable in ${availableMinutes} minutes that makes a co
 
     const { model, max_tokens } = await getConfig('quests');
 
-    const response = await openai.chat.completions.create({
+    const response = await aiForRoute('quests').chat.completions.create({
       model,
       max_completion_tokens: max_tokens,
       messages: [
@@ -1149,7 +1149,7 @@ Respond ONLY with valid JSON (no markdown):
 
     const { model, max_tokens } = await getConfig('quests');
 
-    const response = await openai.chat.completions.create({
+    const response = await aiForRoute('quests').chat.completions.create({
       model,
       max_completion_tokens: max_tokens,
       messages: [

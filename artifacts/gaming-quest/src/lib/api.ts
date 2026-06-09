@@ -1028,6 +1028,23 @@ export async function fetchIssues(): Promise<Issue[]> {
   return res.json();
 }
 
+export async function resolveIssue(id: number, status: 'resolved' | 'open'): Promise<Issue> {
+  const res = await fetch(`${BASE}/issues/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error('Failed to update issue');
+  return res.json();
+}
+
+export async function deleteIssue(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/issues/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete issue');
+}
+
 export interface AiUsageSummary {
   today: { cost: string; calls: string; tokens: string };
   week: { cost: string; calls: string; tokens: string };

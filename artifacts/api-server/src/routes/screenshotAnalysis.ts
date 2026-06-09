@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 
 const router = Router();
@@ -34,7 +34,7 @@ router.post("/screenshot-analyze", async (req, res) => {
   const { model, max_tokens } = await getConfig('screenshot');
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await aiForRoute('screenshot').chat.completions.create({
       model,
       max_completion_tokens: max_tokens,
       messages: [

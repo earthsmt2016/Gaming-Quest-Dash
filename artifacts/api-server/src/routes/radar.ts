@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 
 const router = Router();
@@ -65,7 +65,7 @@ async function fetchRawgInfo(name: string) {
 // Use web search to find the real release date for a game
 async function searchForReleaseDate(name: string): Promise<string | null> {
   try {
-    const response = await (openai as any).responses.create({
+    const response = await (loggedOpenai as any).responses.create({
       model: 'gpt-4.1',
       tools: [{ type: 'web_search_preview' }],
       input: `Search for the official release date of the video game "${name}". Check store pages (Steam, PlayStation, Nintendo), official websites, and recent news articles. Return ONLY a JSON object with no markdown: {"release_date": "YYYY-MM-DD or null", "confidence": "confirmed|announced|tba"}. Use null if truly unknown.`,
@@ -133,7 +133,7 @@ Score key:
 
   const { model, max_tokens } = await getConfig('radar');
 
-  const res = await openai.chat.completions.create({
+  const res = await aiForRoute('radar').chat.completions.create({
     model,
     max_completion_tokens: max_tokens,
     messages: [{ role: 'user', content: prompt }],
@@ -188,7 +188,7 @@ router.get('/radar/discover', async (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
     let response: any;
     try {
-      response = await (openai as any).responses.create({
+      response = await (loggedOpenai as any).responses.create({
         model: 'gpt-4.1',
         tools: [{ type: 'web_search_preview' }],
         input: `Today is ${today}. Search multiple gaming news sites (IGN, Eurogamer, GameSpot, VGC, Nintendo Life, PlayStation Blog, Xbox Wire, Steam store) right now for upcoming video games that have NOT yet released — release dates must be on or after ${today}. Find at least 15 games including: major AAA titles (GTA VI, etc.), mid-size games, and notable indie games (like Rayman Legends Retold, Hollow Knight: Silksong, etc.). Include confirmed release dates AND announced-window games (e.g. "Q3 2026"). For each, find the most accurate release date from official sources. Return ONLY a valid JSON array with no markdown: [{"name": "exact official game title", "release_date": "YYYY-MM-DD or null if only window announced", "platforms": ["PS5","Xbox Series X|S","PC","Switch","iOS","Android"], "description": "one sentence — genre and hook"}]. Only include games not yet released as of ${today}.`,

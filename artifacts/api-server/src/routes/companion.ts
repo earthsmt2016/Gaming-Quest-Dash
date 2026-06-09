@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -432,7 +432,7 @@ router.post("/companion/chat", async (req, res) => {
     // Tool-calling loop (max 4 rounds)
     let finalReply = '';
     for (let round = 0; round < 4; round++) {
-      const response = await openai.chat.completions.create({
+      const response = await aiForRoute('companion').chat.completions.create({
         model,
         max_completion_tokens: max_tokens,
         messages,

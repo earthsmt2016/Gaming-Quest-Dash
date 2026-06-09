@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 
 const router = Router();
@@ -40,7 +40,7 @@ router.post("/focus-insights", async (req, res) => {
       .join("\n");
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await aiForRoute('focus-insights').chat.completions.create({
         model,
         max_completion_tokens: max_tokens,
         messages: [

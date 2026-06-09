@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 
 const router = Router();
@@ -418,7 +418,7 @@ Rules:
 
     const { model, max_tokens } = await getConfig('goals');
 
-    const completion = await openai.chat.completions.create({
+    const completion = await aiForRoute('goals').chat.completions.create({
       model,
       max_completion_tokens: max_tokens,
       messages: [{ role: "user", content: prompt }],

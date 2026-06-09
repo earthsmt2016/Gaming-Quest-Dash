@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 import { loadSettings } from "./settings";
 
@@ -401,7 +401,7 @@ Respond ONLY with valid JSON, no markdown:
 
     const { model, max_tokens } = await getConfig('coach');
 
-    const response = await openai.chat.completions.create({
+    const response = await aiForRoute('coach').chat.completions.create({
       model,
       max_completion_tokens: max_tokens,
       messages: [
@@ -578,7 +578,7 @@ Write a weekly review as valid JSON, no markdown:
 
     const { model, max_tokens } = await getConfig('coach');
 
-    const response = await openai.chat.completions.create({
+    const response = await aiForRoute('coach').chat.completions.create({
       model,
       max_completion_tokens: max_tokens,
       messages: [

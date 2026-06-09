@@ -1,14 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { fetchAiUsageGbp, AiUsageSummary } from '../lib/api';
 
 export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string) => void }) {
   const [data, setData] = useState<AiUsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setError('');
+    fetchAiUsageGbp()
+      .then(d => { setData(d); setLastUpdate(new Date()); })
+      .catch(() => setError('Failed to load AI usage'))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
-    fetchAiUsageGbp().then(d => setData(d)).catch(() => setError('Failed to load AI usage')).finally(() => setLoading(false));
-  }, []);
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      refresh();
+    }, 30000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   if (loading) {
     return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>Loading AI usage…</div>;
@@ -25,18 +42,33 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>
           AI Usage
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>OpenAI Cost Monitor</h2>
-          <button
-            className="btn primary"
-            onClick={() => onNavigate('ai-cost')}
-            style={{ fontSize: 12, padding: '6px 12px' }}
-          >
-            Configure
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              className="btn"
+              onClick={refresh}
+              style={{ fontSize: 12, padding: '6px 12px' }}
+              title="Refresh usage data"
+            >
+              ↻ Refresh
+            </button>
+            <button
+              className="btn primary"
+              onClick={() => onNavigate('ai-cost')}
+              style={{ fontSize: 12, padding: '6px 12px' }}
+            >
+              Configure
+            </button>
+          </div>
         </div>
         <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
           Track what AI features cost you money. Costs are estimates based on token usage.
+          {lastUpdate && (
+            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--muted)' }}>
+              Updated {lastUpdate.toLocaleTimeString()}
+            </span>
+          )}
         </p>
       </div>
 

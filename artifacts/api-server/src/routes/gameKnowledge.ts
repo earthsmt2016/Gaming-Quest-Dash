@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 
 const router = Router();
@@ -150,7 +150,7 @@ Rules:
 
     const { model, max_tokens } = await getConfig('game-knowledge');
 
-    const completion = await openai.chat.completions.create({
+    const completion = await aiForRoute('game-knowledge').chat.completions.create({
       model,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
@@ -360,7 +360,7 @@ Rules:
 
   const { model, max_tokens } = await getConfig('game-knowledge');
 
-  const completion = await openai.chat.completions.create({
+  const completion = await aiForRoute('game-knowledge').chat.completions.create({
     model,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.2,
@@ -492,7 +492,7 @@ Rules:
 
     const { model, max_tokens } = await getConfig('game-knowledge');
 
-    const completion = await openai.chat.completions.create({
+    const completion = await aiForRoute('game-knowledge').chat.completions.create({
       model,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
@@ -587,7 +587,7 @@ Respond ONLY with valid JSON (no markdown):
 
   const { model, max_tokens } = await getConfig('game-knowledge');
 
-  const completion = await openai.chat.completions.create({
+  const completion = await aiForRoute('game-knowledge').chat.completions.create({
     model,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.1,

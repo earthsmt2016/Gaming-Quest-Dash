@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
 
 const router = Router();
@@ -146,7 +146,7 @@ Respond ONLY with valid JSON — no markdown, no explanation:
   const { model, max_tokens } = await getConfig('daily-plan');
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await aiForRoute('daily-plan').chat.completions.create({
       model,
       max_completion_tokens: max_tokens,
       messages: [
