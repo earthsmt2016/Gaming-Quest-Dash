@@ -578,18 +578,33 @@ router.post("/issues/apply-fix", async (req, res) => {
 
     if (process.env.NODE_ENV === "production") {
       const filter = isBackend ? "@workspace/api-server" : "@workspace/gaming-quest";
+
+      // Build env: spread current env, then inject artifact-specific vars.
+      // gaming-quest vite.config.ts throws if PORT or BASE_PATH are missing;
+      // PORT only affects the dev-server config (not the build output), so any
+      // valid port works. BASE_PATH sets the Vite `base` option and must be "/".
+      const buildEnv: Record<string, string> = Object.fromEntries(
+        Object.entries(process.env).filter(([, v]) => v !== undefined) as [string, string][]
+      );
+      if (!isBackend) {
+        buildEnv['PORT'] = '23811';
+        buildEnv['BASE_PATH'] = '/';
+        buildEnv['NODE_ENV'] = 'production';
+      }
+
       try {
         execSync(`pnpm --filter ${filter} run build`, {
           cwd: WORKSPACE_ROOT,
           timeout: 180000,
           stdio: "pipe",
+          env: buildEnv,
         });
       } catch (buildErr: any) {
         // Revert the source change so prod stays consistent
         fs.writeFileSync(full, content, "utf8");
         const rawOut = (buildErr.stderr?.toString?.() || buildErr.stdout?.toString?.() || buildErr.message || '').trim();
-        // Surface the last 800 chars so the user can see the actual error
-        const snippet = rawOut.length > 800 ? '…' + rawOut.slice(-800) : rawOut;
+        // Show first 1200 chars — the actual error is near the top; the tail is just stack trace noise
+        const snippet = rawOut.length > 1200 ? rawOut.slice(0, 1200) + '\n…' : rawOut;
         return res.status(500).json({
           ok: false,
           error: `Build failed — change reverted.\n\n${snippet}`.trim(),
