@@ -1051,10 +1051,10 @@ export interface IssueTriage {
   fixes: IssueFix[];
   logged: boolean;
   issue?: Issue;
-  diagnosis?: IssueDiagnosis | null;
+  diagnoses?: IssueDiagnosis[];
 }
 
-function parseDiagnosis(raw: any): IssueDiagnosis | null {
+function parseSingleDiagnosis(raw: any): IssueDiagnosis | null {
   if (!raw || typeof raw !== 'object') return null;
   if (typeof raw.file !== 'string' || typeof raw.currentCode !== 'string' || typeof raw.proposedCode !== 'string') return null;
   return {
@@ -1067,6 +1067,14 @@ function parseDiagnosis(raw: any): IssueDiagnosis | null {
     explanation: typeof raw.explanation === 'string' ? raw.explanation : '',
     confidence: raw.confidence === 'high' || raw.confidence === 'low' ? raw.confidence : 'medium',
   };
+}
+
+function parseDiagnoses(raw: any): IssueDiagnosis[] {
+  if (Array.isArray(raw)) {
+    return raw.map(parseSingleDiagnosis).filter((d): d is IssueDiagnosis => d !== null);
+  }
+  const single = parseSingleDiagnosis(raw);
+  return single ? [single] : [];
 }
 
 export async function applyIssueFix(data: { file: string; currentCode: string; proposedCode: string }): Promise<{ ok: boolean; error?: string }> {
@@ -1097,7 +1105,7 @@ export async function triageIssue(data: { page: string; element: string; descrip
     fixes: Array.isArray(raw.fixes) ? raw.fixes : [],
     logged: Boolean(raw.logged),
     issue: raw.issue,
-    diagnosis: parseDiagnosis(raw.diagnosis),
+    diagnoses: parseDiagnoses(raw.diagnoses ?? raw.diagnosis),
   };
 }
 

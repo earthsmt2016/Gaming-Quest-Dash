@@ -123,6 +123,12 @@ export default function App() {
         setCompletions(comps);
         setPaused(pausedGames);
         setPlatforms(platformMap);
+        if (entries.length) {
+          const sorted = [...entries].sort((a, b) => a.date.getTime() - b.date.getTime());
+          const localDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          setFromDate(localDate(sorted[0].date));
+          setToDate(localDate(sorted[sorted.length - 1].date));
+        }
         setLoadState('ready');
       })
       .catch(() => setLoadState('error'));

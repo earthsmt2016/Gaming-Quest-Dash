@@ -175,9 +175,9 @@ async function diagnoseCode(
   ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[]; interactions?: InteractionEvent[] },
   model: string,
   maxTokens: number,
-): Promise<CodeDiagnosis | null> {
+): Promise<CodeDiagnosis[]> {
   const files = listSourceFiles();
-  if (!files.length) return null;
+  if (!files.length) return [];
 
   // Step 1 — locate the most relevant file(s).
   const locateSys = `You are a senior engineer for the "Gaming Quest Dashboard" codebase. Given a bug report and a list of source files, pick the 1-3 files MOST likely to contain the cause. Reply with STRICT JSON only: {"files":["relative/path.tsx"]}. Only choose paths from the provided list, copied EXACTLY. Prefer frontend components (artifacts/gaming-quest/src) for UI bugs and api-server routes for data/server bugs.`;
@@ -206,7 +206,7 @@ async function diagnoseCode(
       chosen = p.files.filter((f: any) => typeof f === 'string' && files.includes(f)).slice(0, 3);
     }
   } catch { /* ignore */ }
-  if (!chosen.length) return null;
+  if (!chosen.length) return [];
 
   // Cap total prompt size so diagnosis cost/latency stays bounded as the codebase grows.
   const MAX_CONTEXT_CHARS = 60_000;
@@ -221,23 +221,27 @@ async function diagnoseCode(
     budget -= block.length;
     if (budget <= 0) break;
   }
-  if (!fileBlocks.length) return null;
+  if (!fileBlocks.length) return [];
 
-  // Step 2 — diagnose and propose a minimal change.
-  const diagSys = `You are a senior engineer diagnosing a bug in the "Gaming Quest Dashboard". You are given the full content of the most relevant source file(s), each line prefixed with its line number and a tab, plus a bug report. Identify the single most likely root cause and propose a MINIMAL code change to fix it.
+  // Step 2 — diagnose and propose ALL related changes (up to 3).
+  const diagSys = `You are a senior engineer diagnosing a bug in the "Gaming Quest Dashboard". You are given the full content of the most relevant source file(s), each line prefixed with its line number and a tab, plus a bug report. Identify ALL related code locations that need fixing (up to 3) and propose a MINIMAL change for each.
 Reply with STRICT JSON only:
 {
   "found": true | false,
-  "file": "exact relative path from the provided files",
-  "startLine": <first line number of the snippet to change>,
-  "endLine": <last line number of the snippet to change>,
-  "currentCode": "the exact existing code for those lines, WITHOUT the line-number prefixes",
-  "proposedCode": "the replacement code for those lines",
-  "cause": "1-2 sentence plain-English root cause",
-  "explanation": "1-3 sentences on why this change fixes it",
-  "confidence": "low" | "medium" | "high"
+  "fixes": [
+    {
+      "file": "exact relative path from the provided files",
+      "startLine": <first line number of the snippet>,
+      "endLine": <last line number of the snippet>,
+      "currentCode": "the exact existing code for those lines, WITHOUT the line-number prefixes",
+      "proposedCode": "the replacement code for those lines",
+      "cause": "1-2 sentence plain-English root cause for this location",
+      "explanation": "1-3 sentences on why this change fixes it",
+      "confidence": "low" | "medium" | "high"
+    }
+  ]
 }
-Set found=false if you cannot localize a concrete code-level cause. Keep the snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.`;
+Set found=false if you cannot localize a concrete code-level cause. Each fix must be a separate non-overlapping snippet. Keep each snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.`;
   const diagUser = `BUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}${navLines}${interactionLines}\n\n${fileBlocks.join('\n\n')}`;
 
   const diagRes = await aiForRoute('issue-diagnosis').chat.completions.create({
@@ -250,54 +254,61 @@ Set found=false if you cannot localize a concrete code-level cause. Keep the sni
     ],
   });
 
-  let d: any = null;
-  try { d = JSON.parse(diagRes.choices[0]?.message?.content ?? '{}'); } catch { return null; }
-  if (!d || typeof d !== 'object' || d.found === false) return null;
-  if (typeof d.file !== 'string' || !chosen.includes(d.file)) return null;
+  let parsed: any = null;
+  try { parsed = JSON.parse(diagRes.choices[0]?.message?.content ?? '{}'); } catch { return []; }
+  if (!parsed || typeof parsed !== 'object' || parsed.found === false) return [];
 
-  const startLine = Number(d.startLine);
-  const endLine = Number(d.endLine);
-  if (!Number.isFinite(startLine) || !Number.isFinite(endLine) || startLine < 1 || endLine < startLine) return null;
-  if (typeof d.currentCode !== 'string' || typeof d.proposedCode !== 'string') return null;
-  if (!d.currentCode.trim() || !d.proposedCode.trim()) return null;
+  const rawFixes: any[] = Array.isArray(parsed.fixes) ? parsed.fixes.slice(0, 3) : [];
+  const results: CodeDiagnosis[] = [];
 
-  // Anti-hallucination guard: the claimed "current code" must actually exist in the file.
-  const fileContent = safeReadSource(d.file) ?? '';
-  if (!normalizeWs(fileContent).includes(normalizeWs(d.currentCode))) return null;
+  for (const d of rawFixes) {
+    if (!d || typeof d !== 'object') continue;
+    if (typeof d.file !== 'string' || !chosen.includes(d.file)) continue;
+    const startLine = Number(d.startLine);
+    const endLine = Number(d.endLine);
+    if (!Number.isFinite(startLine) || !Number.isFinite(endLine) || startLine < 1 || endLine < startLine) continue;
+    if (typeof d.currentCode !== 'string' || typeof d.proposedCode !== 'string') continue;
+    if (!d.currentCode.trim() || !d.proposedCode.trim()) continue;
 
-  // Use the actual lines from the file (by startLine/endLine) as currentCode so the
-  // apply-fix exact-match is guaranteed to succeed, even if the AI returned slightly
-  // different whitespace/indentation than what's really in the file.
-  const fileLines = fileContent.split('\n');
-  const extractedCode = fileLines.slice(startLine - 1, endLine).join('\n');
-  // Only use the extraction if it's semantically consistent with what the AI returned.
-  const currentCode = (
-    extractedCode.trim() &&
-    normalizeWs(extractedCode).includes(normalizeWs(d.currentCode.trim().split('\n')[0]))
-  ) ? extractedCode : d.currentCode;
+    // Anti-hallucination guard: the claimed "current code" must actually exist in the file.
+    const fileContent = safeReadSource(d.file) ?? '';
+    if (!normalizeWs(fileContent).includes(normalizeWs(d.currentCode))) continue;
 
-  const confidence = d.confidence === 'high' || d.confidence === 'low' ? d.confidence : 'medium';
-  return {
-    file: d.file,
-    startLine,
-    endLine,
-    cause: typeof d.cause === 'string' ? d.cause.slice(0, 400) : '',
-    currentCode: currentCode.slice(0, 2000),
-    proposedCode: d.proposedCode.slice(0, 2000),
-    explanation: typeof d.explanation === 'string' ? d.explanation.slice(0, 500) : '',
-    confidence,
-  };
+    // Use the actual lines from the file (by startLine/endLine) as currentCode so the
+    // apply-fix exact-match is guaranteed to succeed even if the AI returned slightly
+    // different whitespace/indentation than what's really in the file.
+    const fileLines = fileContent.split('\n');
+    const extractedCode = fileLines.slice(startLine - 1, endLine).join('\n');
+    const currentCode = (
+      extractedCode.trim() &&
+      normalizeWs(extractedCode).includes(normalizeWs(d.currentCode.trim().split('\n')[0]))
+    ) ? extractedCode : d.currentCode;
+
+    const confidence = d.confidence === 'high' || d.confidence === 'low' ? d.confidence : 'medium';
+    results.push({
+      file: d.file,
+      startLine,
+      endLine,
+      cause: typeof d.cause === 'string' ? d.cause.slice(0, 400) : '',
+      currentCode: currentCode.slice(0, 2000),
+      proposedCode: d.proposedCode.slice(0, 2000),
+      explanation: typeof d.explanation === 'string' ? d.explanation.slice(0, 500) : '',
+      confidence,
+    });
+  }
+
+  return results;
 }
 
 // Best-effort: never throw, gated behind its own feature toggle.
-async function maybeDiagnose(ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[]; interactions?: InteractionEvent[] }): Promise<CodeDiagnosis | null> {
+async function maybeDiagnose(ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[]; interactions?: InteractionEvent[] }): Promise<CodeDiagnosis[]> {
   try {
     const cfg = await getConfig('issue-diagnosis');
-    if (!cfg.enabled) return null;
+    if (!cfg.enabled) return [];
     return await diagnoseCode(ctx, cfg.model, cfg.max_tokens);
   } catch (err) {
     console.error("issue diagnosis error:", err);
-    return null;
+    return [];
   }
 }
 
@@ -432,7 +443,7 @@ router.post("/issues/triage", async (req, res) => {
 
     if (category === 'log' || (steps.length === 0 && fixes.length === 0)) {
       const issue = await logIssue(page ?? '', element ?? '', desc, navHistory, interactions);
-      const diagnosis = await maybeDiagnose({ page: page ?? '', element: element ?? '', description: desc, navHistory, interactions });
+      const diagnoses = await maybeDiagnose({ page: page ?? '', element: element ?? '', description: desc, navHistory, interactions });
       res.json({
         category: 'log',
         logged: true,
@@ -440,7 +451,7 @@ router.post("/issues/triage", async (req, res) => {
         summary: summary || "Thanks — this looks like something to look into. It's been logged for review.",
         steps: [],
         fixes: [],
-        diagnosis,
+        diagnoses,
       });
       return;
     }

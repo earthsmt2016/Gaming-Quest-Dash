@@ -161,6 +161,58 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
   );
 }
 
+function DiagnosisGroup({ diagnoses }: { diagnoses: IssueDiagnosis[] }) {
+  const canApplyAll = diagnoses.some(d => d.file.includes('gaming-quest/'));
+  const [allState, setAllState] = useState<'idle' | 'applying' | 'done' | 'error'>('idle');
+  const [allErr, setAllErr] = useState('');
+
+  const applyAll = useCallback(async () => {
+    setAllState('applying');
+    setAllErr('');
+    const applicable = diagnoses.filter(d => d.file.includes('gaming-quest/'));
+    for (const d of applicable) {
+      const r = await applyIssueFix({ file: d.file, currentCode: d.currentCode, proposedCode: d.proposedCode });
+      if (!r.ok) {
+        setAllState('error');
+        setAllErr(r.error || 'One or more fixes failed — apply them individually below.');
+        return;
+      }
+    }
+    setAllState('done');
+  }, [diagnoses]);
+
+  return (
+    <div>
+      {diagnoses.length > 1 && canApplyAll && (
+        <div style={{ marginBottom: '10px' }}>
+          <button
+            onClick={applyAll}
+            disabled={allState === 'applying' || allState === 'done'}
+            style={{
+              width: '100%', padding: '8px', borderRadius: '8px', border: 'none',
+              background: allState === 'done' ? '#558b2f' : allState === 'error' ? '#c62828' : 'var(--accent)',
+              color: '#fff', fontWeight: 700, fontSize: '13px', fontFamily: 'inherit',
+              cursor: allState === 'applying' || allState === 'done' ? 'default' : 'pointer',
+              opacity: allState === 'applying' ? 0.7 : 1,
+            }}
+          >
+            {allState === 'applying' ? 'Applying all…'
+              : allState === 'done' ? `✓ All ${diagnoses.filter(d => d.file.includes('gaming-quest/')).length} fixes applied`
+              : allState === 'error' ? '✗ Retry all'
+              : `Apply all ${diagnoses.filter(d => d.file.includes('gaming-quest/')).length} fixes`}
+          </button>
+          {allState === 'error' && allErr && (
+            <div style={{ fontSize: '11px', color: '#c62828', marginTop: '5px', lineHeight: 1.4 }}>{allErr}</div>
+          )}
+        </div>
+      )}
+      {diagnoses.map((d, i) => (
+        <DiagnosisPanel key={i} diagnosis={d} />
+      ))}
+    </div>
+  );
+}
+
 async function applyFix(fix: IssueFix): Promise<void> {
   if (fix.type === 'put_on_hold') {
     const paused = await fetchPaused();
@@ -417,7 +469,9 @@ export default function IssueReporter({ page, navHistory, interactions, onOpen }
           <div style={{ fontSize: '12px', color: 'var(--muted)', textAlign: 'center', lineHeight: 1.5, marginBottom: '12px' }}>
             {result?.summary || "Thanks — this couldn't be fixed automatically, so it's been logged and we'll look into it."}
           </div>
-          {result?.diagnosis && <DiagnosisPanel diagnosis={result.diagnosis} />}
+          {result?.diagnoses && result.diagnoses.length > 0 && (
+            <DiagnosisGroup diagnoses={result.diagnoses} />
+          )}
           <button className="btn primary" onClick={close} style={{ width: '100%' }}>Close</button>
         </div>
       )}
