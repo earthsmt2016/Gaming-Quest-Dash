@@ -33,8 +33,15 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
 
   const today = data?.today ?? { cost: '0', calls: '0', tokens: '0' };
   const week = data?.week ?? { cost: '0', calls: '0', tokens: '0' };
+  const month = data?.month ?? { cost: '0', calls: '0', tokens: '0' };
   const byRoute = data?.byRoute ?? [];
   const daily = data?.daily ?? [];
+  const monthDaily = data?.monthDaily ?? [];
+
+  const monthCost = Number(month.cost);
+  const daysIntoMonth = new Date().getDate();
+  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const projectedMonth = daysIntoMonth > 0 ? (monthCost / daysIntoMonth) * daysInMonth : 0;
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -51,7 +58,7 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
               style={{ fontSize: 12, padding: '6px 12px' }}
               title="Refresh usage data"
             >
-              ↻ Refresh
+              &#x21bb; Refresh
             </button>
             <button
               className="btn primary"
@@ -73,7 +80,7 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <div style={{
           background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
         }}>
@@ -88,14 +95,23 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>£{Number(week.cost).toFixed(4)}</div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{Number(week.calls).toLocaleString()} calls · {Number(week.tokens).toLocaleString()} tokens</div>
         </div>
+        <div style={{
+          background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
+        }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 6 }}>Month (projected)</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>£{projectedMonth.toFixed(4)}</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
+            Actual: £{monthCost.toFixed(4)} ({daysIntoMonth}/{daysInMonth} days)
+          </div>
+        </div>
       </div>
 
-      {/* Daily breakdown */}
+      {/* Daily breakdown (14 days) */}
       {daily.length > 0 && (
         <div style={{
           background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
         }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>Daily spend</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>Daily spend (14 days)</div>
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
             {daily.map(d => {
               const maxCost = Math.max(...daily.map(x => Number(x.cost)), 0.001);
@@ -112,6 +128,55 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Monthly projection graph */}
+      {monthDaily.length > 0 && (
+        <div style={{
+          background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>Month projection</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 110, paddingBottom: 24, position: 'relative' }}>
+            {monthDaily.map((d, i) => {
+              const maxCost = Math.max(...monthDaily.map(x => Number(x.cost)), 0.001);
+              const h = maxCost ? Math.max(4, (Number(d.cost) / maxCost) * 90) : 4;
+              const isToday = i === monthDaily.length - 1;
+              return (
+                <div key={d.day} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    width: '100%', maxWidth: 18, height: h,
+                    background: isToday ? 'var(--accent)' : '#cbd5e1',
+                    borderRadius: '2px 2px 0 0', opacity: 0.85,
+                    transition: 'height 0.3s',
+                  }} />
+                  <div style={{
+                    fontSize: 9, color: 'var(--muted)', whiteSpace: 'nowrap',
+                    overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 30,
+                  }}>
+                    {d.day.slice(8)}
+                  </div>
+                </div>
+              );
+            })}
+            {/* Projection line */}
+            {(() => {
+              const maxCost = Math.max(...monthDaily.map(x => Number(x.cost)), 0.001);
+              const avgDaily = daysInMonth > 0 ? projectedMonth / daysInMonth : 0;
+              const lineHeight = maxCost ? (avgDaily / maxCost) * 90 : 0;
+              return projectedMonth > 0 && lineHeight > 0 ? (
+                <div style={{
+                  position: 'absolute', bottom: 24 + lineHeight, left: 0, right: 0,
+                  borderTop: '2px dashed var(--warning)', opacity: 0.5,
+                  height: 0,
+                }} />
+              ) : null;
+            })()}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+            <span>Dashed line = projected daily average</span>
+            <span>At current rate: ~£{projectedMonth.toFixed(2)}/month</span>
           </div>
         </div>
       )}

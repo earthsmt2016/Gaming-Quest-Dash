@@ -62,37 +62,53 @@ router.get("/ai-usage/gbp", async (_req, res) => {
     const today = await pool.query(`
       SELECT COALESCE(SUM(cost_estimate * ${GBP_PER_USD}), 0) as cost, COUNT(*) as calls,
              COALESCE(SUM(total_tokens), 0) as tokens
-      FROM ai_requests WHERE created_at >= NOW() - INTERVAL '24 hours'
+      FROM ai_requests WHERE created_at::timestamptz >= NOW() - INTERVAL '24 hours'
     `);
     const week = await pool.query(`
       SELECT COALESCE(SUM(cost_estimate * ${GBP_PER_USD}), 0) as cost, COUNT(*) as calls,
              COALESCE(SUM(total_tokens), 0) as tokens
-      FROM ai_requests WHERE created_at >= NOW() - INTERVAL '7 days'
+      FROM ai_requests WHERE created_at::timestamptz >= NOW() - INTERVAL '7 days'
+    `);
+    const month = await pool.query(`
+      SELECT COALESCE(SUM(cost_estimate * ${GBP_PER_USD}), 0) as cost, COUNT(*) as calls,
+             COALESCE(SUM(total_tokens), 0) as tokens
+      FROM ai_requests WHERE created_at::timestamptz >= DATE_TRUNC('month', NOW())
     `);
     const byRoute = await pool.query(`
       SELECT route, model, COUNT(*) as calls,
              COALESCE(SUM(cost_estimate * ${GBP_PER_USD}), 0) as cost,
              COALESCE(SUM(total_tokens), 0) as tokens
       FROM ai_requests
-      WHERE created_at >= NOW() - INTERVAL '7 days'
+      WHERE created_at::timestamptz >= NOW() - INTERVAL '7 days'
       GROUP BY route, model
       ORDER BY cost DESC
       LIMIT 20
     `);
     const daily = await pool.query(`
-      SELECT DATE(created_at) as day,
+      SELECT DATE(created_at::timestamptz) as day,
              COALESCE(SUM(cost_estimate * ${GBP_PER_USD}), 0) as cost,
              COUNT(*) as calls
       FROM ai_requests
-      WHERE created_at >= NOW() - INTERVAL '14 days'
-      GROUP BY DATE(created_at)
+      WHERE created_at::timestamptz >= NOW() - INTERVAL '14 days'
+      GROUP BY DATE(created_at::timestamptz)
       ORDER BY day DESC
+    `);
+    const monthDaily = await pool.query(`
+      SELECT DATE(created_at::timestamptz) as day,
+             COALESCE(SUM(cost_estimate * ${GBP_PER_USD}), 0) as cost,
+             COUNT(*) as calls
+      FROM ai_requests
+      WHERE created_at::timestamptz >= DATE_TRUNC('month', NOW())
+      GROUP BY DATE(created_at::timestamptz)
+      ORDER BY day ASC
     `);
     res.json({
       today: today.rows[0],
       week: week.rows[0],
+      month: month.rows[0],
       byRoute: byRoute.rows,
       daily: daily.rows,
+      monthDaily: monthDaily.rows,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

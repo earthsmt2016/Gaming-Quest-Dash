@@ -1048,8 +1048,10 @@ export async function deleteIssue(id: number): Promise<void> {
 export interface AiUsageSummary {
   today: { cost: string; calls: string; tokens: string };
   week: { cost: string; calls: string; tokens: string };
+  month: { cost: string; calls: string; tokens: string };
   byRoute: { route: string; model: string; calls: string; cost: string; tokens: string }[];
   daily: { day: string; cost: string; calls: string }[];
+  monthDaily: { day: string; cost: string; calls: string }[];
 }
 
 export async function fetchAiUsage(): Promise<AiUsageSummary> {
