@@ -50,14 +50,14 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
   const [copied, setCopied] = useState(false);
   const [applyState, setApplyState] = useState<ApplyState>('idle');
   const [applyErr, setApplyErr] = useState('');
+  const [requiresRestart, setRequiresRestart] = useState(false);
   const conf = CONFIDENCE_META[diagnosis.confidence];
   const lineLabel = diagnosis.startLine
     ? (diagnosis.endLine && diagnosis.endLine !== diagnosis.startLine
         ? `lines ${diagnosis.startLine}–${diagnosis.endLine}`
         : `line ${diagnosis.startLine}`)
     : '';
-  // Auto-apply is only offered for frontend dashboard files (matches the server's APPLY_ROOTS).
-  const canApply = diagnosis.file.includes('gaming-quest/');
+  const isBackend = diagnosis.file.includes('api-server/');
 
   const copy = useCallback(() => {
     navigator.clipboard?.writeText(diagnosis.proposedCode).then(() => {
@@ -71,7 +71,7 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
     setApplyErr('');
     applyIssueFix({ file: diagnosis.file, currentCode: diagnosis.currentCode, proposedCode: diagnosis.proposedCode })
       .then(r => {
-        if (r.ok) setApplyState('applied');
+        if (r.ok) { setApplyState('applied'); setRequiresRestart(Boolean(r.requiresRestart)); }
         else { setApplyState('error'); setApplyErr(r.error || 'Failed to apply'); }
       })
       .catch(e => { setApplyState('error'); setApplyErr(String(e?.message || e)); });
@@ -116,24 +116,22 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
       )}
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '9px' }}>
-        {canApply && (
-          <button
-            onClick={apply}
-            disabled={applyState === 'applying' || applyState === 'applied'}
-            style={{
-              flex: 2, background: applyState === 'applied' ? '#558b2f' : applyState === 'error' ? '#c62828' : 'var(--accent)',
-              color: '#fff', border: 'none', borderRadius: '8px', padding: '7px', fontSize: '12px',
-              fontWeight: 700, fontFamily: 'inherit',
-              cursor: applyState === 'applying' || applyState === 'applied' ? 'default' : 'pointer',
-              opacity: applyState === 'applying' ? 0.7 : 1,
-            }}
-          >
-            {applyState === 'applying' ? 'Applying…'
-              : applyState === 'applied' ? '✓ Applied'
-              : applyState === 'error' ? '✗ Retry apply'
-              : 'Apply fix'}
-          </button>
-        )}
+        <button
+          onClick={apply}
+          disabled={applyState === 'applying' || applyState === 'applied'}
+          style={{
+            flex: 2, background: applyState === 'applied' ? '#558b2f' : applyState === 'error' ? '#c62828' : 'var(--accent)',
+            color: '#fff', border: 'none', borderRadius: '8px', padding: '7px', fontSize: '12px',
+            fontWeight: 700, fontFamily: 'inherit',
+            cursor: applyState === 'applying' || applyState === 'applied' ? 'default' : 'pointer',
+            opacity: applyState === 'applying' ? 0.7 : 1,
+          }}
+        >
+          {applyState === 'applying' ? 'Applying…'
+            : applyState === 'applied' ? '✓ Applied'
+            : applyState === 'error' ? '✗ Retry apply'
+            : 'Apply fix'}
+        </button>
         <button
           onClick={copy}
           style={{
@@ -142,7 +140,7 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
             fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
           }}
         >
-          {copied ? '✓ Copied' : 'Copy proposed change'}
+          {copied ? '✓ Copied' : 'Copy'}
         </button>
       </div>
 
@@ -152,38 +150,42 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: IssueDiagnosis }) {
 
       <div style={{ fontSize: '10px', color: 'var(--muted)', lineHeight: 1.4, marginTop: '8px' }}>
         {applyState === 'applied'
-          ? `Applied to ${diagnosis.file}. The app will reload with the change — roll back to a checkpoint if you want to undo it.`
-          : canApply
-            ? 'Applying writes this change directly to the file. Review it first — you can always roll back to a checkpoint to undo.'
-            : 'This is a server-side file, so it can only be applied manually. Copy the change and apply it in your editor.'}
+          ? requiresRestart
+            ? `Applied to ${diagnosis.file}. Restart the API server workflow for the change to take effect — roll back to a checkpoint to undo.`
+            : `Applied to ${diagnosis.file}. The app will reload with the change — roll back to a checkpoint to undo.`
+          : isBackend
+            ? 'This is a backend file. Applying writes the change to disk — the API server workflow must be restarted after. Review it first.'
+            : 'Applying writes this change directly to the file. Review it first — you can always roll back to a checkpoint to undo.'}
       </div>
     </div>
   );
 }
 
 function DiagnosisGroup({ diagnoses }: { diagnoses: IssueDiagnosis[] }) {
-  const canApplyAll = diagnoses.some(d => d.file.includes('gaming-quest/'));
   const [allState, setAllState] = useState<'idle' | 'applying' | 'done' | 'error'>('idle');
   const [allErr, setAllErr] = useState('');
+  const [needsRestart, setNeedsRestart] = useState(false);
 
   const applyAll = useCallback(async () => {
     setAllState('applying');
     setAllErr('');
-    const applicable = diagnoses.filter(d => d.file.includes('gaming-quest/'));
-    for (const d of applicable) {
+    let restartNeeded = false;
+    for (const d of diagnoses) {
       const r = await applyIssueFix({ file: d.file, currentCode: d.currentCode, proposedCode: d.proposedCode });
       if (!r.ok) {
         setAllState('error');
         setAllErr(r.error || 'One or more fixes failed — apply them individually below.');
         return;
       }
+      if (r.requiresRestart) restartNeeded = true;
     }
+    setNeedsRestart(restartNeeded);
     setAllState('done');
   }, [diagnoses]);
 
   return (
     <div>
-      {diagnoses.length > 1 && canApplyAll && (
+      {diagnoses.length > 1 && (
         <div style={{ marginBottom: '10px' }}>
           <button
             onClick={applyAll}
@@ -197,10 +199,15 @@ function DiagnosisGroup({ diagnoses }: { diagnoses: IssueDiagnosis[] }) {
             }}
           >
             {allState === 'applying' ? 'Applying all…'
-              : allState === 'done' ? `✓ All ${diagnoses.filter(d => d.file.includes('gaming-quest/')).length} fixes applied`
+              : allState === 'done' ? `✓ All ${diagnoses.length} fixes applied`
               : allState === 'error' ? '✗ Retry all'
-              : `Apply all ${diagnoses.filter(d => d.file.includes('gaming-quest/')).length} fixes`}
+              : `Apply all ${diagnoses.length} fixes`}
           </button>
+          {allState === 'done' && needsRestart && (
+            <div style={{ fontSize: '11px', color: '#f57c00', marginTop: '5px', lineHeight: 1.4 }}>
+              ⚠ One or more backend files were changed — restart the API server workflow for them to take effect.
+            </div>
+          )}
           {allState === 'error' && allErr && (
             <div style={{ fontSize: '11px', color: '#c62828', marginTop: '5px', lineHeight: 1.4 }}>{allErr}</div>
           )}

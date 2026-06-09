@@ -125,15 +125,16 @@ const TEMPLATES: { id: ReportTemplate; label: string; desc: string; preview: str
 ];
 
 const THEMES_META: { id: ReportTheme; label: string; primary: string; dark: string }[] = [
-  { id: 'green',   label: 'Forest',  primary: '#1a6b4a', dark: '#1a3d2b' },
-  { id: 'blue',    label: 'Ocean',   primary: '#1565c0', dark: '#0d2b5e' },
-  { id: 'purple',  label: 'Dusk',    primary: '#7b1fa2', dark: '#3a0d5c' },
-  { id: 'slate',   label: 'Slate',   primary: '#455a64', dark: '#1c2830' },
-  { id: 'crimson', label: 'Crimson', primary: '#c62828', dark: '#7f0000' },
-  { id: 'amber',   label: 'Amber',   primary: '#e65100', dark: '#8d3200' },
-  { id: 'teal',    label: 'Teal',    primary: '#00796b', dark: '#004d40' },
-  { id: 'rose',    label: 'Rose',    primary: '#c2185b', dark: '#880e4f' },
-  { id: 'custom',  label: 'Custom',  primary: '',        dark: ''        },
+  { id: 'green',   label: 'Forest',    primary: '#1a6b4a', dark: '#1a3d2b' },
+  { id: 'blue',    label: 'Baby Blue', primary: '#1565c0', dark: '#0d2b5e' },
+  { id: 'purple',  label: 'Dusk',      primary: '#7b1fa2', dark: '#3a0d5c' },
+  { id: 'slate',   label: 'Slate',     primary: '#455a64', dark: '#1c2830' },
+  { id: 'crimson', label: 'Crimson',   primary: '#c62828', dark: '#7f0000' },
+  { id: 'amber',   label: 'Amber',     primary: '#e65100', dark: '#8d3200' },
+  { id: 'teal',    label: 'Teal',      primary: '#00796b', dark: '#004d40' },
+  { id: 'rose',    label: 'Rose',      primary: '#c2185b', dark: '#880e4f' },
+  { id: 'darkBlue', label: 'Dark Blue', primary: '#003366', dark: '#000033' },
+  { id: 'custom',  label: 'Custom',    primary: '',        dark: ''        },
 ];
 
 const FONTS: { id: FontChoice; label: string; sample: string }[] = [

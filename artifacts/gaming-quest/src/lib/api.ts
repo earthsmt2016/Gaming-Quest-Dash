@@ -1077,7 +1077,7 @@ function parseDiagnoses(raw: any): IssueDiagnosis[] {
   return single ? [single] : [];
 }
 
-export async function applyIssueFix(data: { file: string; currentCode: string; proposedCode: string }): Promise<{ ok: boolean; error?: string }> {
+export async function applyIssueFix(data: { file: string; currentCode: string; proposedCode: string }): Promise<{ ok: boolean; error?: string; requiresRestart?: boolean }> {
   const res = await fetch(`${BASE}/issues/apply-fix`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1087,7 +1087,7 @@ export async function applyIssueFix(data: { file: string; currentCode: string; p
   if (!res.ok || !raw.ok) {
     return { ok: false, error: raw.error || 'Failed to apply fix' };
   }
-  return { ok: true };
+  return { ok: true, requiresRestart: Boolean(raw.requiresRestart) };
 }
 
 export async function triageIssue(data: { page: string; element: string; description: string; navHistory?: { page: string; timestamp: string }[]; interactions?: { page: string; component: string; action: string; detail?: string; timestamp: string }[] }): Promise<IssueTriage> {

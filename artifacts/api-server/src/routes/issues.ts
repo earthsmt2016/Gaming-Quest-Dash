@@ -136,11 +136,8 @@ const SOURCE_ROOTS = [
   .map(r => path.join(WORKSPACE_ROOT, r))
   .filter(p => fs.existsSync(p));
 
-// Auto-apply is deliberately restricted to the frontend dashboard source only.
-// The server NEVER lets an HTTP caller overwrite its own (executable) backend
-// code, which would otherwise be a remote code-tampering vector. Diagnosis can
-// still READ backend files; it just cannot auto-write them.
-const APPLY_ROOTS = SOURCE_ROOTS.filter(p => p.includes(`${path.sep}gaming-quest${path.sep}`));
+// Both frontend and backend source roots are allowed for auto-apply.
+const APPLY_ROOTS = SOURCE_ROOTS;
 
 function listSourceFiles(): string[] {
   const out: string[] = [];
@@ -556,12 +553,13 @@ router.post("/issues/apply-fix", async (req, res) => {
     if (!currentCode.trim()) {
       return res.status(400).json({ ok: false, error: "currentCode is empty" });
     }
+    const isBackend = typeof file === "string" && file.includes("api-server");
     if (proposedCode.length > 8000) {
       return res.status(400).json({ ok: false, error: "Proposed change is too large to auto-apply — apply it manually." });
     }
     const full = path.resolve(WORKSPACE_ROOT, file);
     if (!APPLY_ROOTS.some(root => full === root || full.startsWith(root + path.sep))) {
-      return res.status(403).json({ ok: false, error: "Auto-apply is limited to dashboard (frontend) files — apply this change manually." });
+      return res.status(403).json({ ok: false, error: "File is outside the allowed source roots — apply this change manually." });
     }
     const content = safeReadSource(file);
     if (content == null) {
@@ -576,7 +574,7 @@ router.post("/issues/apply-fix", async (req, res) => {
     }
     const updated = content.replace(currentCode, proposedCode);
     fs.writeFileSync(full, updated, "utf8");
-    return res.json({ ok: true, file });
+    return res.json({ ok: true, file, requiresRestart: isBackend });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: err.message });
   }
