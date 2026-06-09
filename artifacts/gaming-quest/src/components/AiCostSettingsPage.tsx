@@ -23,6 +23,8 @@ const FEATURES = [
   { key: 'radar',           label: 'Game Radar',         desc: 'Discover upcoming game releases' },
   { key: 'game-knowledge',  label: 'Game Knowledge',     desc: 'Progress tracking and story info' },
   { key: 'goals',           label: 'Goal Suggestions',   desc: 'AI-generated personal goals' },
+  { key: 'issue-triage',    label: 'Smart Issue Triage', desc: 'Troubleshoot & auto-fix reported issues' },
+  { key: 'issue-diagnosis', label: 'Code Diagnosis',     desc: 'Pinpoint the likely code cause & suggest a fix' },
 ] as const;
 
 const MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'gpt-5.4'];
@@ -38,6 +40,8 @@ const PRESET_MAP: Record<Preset, Record<string, { model: string; max_tokens: num
     radar:            { model: 'gpt-4.1',     max_tokens: 200 },
     'game-knowledge': { model: 'gpt-4o-mini', max_tokens: 600 },
     goals:            { model: 'gpt-4o-mini', max_tokens: 400 },
+    'issue-triage':   { model: 'gpt-4o-mini', max_tokens: 500 },
+    'issue-diagnosis': { model: 'gpt-4o-mini', max_tokens: 1200 },
   },
   recommended: {
     companion:      { model: 'gpt-4o',    max_tokens: 1200 },
@@ -49,6 +53,8 @@ const PRESET_MAP: Record<Preset, Record<string, { model: string; max_tokens: num
     radar:          { model: 'gpt-4.1',   max_tokens: 200 },
     'game-knowledge': { model: 'gpt-4.1',  max_tokens: 800 },
     goals:            { model: 'gpt-4.1', max_tokens: 400 },
+    'issue-triage':   { model: 'gpt-4o',  max_tokens: 600 },
+    'issue-diagnosis': { model: 'gpt-4o', max_tokens: 1500 },
   },
   max: {
     companion:      { model: 'gpt-5.4',   max_tokens: 1800 },
@@ -60,6 +66,8 @@ const PRESET_MAP: Record<Preset, Record<string, { model: string; max_tokens: num
     radar:          { model: 'gpt-4.1',   max_tokens: 200 },
     'game-knowledge': { model: 'gpt-4.1',   max_tokens: 800 },
     goals:            { model: 'gpt-4.1',   max_tokens: 400 },
+    'issue-triage':   { model: 'gpt-4.1',   max_tokens: 700 },
+    'issue-diagnosis': { model: 'gpt-4.1',  max_tokens: 2000 },
   },
 };
 
