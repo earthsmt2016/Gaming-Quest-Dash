@@ -1,6 +1,7 @@
 import { Router } from "express";
 import fs from "fs";
 import path from "path";
+import { execSync } from "child_process";
 import { pool } from "@workspace/db";
 import { aiForRoute } from "../lib/aiLogger";
 import { getConfig } from "./aiCost";
@@ -546,9 +547,6 @@ router.delete("/issues/:id", async (req, res) => {
 // and currentCode must match the file content EXACTLY exactly once.
 router.post("/issues/apply-fix", async (req, res) => {
   try {
-    if (process.env.NODE_ENV === "production") {
-      return res.status(403).json({ ok: false, error: "Auto-apply is only available in the development environment. Re-deploy after applying the fix locally." });
-    }
     const { file, currentCode, proposedCode } = req.body ?? {};
     if (typeof file !== "string" || typeof currentCode !== "string" || typeof proposedCode !== "string") {
       return res.status(400).json({ ok: false, error: "file, currentCode and proposedCode are required" });
@@ -577,6 +575,32 @@ router.post("/issues/apply-fix", async (req, res) => {
     }
     const updated = content.replace(currentCode, proposedCode);
     fs.writeFileSync(full, updated, "utf8");
+
+    if (process.env.NODE_ENV === "production") {
+      const filter = isBackend ? "@workspace/api-server" : "@workspace/gaming-quest";
+      try {
+        execSync(`pnpm --filter ${filter} run build`, {
+          cwd: WORKSPACE_ROOT,
+          timeout: 180000,
+          stdio: "pipe",
+        });
+      } catch (buildErr: any) {
+        // Revert the source change so prod stays consistent
+        fs.writeFileSync(full, content, "utf8");
+        return res.status(500).json({
+          ok: false,
+          error: `Build failed after applying fix — change has been reverted. Check the proposed code for syntax errors.`,
+        });
+      }
+      if (isBackend) {
+        // Respond before restarting so the client gets the reply
+        res.json({ ok: true, file, requiresRestart: true });
+        setTimeout(() => process.exit(0), 400);
+        return;
+      }
+      return res.json({ ok: true, file, requiresReload: true });
+    }
+
     return res.json({ ok: true, file, requiresRestart: isBackend });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: err.message });
