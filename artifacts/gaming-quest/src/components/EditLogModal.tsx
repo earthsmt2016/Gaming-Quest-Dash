@@ -149,37 +149,18 @@ const [timestamp, setTimestamp] = useState(entry?.timestamp ? toDatetimeLocal(en
             </button>
           </div>
 
-          <div className="elm-body">
-            {error && <div className="elm-error">{error}</div>}
-
-            <div className="elm-field">
-              <label className="elm-label">Game</label>
-              <input className="elm-input" value={game} onChange={e => setGame(e.target.value)} placeholder="Game title" />
-            </div>
-
-            <div className="elm-field">
-              <label className="elm-label">Action / Notes</label>
-              <textarea className="elm-input elm-textarea" value={action} onChange={e => setAction(e.target.value)} placeholder="What happened this session?" />
-            </div>
-
-            <div className="elm-row2">
               <div className="elm-field">
-                <label className="elm-label">Minutes</label>
-                <input className="elm-input" type="number" min={0} max={999} value={minutes} onChange={e => setMinutes(Number(e.target.value))} />
+                <label className="elm-label">Timestamp</label>
+                <input className="elm-input" type="datetime-local" value={timestamp} onChange={e => setTimestamp(e.target.value)} />
               </div>
+
               <div className="elm-field">
-                <label className="elm-label">Type</label>
-                <select className="elm-input" value={type} onChange={e => setType(e.target.value as ActionType)}>
-                  {ACTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                <label className="elm-label">Filter Logs</label>
+                <select className="elm-input" onChange={e => console.log(`Filter selected: ${e.target.value}`)}>
+                  <option value="all">All Logs</option>
+                  <option value="today">Today's Logs</option>
                 </select>
               </div>
-            </div>
-
-            <div className="elm-field">
-              <label className="elm-label">Timestamp</label>
-              <input className="elm-input" type="datetime-local" value={timestamp} onChange={e => setTimestamp(e.target.value)} />
-            </div>
-          </div>
 
           <div className="elm-footer">
             <button

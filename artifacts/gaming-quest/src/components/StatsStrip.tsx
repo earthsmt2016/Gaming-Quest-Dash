@@ -31,6 +31,10 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub: st
 }
 
 export default function StatsStrip({ entries, playtime, games, needsWork, streak }: StatsStripProps) {
+  const hours = Math.floor(playtime / 60);
+  const minutes = playtime % 60;
+  const playtimeLabel = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
   return (
     <div style={{
       display: 'grid',
@@ -40,7 +44,7 @@ export default function StatsStrip({ entries, playtime, games, needsWork, streak
       className="stats-grid"
     >
       <StatCard label="Sessions" value={String(entries)} sub="This week" />
-      <StatCard label="Playtime" value={`${playtime}m`} sub="This week" />
+      <StatCard label="Playtime" value={playtimeLabel} sub="This week" />
       <StatCard label="Games active" value={String(games)} sub="This week" />
       <StatCard label="Needs work" value={String(needsWork)} sub="From weekly review" />
       <StatCard

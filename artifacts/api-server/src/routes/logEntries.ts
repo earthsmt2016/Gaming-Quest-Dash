@@ -11,7 +11,7 @@ const router = Router();
 // GET /api/logs
 router.get("/logs", async (_req, res) => {
   try {
-    const rows = await db.select().from(logEntriesTable).orderBy(logEntriesTable.createdAt);
+const rows = await db.select().from(logEntriesTable).where(logEntriesTable.createdAt >= new Date().setHours(0, 0, 0, 0)).orderBy(logEntriesTable.createdAt);
     res.json(rows);
   } catch {
     res.status(500).json({ error: "Failed to fetch logs" });
