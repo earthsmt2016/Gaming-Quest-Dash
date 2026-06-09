@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { LogEntry, computeRecommendations, badgeFor } from '../lib/logParser';
 import { fetchDailyPlan, fetchQuestRecommendations, fetchActiveQuests, fetchSubQuest, completeQuest, addMiniLog, triggerQuestRefresh, Quest, DailyPlanGame, DailyPlanPick } from '../lib/api';
 import { useQuestsContext } from '../context/QuestsContext';
+import { trackAction } from '../lib/tracker';
 
 type PlatformMode = 'any' | 'mobile' | 'xbox';
 
@@ -206,6 +207,7 @@ export default function DailyCheckin({ logs, manualCompletions, paused }: DailyC
   }, [refreshQuests]);
 
   const handleSubmit = async () => {
+    trackAction('dashboard', 'DailyCheckin', 'click', 'Plan my session');
     let mins: number;
     if (useCustom) {
       mins = parseInt(customStr, 10);

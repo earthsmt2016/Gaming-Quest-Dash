@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ActionType } from '../lib/logParser';
 import { analyzeScreenshot, ScreenshotAnalysis } from '../lib/api';
+import { trackAction } from '../lib/tracker';
 
 const ACTION_TYPES: { value: ActionType; label: string }[] = [
   { value: 'progress', label: 'Progress' },
@@ -343,7 +344,7 @@ export default function Sidebar({
                 </label>
               </div>
 
-              <button className="btn primary" onClick={handleQuickAdd} disabled={qaAdding} style={{ width: '100%' }}>
+              <button className="btn primary" onClick={() => { trackAction('dashboard', 'Sidebar', 'click', 'Quick add entry'); handleQuickAdd(); }} disabled={qaAdding} style={{ width: '100%' }}>
                 {qaAdding ? 'Adding…' : '+ Add entry'}
               </button>
             </div>

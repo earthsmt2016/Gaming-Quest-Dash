@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { trackAction } from '../lib/tracker';
 
 const BASE = `${import.meta.env.BASE_URL}api`;
 
@@ -132,6 +133,7 @@ export default function CoachCard() {
   }, []);
 
   const handlePause = useCallback(async (game: string) => {
+    trackAction('dashboard', 'CoachCard', 'click', `Put on hold: ${game}`);
     setPauseStates(prev => ({ ...prev, [game]: 'loading' }));
     try {
       const r = await fetch(`${BASE}/paused/${encodeURIComponent(game)}`, { method: 'POST' });
@@ -162,6 +164,7 @@ export default function CoachCard() {
   }, []);
 
   const generate = useCallback(async () => {
+    trackAction('dashboard', 'CoachCard', 'click', 'Get Recommendation');
     setLoading(true);
     setError(null);
     try {

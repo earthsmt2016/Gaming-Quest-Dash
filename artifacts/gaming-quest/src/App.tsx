@@ -23,6 +23,7 @@ import IssuesPage from './components/IssuesPage';
 import IssueReporter from './components/IssueReporter';
 import EditLogModal from './components/EditLogModal';
 import { QuestsProvider } from './context/QuestsContext';
+import { trackAction, clearActionHistory, getActionHistory } from './lib/tracker';
 import {
   LogEntry,
   ActionType,
@@ -92,6 +93,7 @@ export default function App() {
       const next = [...prev, { page, timestamp: new Date().toISOString() }];
       return next.slice(-15); // keep last 15 entries
     });
+    trackAction(page, 'TopBar', 'navigate', `switched to ${page}`);
     const url = new URL(window.location.href);
     url.searchParams.set('page', page);
     window.history.replaceState({}, '', url.toString());
@@ -211,11 +213,13 @@ export default function App() {
   }, [logs]);
 
   const handleImport = useCallback(async () => {
+    trackAction('dashboard', 'Sidebar', 'click', 'Import logs');
     const ok = await importLogs(rawLogs);
     if (ok) setSidebarOpen(false);
   }, [rawLogs, importLogs]);
 
   const handleSample = useCallback(async () => {
+    trackAction('dashboard', 'Sidebar', 'click', 'Sample data');
     setRawLogs(SAMPLE_LOGS);
     const parsed = parseRaw(SAMPLE_LOGS);
     const existing = new Set(logs.map(l => `${l.timestamp}|${l.game}|${l.action}|${l.minutes}|${l.type}`));
@@ -231,6 +235,7 @@ export default function App() {
   }, [logs]);
 
   const handleClear = useCallback(async () => {
+    trackAction('dashboard', 'Sidebar', 'click', 'Clear all');
     if (!confirm('Delete all saved logs? This cannot be undone.')) return;
     setSaving(true);
     try {
@@ -630,7 +635,7 @@ export default function App() {
           </main>
         </div>
       </div>
-      <IssueReporter page={activePage} navHistory={navHistory} />
+      <IssueReporter page={activePage} navHistory={navHistory} interactions={getActionHistory()} onOpen={() => clearActionHistory()} />
     </>
     </QuestsProvider>
   );
@@ -766,7 +771,7 @@ function DesktopSidebar(props: SidebarProps) {
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,160px) minmax(0,160px)', columnGap: '24px', rowGap: '12px' }}>
                 <label style={qaLabelStyle}>
                   <span>Minutes</span>
-                  <input type="number" min={0} max={999} value={qaMinutes} onChange={e => setQaMinutes(Number(e.target.value))} style={qaInputStyle} />
+                  <input type="number" min={0} max={999} value={qaMinutes} onChange={e => setQaMinutes(e.target.value === '' ? 0 : parseInt(e.target.value, 10))} style={qaInputStyle} />
                 </label>
                 <label style={qaLabelStyle}>
                   <span>Type</span>

@@ -16,6 +16,7 @@ async function ensureTable() {
       description  TEXT NOT NULL,
       status       TEXT NOT NULL DEFAULT 'open',
       nav_history  JSONB,
+      interactions JSONB,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -23,13 +24,24 @@ async function ensureTable() {
   await pool.query(`
     ALTER TABLE app_issues ADD COLUMN IF NOT EXISTS nav_history JSONB
   `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE app_issues ADD COLUMN IF NOT EXISTS interactions JSONB
+  `).catch(() => {});
 }
 ensureTable().catch(err => console.error("issues ensureTable:", err));
 
-async function logIssue(page: string, element: string, description: string, navHistory?: NavHistoryEntry[]) {
+interface InteractionEvent {
+  page: string;
+  component: string;
+  action: string;
+  detail?: string;
+  timestamp: string;
+}
+
+async function logIssue(page: string, element: string, description: string, navHistory?: NavHistoryEntry[], interactions?: InteractionEvent[]) {
   const { rows } = await pool.query(
-    `INSERT INTO app_issues (page, element, description, nav_history) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [page || '', element || '', description, navHistory ? JSON.stringify(navHistory) : null]
+    `INSERT INTO app_issues (page, element, description, nav_history, interactions) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [page || '', element || '', description, navHistory ? JSON.stringify(navHistory) : null, interactions ? JSON.stringify(interactions) : null]
   );
   return rows[0];
 }
@@ -160,7 +172,7 @@ function numberLines(content: string, max = 900): string {
 const normalizeWs = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 async function diagnoseCode(
-  ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[] },
+  ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[]; interactions?: InteractionEvent[] },
   model: string,
   maxTokens: number,
 ): Promise<CodeDiagnosis | null> {
@@ -172,7 +184,10 @@ async function diagnoseCode(
   const navLines = ctx.navHistory && ctx.navHistory.length
     ? `\nNAVIGATION HISTORY (last visited):\n${ctx.navHistory.map((h, i) => `  ${i + 1}. ${h.page} @ ${h.timestamp}`).join('\n')}`
     : '';
-  const locateUser = `${APP_GUIDE}${navLines}\n\nSOURCE FILES:\n${files.join('\n')}\n\nBUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}`;
+  const interactionLines = ctx.interactions && ctx.interactions.length
+    ? `\nRECENT INTERACTIONS:\n${ctx.interactions.map((h, i) => `  ${i + 1}. ${h.component} — ${h.action}${h.detail ? ` (${h.detail})` : ''} @ ${h.timestamp}`).join('\n')}`
+    : '';
+  const locateUser = `${APP_GUIDE}${navLines}${interactionLines}\n\nSOURCE FILES:\n${files.join('\n')}\n\nBUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}`;
 
   const locateRes = await aiForRoute('issue-diagnosis').chat.completions.create({
     model,
@@ -223,7 +238,7 @@ Reply with STRICT JSON only:
   "confidence": "low" | "medium" | "high"
 }
 Set found=false if you cannot localize a concrete code-level cause. Keep the snippet small and focused. currentCode must match the file exactly (minus line numbers). Never fabricate code that is not present in the file shown.`;
-  const diagUser = `BUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}${navLines}\n\n${fileBlocks.join('\n\n')}`;
+  const diagUser = `BUG REPORT:\n  Page: ${ctx.page || '(unknown)'}\n  Element: ${ctx.element || '(none)'}\n  Description: ${ctx.description}${navLines}${interactionLines}\n\n${fileBlocks.join('\n\n')}`;
 
   const diagRes = await aiForRoute('issue-diagnosis').chat.completions.create({
     model,
@@ -264,7 +279,7 @@ Set found=false if you cannot localize a concrete code-level cause. Keep the sni
 }
 
 // Best-effort: never throw, gated behind its own feature toggle.
-async function maybeDiagnose(ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[] }): Promise<CodeDiagnosis | null> {
+async function maybeDiagnose(ctx: { page: string; element: string; description: string; navHistory?: NavHistoryEntry[]; interactions?: InteractionEvent[] }): Promise<CodeDiagnosis | null> {
   try {
     const cfg = await getConfig('issue-diagnosis');
     if (!cfg.enabled) return null;
@@ -288,9 +303,25 @@ function sanitizeNavHistory(raw: any): NavHistoryEntry[] | undefined {
   return entries.length > 0 ? entries : undefined;
 }
 
+function sanitizeInteractions(raw: any): InteractionEvent[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const entries = raw
+    .filter((h: any) => h && typeof h.page === 'string' && typeof h.component === 'string' && typeof h.action === 'string')
+    .slice(0, 30)
+    .map((h: any) => ({
+      page: h.page.slice(0, 50),
+      component: h.component.slice(0, 50),
+      action: h.action.slice(0, 50),
+      detail: typeof h.detail === 'string' ? h.detail.slice(0, 100) : undefined,
+      timestamp: typeof h.timestamp === 'string' ? h.timestamp.slice(0, 50) : '',
+    }));
+  return entries.length > 0 ? entries : undefined;
+}
+
 router.post("/issues/triage", async (req, res) => {
-  const { page, element, description } = req.body as { page?: string; element?: string; description?: string; navHistory?: NavHistoryEntry[] };
+  const { page, element, description } = req.body as { page?: string; element?: string; description?: string; navHistory?: NavHistoryEntry[]; interactions?: InteractionEvent[] };
   const navHistory = sanitizeNavHistory(req.body.navHistory);
+  const interactions = sanitizeInteractions(req.body.interactions);
   const desc = (description ?? '').trim();
   if (!desc) {
     res.status(400).json({ error: "description is required" });
@@ -305,7 +336,7 @@ router.post("/issues/triage", async (req, res) => {
     const { enabled, model, max_tokens } = await getConfig('issue-triage');
 
     if (!enabled) {
-      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory);
+      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory, interactions);
       res.json({ category: 'log', logged: true, issue, summary: "Thanks — this has been logged for review.", steps: [], fixes: [] });
       return;
     }
@@ -334,7 +365,11 @@ router.post("/issues/triage", async (req, res) => {
       ? `\nNAVIGATION HISTORY (last visited):\n${navHistory.map((h, i) => `  ${i + 1}. ${h.page} @ ${h.timestamp}`).join('\n')}`
       : '';
 
-    const userMsg = `${stateLines}${navLines}\n\nISSUE REPORT:\n  Page: ${page || '(unknown)'}\n  Element: ${element || '(none)'}\n  Description: ${desc}`;
+    const interactionLines = interactions && interactions.length
+      ? `\nRECENT INTERACTIONS (what the user clicked/used):\n${interactions.map((h, i) => `  ${i + 1}. ${h.component} — ${h.action}${h.detail ? ` (${h.detail})` : ''} @ ${h.timestamp}`).join('\n')}`
+      : '';
+
+    const userMsg = `${stateLines}${navLines}${interactionLines}\n\nISSUE REPORT:\n  Page: ${page || '(unknown)'}\n  Element: ${element || '(none)'}\n  Description: ${desc}`;
 
     const response = await aiForRoute('issue-triage').chat.completions.create({
       model,
@@ -350,7 +385,7 @@ router.post("/issues/triage", async (req, res) => {
     try { parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}'); } catch { /* fall through */ }
 
     if (!parsed || typeof parsed !== 'object') {
-      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory);
+      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory, interactions);
       res.json({ category: 'log', logged: true, issue, summary: "Thanks — this has been logged for review.", steps: [], fixes: [] });
       return;
     }
@@ -385,8 +420,8 @@ router.post("/issues/triage", async (req, res) => {
     }
 
     if (category === 'log' || (steps.length === 0 && fixes.length === 0)) {
-      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory);
-      const diagnosis = await maybeDiagnose({ page: page ?? '', element: element ?? '', description: desc, navHistory });
+      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory, interactions);
+      const diagnosis = await maybeDiagnose({ page: page ?? '', element: element ?? '', description: desc, navHistory, interactions });
       res.json({
         category: 'log',
         logged: true,
@@ -403,7 +438,7 @@ router.post("/issues/triage", async (req, res) => {
   } catch (err) {
     console.error("issue triage error:", err);
     try {
-      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory);
+      const issue = await logIssue(page ?? '', element ?? '', desc, navHistory, interactions);
       res.json({ category: 'log', logged: true, issue, summary: "Thanks — this has been logged for review.", steps: [], fixes: [] });
     } catch (e2: any) {
       res.status(500).json({ error: e2.message });
@@ -426,11 +461,12 @@ router.post("/issues", async (req, res) => {
   try {
     const { page, element, description } = req.body;
     const navHistory = sanitizeNavHistory(req.body.navHistory);
+    const interactions = sanitizeInteractions(req.body.interactions);
     const { rows } = await pool.query(`
-      INSERT INTO app_issues (page, element, description, nav_history)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO app_issues (page, element, description, nav_history, interactions)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
-    `, [page || '', element || '', description, navHistory ? JSON.stringify(navHistory) : null]);
+    `, [page || '', element || '', description, navHistory ? JSON.stringify(navHistory) : null, interactions ? JSON.stringify(interactions) : null]);
     res.json(rows[0]);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

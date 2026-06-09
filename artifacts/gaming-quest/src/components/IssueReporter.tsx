@@ -4,10 +4,13 @@ import {
   togglePaused, toggleCompletion, applyIssueFix,
   IssueTriage, IssueFix, IssueFixType, IssueDiagnosis,
 } from '../lib/api';
+import { trackAction } from '../lib/tracker';
 
 interface Props {
   page: string;
   navHistory?: { page: string; timestamp: string }[];
+  interactions?: { page: string; component: string; action: string; detail?: string; timestamp: string }[];
+  onOpen?: () => void;
 }
 
 type Step = 'form' | 'thinking' | 'result' | 'logged';
@@ -171,7 +174,7 @@ async function applyFix(fix: IssueFix): Promise<void> {
   }
 }
 
-export default function IssueReporter({ page, navHistory }: Props) {
+export default function IssueReporter({ page, navHistory, interactions, onOpen }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('form');
   const [element, setElement] = useState('');
@@ -198,13 +201,13 @@ export default function IssueReporter({ page, navHistory }: Props) {
     if (!desc.trim()) return;
     setStep('thinking');
     try {
-      const r = await triageIssue({ page, element, description: desc.trim(), navHistory });
+      const r = await triageIssue({ page, element, description: desc.trim(), navHistory, interactions });
       setResult(r);
       setStep(r.category === 'log' ? 'logged' : 'result');
     } catch {
       // Fall back to plain logging so the report is never lost
       try {
-        await createIssue({ page, element, description: desc.trim(), navHistory });
+        await createIssue({ page, element, description: desc.trim(), navHistory, interactions });
         setResult({ category: 'log', summary: '', steps: [], fixes: [], logged: true });
         setStep('logged');
       } catch {
@@ -212,7 +215,7 @@ export default function IssueReporter({ page, navHistory }: Props) {
         setStep('form');
       }
     }
-  }, [page, element, desc, navHistory]);
+  }, [page, element, desc, navHistory, interactions]);
 
   const runFix = useCallback(async (idx: number, fix: IssueFix) => {
     setFixStates(s => ({ ...s, [idx]: 'loading' }));
@@ -227,7 +230,7 @@ export default function IssueReporter({ page, navHistory }: Props) {
   const logAnyway = useCallback(async () => {
     setBusy(true);
     try {
-      await createIssue({ page, element, description: desc.trim(), navHistory });
+      await createIssue({ page, element, description: desc.trim(), navHistory, interactions });
       setResult(r => ({ ...(r as IssueTriage), category: 'log', logged: true }));
       setStep('logged');
     } catch {
@@ -235,13 +238,17 @@ export default function IssueReporter({ page, navHistory }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [page, element, desc, navHistory]);
+  }, [page, element, desc, navHistory, interactions]);
 
   if (!open) {
     return (
       <button
         title="Report an issue"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true);
+          onOpen?.();
+          trackAction(page, 'IssueReporter', 'open', 'reported an issue');
+        }}
         style={{
           position: 'fixed', bottom: '16px', right: '16px', zIndex: 999,
           width: '44px', height: '44px', borderRadius: '50%', border: 'none',
@@ -277,6 +284,16 @@ export default function IssueReporter({ page, navHistory }: Props) {
               {navHistory.slice(-5).map((h, i) => (
                 <span key={i} style={{ color: i === navHistory.slice(-5).length - 1 ? 'var(--accent)' : 'var(--muted)' }}>
                   {h.page}{i < navHistory.slice(-5).length - 1 ? ' → ' : ''}
+                </span>
+              ))}
+            </div>
+          )}
+          {interactions && interactions.length > 0 && (
+            <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px', padding: '6px 8px', background: 'var(--paper-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)', lineHeight: 1.4 }}>
+              <span style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink)' }}>Recent clicks: </span>
+              {interactions.slice(-5).map((h, i) => (
+                <span key={i} style={{ color: i === interactions.slice(-5).length - 1 ? 'var(--accent)' : 'var(--muted)' }}>
+                  {h.component}{i < interactions.slice(-5).length - 1 ? ' → ' : ''}
                 </span>
               ))}
             </div>

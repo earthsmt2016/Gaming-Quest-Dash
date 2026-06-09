@@ -116,6 +116,16 @@ export default function IssuesPage() {
                 ))}
               </div>
             )}
+            {issue.interactions && issue.interactions.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4, marginBottom: '6px', padding: '4px 8px', background: 'var(--paper-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                <span style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink)' }}>Clicks: </span>
+                {issue.interactions.map((h, i) => (
+                  <span key={i}>
+                    {h.component}{h.action ? ` (${h.action})` : ''}{i < issue.interactions!.length - 1 ? ' → ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>
               {new Date(issue.created_at).toLocaleString()}
             </div>

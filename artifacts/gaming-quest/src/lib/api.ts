@@ -1010,10 +1010,11 @@ export interface Issue {
   description: string;
   status: string;
   nav_history?: { page: string; timestamp: string }[];
+  interactions?: { page: string; component: string; action: string; detail?: string; timestamp: string }[];
   created_at: string;
 }
 
-export async function createIssue(data: { page: string; element: string; description: string; navHistory?: { page: string; timestamp: string }[] }): Promise<Issue> {
+export async function createIssue(data: { page: string; element: string; description: string; navHistory?: { page: string; timestamp: string }[]; interactions?: { page: string; component: string; action: string; detail?: string; timestamp: string }[] }): Promise<Issue> {
   const res = await fetch(`${BASE}/issues`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1081,7 +1082,7 @@ export async function applyIssueFix(data: { file: string; currentCode: string; p
   return { ok: true };
 }
 
-export async function triageIssue(data: { page: string; element: string; description: string; navHistory?: { page: string; timestamp: string }[] }): Promise<IssueTriage> {
+export async function triageIssue(data: { page: string; element: string; description: string; navHistory?: { page: string; timestamp: string }[]; interactions?: { page: string; component: string; action: string; detail?: string; timestamp: string }[] }): Promise<IssueTriage> {
   const res = await fetch(`${BASE}/issues/triage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
