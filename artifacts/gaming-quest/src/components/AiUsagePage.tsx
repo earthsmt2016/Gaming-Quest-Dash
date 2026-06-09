@@ -1,5 +1,38 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import {
+  BarChart, Bar, ComposedChart, Line, Area,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine,
+} from 'recharts';
 import { fetchAiUsageGbp, AiUsageSummary } from '../lib/api';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function pad(n: number) {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+// 'YYYY-MM-DD' -> 'Jun 9'
+function fmtDayLabel(iso: string): string {
+  const parts = iso.split('-');
+  if (parts.length < 3) return iso;
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  return `${MONTHS[m - 1] ?? '?'} ${d}`;
+}
+
+// Money axis ticks — compact
+function fmtAxisMoney(v: number): string {
+  if (v === 0) return '£0';
+  if (v < 1) return `£${v.toFixed(3)}`;
+  return `£${v.toFixed(2)}`;
+}
+
+function fmtFullMoney(v: number): string {
+  return `£${v.toFixed(4)}`;
+}
+
+const ACCENT = '#0c6d73';
+const WARNING = '#ad7400';
 
 export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string) => void }) {
   const [data, setData] = useState<AiUsageSummary | null>(null);
@@ -27,7 +60,7 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
     return () => clearInterval(id);
   }, [refresh]);
 
-  if (loading) {
+  if (loading && !data) {
     return <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>Loading AI usage…</div>;
   }
 
@@ -38,13 +71,50 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
   const daily = data?.daily ?? [];
   const monthDaily = data?.monthDaily ?? [];
 
+  // ── Projection maths ─────────────────────────────────────────────
+  const now = new Date();
+  const daysIntoMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const monthName = MONTHS[now.getMonth()];
   const monthCost = Number(month.cost);
-  const daysIntoMonth = new Date().getDate();
-  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-  const projectedMonth = daysIntoMonth > 0 ? (monthCost / daysIntoMonth) * daysInMonth : 0;
+  const dailyAvg = daysIntoMonth > 0 ? monthCost / daysIntoMonth : 0;
+  const projectedMonth = dailyAvg * daysInMonth;
+
+  // ── 14-day daily series (fill gaps with zero, oldest → newest) ───
+  const dailyMap = new Map<string, { cost: number; calls: number }>();
+  daily.forEach(d => dailyMap.set(d.day, { cost: Number(d.cost), calls: Number(d.calls) }));
+  const dailySeries: { label: string; cost: number; calls: number }[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const iso = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const e = dailyMap.get(iso);
+    dailySeries.push({ label: fmtDayLabel(iso), cost: e?.cost ?? 0, calls: e?.calls ?? 0 });
+  }
+
+  // ── Month projection series: cumulative actual vs projected line ─
+  const costByDay = new Map<number, number>();
+  monthDaily.forEach(d => {
+    const dayNum = Number(d.day.split('-')[2]);
+    if (!Number.isNaN(dayNum)) costByDay.set(dayNum, Number(d.cost));
+  });
+  let cum = 0;
+  const monthSeries: { day: number; actual: number | null; projected: number }[] = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    if (day <= daysIntoMonth) cum += costByDay.get(day) ?? 0;
+    monthSeries.push({
+      day,
+      actual: day <= daysIntoMonth ? Number(cum.toFixed(6)) : null,
+      projected: Number((dailyAvg * day).toFixed(6)),
+    });
+  }
+
+  const cardStyle: React.CSSProperties = {
+    background: 'var(--paper)', border: '1px solid var(--line)',
+    borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
+  };
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>
           AI Usage
@@ -79,125 +149,144 @@ export default function AiUsagePage({ onNavigate }: { onNavigate: (page: string)
         </p>
       </div>
 
+      {error && (
+        <div style={{ padding: '12px 16px', background: '#fff0f0', borderRadius: 'var(--radius)', color: 'var(--danger)', fontSize: 13 }}>{error}</div>
+      )}
+
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <div style={{
-          background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
-        }}>
+        <div style={cardStyle}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 6 }}>Today</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>£{Number(today.cost).toFixed(4)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>{fmtFullMoney(Number(today.cost))}</div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{Number(today.calls).toLocaleString()} calls · {Number(today.tokens).toLocaleString()} tokens</div>
         </div>
-        <div style={{
-          background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
-        }}>
+        <div style={cardStyle}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 6 }}>This week</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>£{Number(week.cost).toFixed(4)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>{fmtFullMoney(Number(week.cost))}</div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{Number(week.calls).toLocaleString()} calls · {Number(week.tokens).toLocaleString()} tokens</div>
         </div>
-        <div style={{
-          background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
-        }}>
-          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', fontWeight: 700, marginBottom: 6 }}>Month (projected)</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>£{projectedMonth.toFixed(4)}</div>
+        <div style={{ ...cardStyle, borderColor: WARNING, background: '#fffaf0' }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: WARNING, fontWeight: 700, marginBottom: 6 }}>Projected this month</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>{fmtFullMoney(projectedMonth)}</div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
-            Actual: £{monthCost.toFixed(4)} ({daysIntoMonth}/{daysInMonth} days)
+            {fmtFullMoney(monthCost)} spent · day {daysIntoMonth} of {daysInMonth}
           </div>
         </div>
       </div>
 
-      {/* Daily breakdown (14 days) */}
-      {daily.length > 0 && (
-        <div style={{
-          background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>Daily spend (14 days)</div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
-            {daily.map(d => {
-              const maxCost = Math.max(...daily.map(x => Number(x.cost)), 0.001);
-              const h = maxCost ? Math.max(4, (Number(d.cost) / maxCost) * 80) : 4;
-              return (
-                <div key={d.day} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 36 }}>
-                  <div style={{
-                    width: 28, height: h, background: 'var(--accent)', borderRadius: '3px 3px 0 0', opacity: 0.7,
-                  }} />
-                  <div style={{ fontSize: 10, color: 'var(--muted)', transform: 'rotate(-30deg)', transformOrigin: 'top left', whiteSpace: 'nowrap' }}>
-                    {d.day.slice(5)}
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700 }}>£{Number(d.cost).toFixed(3)}</div>
-                </div>
-              );
-            })}
+      {/* Month projection — cumulative actual vs projected */}
+      <div style={cardStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{monthName} projection</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Heading toward <strong style={{ color: WARNING }}>{fmtFullMoney(projectedMonth)}</strong> by month end
           </div>
         </div>
-      )}
-
-      {/* Monthly projection graph */}
-      {monthDaily.length > 0 && (
-        <div style={{
-          background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>Month projection</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 110, paddingBottom: 24, position: 'relative' }}>
-            {monthDaily.map((d, i) => {
-              const maxCost = Math.max(...monthDaily.map(x => Number(x.cost)), 0.001);
-              const h = maxCost ? Math.max(4, (Number(d.cost) / maxCost) * 90) : 4;
-              const isToday = i === monthDaily.length - 1;
-              return (
-                <div key={d.day} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    width: '100%', maxWidth: 18, height: h,
-                    background: isToday ? 'var(--accent)' : '#cbd5e1',
-                    borderRadius: '2px 2px 0 0', opacity: 0.85,
-                    transition: 'height 0.3s',
-                  }} />
-                  <div style={{
-                    fontSize: 9, color: 'var(--muted)', whiteSpace: 'nowrap',
-                    overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 30,
-                  }}>
-                    {d.day.slice(8)}
-                  </div>
-                </div>
-              );
-            })}
-            {/* Projection line */}
-            {(() => {
-              const maxCost = Math.max(...monthDaily.map(x => Number(x.cost)), 0.001);
-              const avgDaily = daysInMonth > 0 ? projectedMonth / daysInMonth : 0;
-              const lineHeight = maxCost ? (avgDaily / maxCost) * 90 : 0;
-              return projectedMonth > 0 && lineHeight > 0 ? (
-                <div style={{
-                  position: 'absolute', bottom: 24 + lineHeight, left: 0, right: 0,
-                  borderTop: '2px dashed var(--warning)', opacity: 0.5,
-                  height: 0,
-                }} />
-              ) : null;
-            })()}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-            <span>Dashed line = projected daily average</span>
-            <span>At current rate: ~£{projectedMonth.toFixed(2)}/month</span>
-          </div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+          Cumulative spend so far vs. the trend if usage continues at {fmtFullMoney(dailyAvg)}/day.
         </div>
-      )}
+        <ResponsiveContainer width="100%" height={260}>
+          <ComposedChart data={monthSeries} margin={{ top: 8, right: 16, left: 4, bottom: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+            <XAxis
+              dataKey="day"
+              tick={{ fontSize: 11, fill: 'var(--muted)' }}
+              interval={daysInMonth > 16 ? 2 : 0}
+              tickLine={false}
+              label={{ value: `Day of ${monthName}`, position: 'insideBottom', offset: -14, fontSize: 11, fill: 'var(--muted)' }}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: 'var(--muted)' }}
+              tickFormatter={fmtAxisMoney}
+              width={56}
+              label={{ value: 'Cumulative £', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--muted)', style: { textAnchor: 'middle' } }}
+            />
+            <Tooltip
+              formatter={(v: any, name: string) => [v == null ? '—' : fmtFullMoney(Number(v)), name === 'actual' ? 'Actual' : 'Projected']}
+              labelFormatter={(d) => `Day ${d}`}
+              contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--line)' }}
+            />
+            <Legend
+              verticalAlign="top"
+              height={28}
+              iconType="plainline"
+              formatter={(value) => value === 'actual' ? 'Actual spend' : 'Projected trend'}
+              wrapperStyle={{ fontSize: 12 }}
+            />
+            <ReferenceLine x={daysIntoMonth} stroke="var(--muted)" strokeDasharray="2 4" />
+            <Area
+              type="monotone"
+              dataKey="actual"
+              stroke={ACCENT}
+              strokeWidth={2.5}
+              fill={ACCENT}
+              fillOpacity={0.12}
+              connectNulls={false}
+              dot={false}
+              name="actual"
+            />
+            <Line
+              type="monotone"
+              dataKey="projected"
+              stroke={WARNING}
+              strokeWidth={2}
+              strokeDasharray="6 5"
+              dot={false}
+              name="projected"
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
 
-      {/* By route */}
-      <div style={{
-        background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px',
-      }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 10 }}>By feature (7 days)</div>
+      {/* Daily spend — last 14 days */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>Daily spend</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>What you spent each of the last 14 days.</div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={dailySeries} margin={{ top: 8, right: 12, left: 4, bottom: 28 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 10, fill: 'var(--muted)' }}
+              interval={0}
+              angle={-40}
+              textAnchor="end"
+              height={48}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: 'var(--muted)' }}
+              tickFormatter={fmtAxisMoney}
+              width={56}
+              label={{ value: 'Spend £', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--muted)', style: { textAnchor: 'middle' } }}
+            />
+            <Tooltip
+              formatter={(v: any) => [fmtFullMoney(Number(v)), 'Spent']}
+              labelFormatter={(l) => `${l}`}
+              contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--line)' }}
+              cursor={{ fill: 'var(--accent-soft)', opacity: 0.4 }}
+            />
+            <Bar dataKey="cost" fill={ACCENT} radius={[4, 4, 0, 0]} maxBarSize={42} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* By feature */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>By feature</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>Cost per AI feature over the last 7 days.</div>
         {byRoute.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--muted)' }}>No AI requests tracked yet. They will appear as you use the app.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {byRoute.map(r => (
-              <div key={r.route + r.model} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+              <div key={r.route + r.model} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, paddingBottom: 8, borderBottom: '1px solid var(--line)' }}>
                 <div>
                   <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.route}</span>
-                  <span style={{ color: 'var(--muted)', marginLeft: 6 }}>({r.model})</span>
+                  <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 12 }}>({r.model})</span>
                 </div>
-                <div style={{ display: 'flex', gap: 12, color: 'var(--muted)', fontSize: 12 }}>
-                  <span>£{Number(r.cost).toFixed(4)}</span>
+                <div style={{ display: 'flex', gap: 14, color: 'var(--muted)', fontSize: 12, alignItems: 'center' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--ink)' }}>{fmtFullMoney(Number(r.cost))}</span>
                   <span>{Number(r.calls).toLocaleString()} calls</span>
                   <span>{Number(r.tokens).toLocaleString()} tokens</span>
                 </div>

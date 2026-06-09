@@ -85,22 +85,22 @@ router.get("/ai-usage/gbp", async (_req, res) => {
       LIMIT 20
     `);
     const daily = await pool.query(`
-      SELECT DATE(created_at::timestamptz) as day,
+      SELECT TO_CHAR(DATE(created_at::timestamptz), 'YYYY-MM-DD') as day,
              COALESCE(SUM(cost_estimate * ${GBP_PER_USD}), 0) as cost,
              COUNT(*) as calls
       FROM ai_requests
       WHERE created_at::timestamptz >= NOW() - INTERVAL '14 days'
       GROUP BY DATE(created_at::timestamptz)
-      ORDER BY day DESC
+      ORDER BY DATE(created_at::timestamptz) DESC
     `);
     const monthDaily = await pool.query(`
-      SELECT DATE(created_at::timestamptz) as day,
+      SELECT TO_CHAR(DATE(created_at::timestamptz), 'YYYY-MM-DD') as day,
              COALESCE(SUM(cost_estimate * ${GBP_PER_USD}), 0) as cost,
              COUNT(*) as calls
       FROM ai_requests
       WHERE created_at::timestamptz >= DATE_TRUNC('month', NOW())
       GROUP BY DATE(created_at::timestamptz)
-      ORDER BY day ASC
+      ORDER BY DATE(created_at::timestamptz) ASC
     `);
     res.json({
       today: today.rows[0],
