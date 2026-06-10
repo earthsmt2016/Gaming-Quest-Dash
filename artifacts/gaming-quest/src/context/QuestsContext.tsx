@@ -4,8 +4,6 @@ import {
   fetchActiveQuests, fetchSuggestedQuests, fetchQuestLogs, fetchUserProfile,
 } from '../lib/api';
 
-const POLL_INTERVAL_MS = 60_000;
-
 interface QuestsContextValue {
   active: Quest[];
   suggested: Quest[];
@@ -52,8 +50,13 @@ export function QuestsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setLoading(true);
     refresh();
-    const timer = setInterval(refresh, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refresh]);
 
   return (
